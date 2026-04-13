@@ -392,6 +392,15 @@ public sealed class MainWindowViewModel : ObservableObject
         _pollingTimer.Start();
     }
 
+    public Task RetrySyncFromTrayAsync() => RetrySyncAsync();
+
+    public string BuildTrayTooltip()
+    {
+        var phase = string.IsNullOrWhiteSpace(PhaseTitle) ? "IDLE" : PhaseTitle;
+        var sim = string.IsNullOrWhiteSpace(MsfsStatusText) ? "SIM IDLE" : MsfsStatusText;
+        return $"SimCrewOps Tracker | {phase} | {sim}";
+    }
+
     private async Task RefreshAsync()
     {
         if (_isRefreshing)
