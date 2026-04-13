@@ -36,6 +36,7 @@ public sealed class PersistentRuntimeCoordinatorTests
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(290), onGround: false, altitudeAgl: 2_800, gearDown: true, verticalSpeed: -500, heading: 180));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(300), onGround: false, altitudeAgl: 100, heading: 180));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(310), onGround: true, altitudeAgl: 0, groundSpeed: 100, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(311), onGround: true, altitudeAgl: 0, groundSpeed: 20, heading: 180));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(316), onGround: true, altitudeAgl: 0, groundSpeed: 20, heading: 180));
 
         var arrival = await coordinator.ProcessFrameAsync(Frame(
@@ -77,6 +78,7 @@ public sealed class PersistentRuntimeCoordinatorTests
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(290), onGround: false, altitudeAgl: 2_800, gearDown: true, verticalSpeed: -500, heading: 180));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(300), onGround: false, altitudeAgl: 100, heading: 180));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(310), onGround: true, altitudeAgl: 0, groundSpeed: 100, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(311), onGround: true, altitudeAgl: 0, groundSpeed: 20, heading: 180));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(316), onGround: true, altitudeAgl: 0, groundSpeed: 20, heading: 180));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(317), onGround: true, altitudeAgl: 0, groundSpeed: 0, parkingBrake: true, heading: 180));
 
