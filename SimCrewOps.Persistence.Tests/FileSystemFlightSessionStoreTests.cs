@@ -135,6 +135,7 @@ public sealed class FileSystemFlightSessionStoreTests : IDisposable
                 },
                 Projection = new TouchdownProjection
                 {
+                    AlongTrackDistanceFeet = 3_260,
                     DistanceFromThresholdFeet = 3_260,
                     CrossTrackDistanceFeet = 12,
                     TouchdownZoneExcessDistanceFeet = touchdownZoneExcessDistanceFeet,
