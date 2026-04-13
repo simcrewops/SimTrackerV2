@@ -62,6 +62,9 @@ jobs:
       - name: Test runways
         run: dotnet test SimCrewOps.Runways.Tests/SimCrewOps.Runways.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=runways-tests.trx" --results-directory TestResults
 
+      - name: Test runtime
+        run: dotnet test SimCrewOps.Runtime.Tests/SimCrewOps.Runtime.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=runtime-tests.trx" --results-directory TestResults
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7

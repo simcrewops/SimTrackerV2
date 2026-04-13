@@ -19,6 +19,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimCrewOps.Runways", "SimCr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimCrewOps.Runways.Tests", "SimCrewOps.Runways.Tests\SimCrewOps.Runways.Tests.csproj", "{0F7B1E67-AE21-4D7D-8CA2-C91320F67D5C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimCrewOps.Runtime", "SimCrewOps.Runtime\SimCrewOps.Runtime.csproj", "{6E5E4507-90B0-42CF-AE1C-6C86ADCCB6C2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimCrewOps.Runtime.Tests", "SimCrewOps.Runtime.Tests\SimCrewOps.Runtime.Tests.csproj", "{D80DA441-CB9A-44D5-8B7B-A68DD99818F1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -57,6 +61,14 @@ Global
 		{0F7B1E67-AE21-4D7D-8CA2-C91320F67D5C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0F7B1E67-AE21-4D7D-8CA2-C91320F67D5C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0F7B1E67-AE21-4D7D-8CA2-C91320F67D5C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6E5E4507-90B0-42CF-AE1C-6C86ADCCB6C2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6E5E4507-90B0-42CF-AE1C-6C86ADCCB6C2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6E5E4507-90B0-42CF-AE1C-6C86ADCCB6C2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6E5E4507-90B0-42CF-AE1C-6C86ADCCB6C2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D80DA441-CB9A-44D5-8B7B-A68DD99818F1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D80DA441-CB9A-44D5-8B7B-A68DD99818F1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D80DA441-CB9A-44D5-8B7B-A68DD99818F1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D80DA441-CB9A-44D5-8B7B-A68DD99818F1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
