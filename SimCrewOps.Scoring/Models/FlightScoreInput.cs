@@ -79,6 +79,9 @@ public sealed record LandingMetrics
 {
     public double TouchdownZoneExcessDistanceFeet { get; init; }
     public double TouchdownVerticalSpeedFpm { get; init; }
+    public double TouchdownBankAngleDegrees { get; init; }
+    public double TouchdownIndicatedAirspeedKnots { get; init; }
+    public double TouchdownPitchAngleDegrees { get; init; }
     public double TouchdownGForce { get; init; }
     public int BounceCount { get; init; }
 }

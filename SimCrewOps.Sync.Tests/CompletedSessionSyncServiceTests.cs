@@ -120,6 +120,7 @@ public sealed class CompletedSessionSyncServiceTests
                     DepartureAirportIcao = "KJFK",
                     ArrivalAirportIcao = "KMIA",
                     FlightMode = "career",
+                    ScheduledBlockHours = 2.8,
                 },
                 CurrentPhase = FlightPhase.Arrival,
                 BlockTimes = new FlightSessionBlockTimes
@@ -129,7 +130,23 @@ public sealed class CompletedSessionSyncServiceTests
                     WheelsOnUtc = new DateTimeOffset(2026, 4, 13, 14, 45, 0, TimeSpan.Zero),
                     BlocksOnUtc = new DateTimeOffset(2026, 4, 13, 14, 52, 0, TimeSpan.Zero),
                 },
-                ScoreInput = new(),
+                ScoreInput = new()
+                {
+                    Landing = new LandingMetrics
+                    {
+                        BounceCount = 1,
+                        TouchdownVerticalSpeedFpm = 245,
+                        TouchdownBankAngleDegrees = 1.4,
+                        TouchdownIndicatedAirspeedKnots = 133,
+                        TouchdownPitchAngleDegrees = 2.1,
+                    },
+                    Safety = new SafetyMetrics
+                    {
+                        OverspeedEvents = 1,
+                        StallEvents = 0,
+                        GpwsEvents = 0,
+                    },
+                },
                 ScoreResult = new(100, 91, "A", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
             },
         };

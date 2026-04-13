@@ -9,5 +9,6 @@ public sealed record FlightSessionContext
     public string? DepartureAirportIcao { get; init; }
     public string? ArrivalAirportIcao { get; init; }
     public string FlightMode { get; init; } = "free_flight";
+    public double? ScheduledBlockHours { get; init; }
     public FlightSessionProfile Profile { get; init; } = new();
 }

@@ -67,6 +67,9 @@ public sealed class FlightSessionScoringTracker
     private int _landingBounceCount;
     private double _landingTouchdownZoneExcessDistanceFeet;
     private double _landingTouchdownVerticalSpeedFpm;
+    private double _landingTouchdownBankAngleDegrees;
+    private double _landingTouchdownIndicatedAirspeedKnots;
+    private double _landingTouchdownPitchAngleDegrees;
     private double _landingTouchdownGForce;
     private DateTimeOffset? _lastTouchdownAt;
     private DateTimeOffset? _airborneAfterTouchdownAt;
@@ -182,6 +185,9 @@ public sealed class FlightSessionScoringTracker
             {
                 TouchdownZoneExcessDistanceFeet = _landingTouchdownZoneExcessDistanceFeet,
                 TouchdownVerticalSpeedFpm = _landingTouchdownVerticalSpeedFpm,
+                TouchdownBankAngleDegrees = _landingTouchdownBankAngleDegrees,
+                TouchdownIndicatedAirspeedKnots = _landingTouchdownIndicatedAirspeedKnots,
+                TouchdownPitchAngleDegrees = _landingTouchdownPitchAngleDegrees,
                 TouchdownGForce = _landingTouchdownGForce,
                 BounceCount = _landingBounceCount,
             },
@@ -465,6 +471,12 @@ public sealed class FlightSessionScoringTracker
             _lastTouchdownAt = frame.TimestampUtc;
             _landingTouchdownVerticalSpeedFpm = Math.Max(_landingTouchdownVerticalSpeedFpm, CalculateTouchdownVerticalSpeed());
             _landingTouchdownGForce = Math.Max(_landingTouchdownGForce, CalculateTouchdownGForce());
+            if (_landingTouchdownIndicatedAirspeedKnots == 0)
+            {
+                _landingTouchdownBankAngleDegrees = Math.Abs(frame.BankAngleDegrees);
+                _landingTouchdownIndicatedAirspeedKnots = frame.IndicatedAirspeedKnots;
+                _landingTouchdownPitchAngleDegrees = frame.PitchAngleDegrees;
+            }
 
             if (_airborneAfterTouchdownAt is not null &&
                 frame.TimestampUtc - _airborneAfterTouchdownAt <= TimeSpan.FromSeconds(3))

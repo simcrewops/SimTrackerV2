@@ -41,6 +41,9 @@ public sealed class FlightSessionScoringTrackerTests
         Assert.True(input.Approach.GearDownBy1000Agl);
         Assert.Equal(3, input.Approach.FlapsHandleIndexAt500Agl);
         Assert.Equal(160, input.Landing.TouchdownVerticalSpeedFpm);
+        Assert.Equal(0, input.Landing.TouchdownBankAngleDegrees);
+        Assert.Equal(135, input.Landing.TouchdownIndicatedAirspeedKnots);
+        Assert.Equal(0, input.Landing.TouchdownPitchAngleDegrees);
         Assert.Equal(1, input.Landing.BounceCount);
         Assert.Equal(120, input.Landing.TouchdownZoneExcessDistanceFeet);
         Assert.True(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
