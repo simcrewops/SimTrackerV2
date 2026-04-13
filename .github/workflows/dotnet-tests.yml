@@ -68,6 +68,9 @@ jobs:
       - name: Test persistence
         run: dotnet test SimCrewOps.Persistence.Tests/SimCrewOps.Persistence.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=persistence-tests.trx" --results-directory TestResults
 
+      - name: Test sync
+        run: dotnet test SimCrewOps.Sync.Tests/SimCrewOps.Sync.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=sync-tests.trx" --results-directory TestResults
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
