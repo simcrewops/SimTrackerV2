@@ -11,6 +11,8 @@ using SimCrewOps.Runtime.Models;
 using SimCrewOps.Scoring.Models;
 using SimCrewOps.SimConnect.Models;
 using SimCrewOps.Tracking.Models;
+using Brush = System.Windows.Media.Brush;
+using MediaColor = System.Windows.Media.Color;
 
 namespace SimCrewOps.App.Wpf.ViewModels;
 
@@ -24,9 +26,9 @@ public sealed class MainWindowViewModel : ObservableObject
     private bool _isRefreshing;
     private NavPage _selectedPage = NavPage.Dashboard;
     private string _msfsStatusText = "WAITING FOR SIM";
-    private Brush _msfsStatusBrush = new SolidColorBrush(Color.FromRgb(56, 91, 105));
+    private Brush _msfsStatusBrush = new SolidColorBrush(MediaColor.FromRgb(56, 91, 105));
     private string _syncStatusText = "SYNC READY";
-    private Brush _syncStatusBrush = new SolidColorBrush(Color.FromRgb(56, 91, 105));
+    private Brush _syncStatusBrush = new SolidColorBrush(MediaColor.FromRgb(56, 91, 105));
     private string _headerFlightText = "Waiting for flight context • MSFS telemetry will populate here";
     private string _phaseTitle = "APPROACH";
     private string _phaseSubtitle = "Fast, readable, and phase-specific. Diagram moved to post-flight web debrief.";
@@ -461,17 +463,17 @@ public sealed class MainWindowViewModel : ObservableObject
         };
         MsfsStatusBrush = snapshot.SimConnectStatus.ConnectionState switch
         {
-            SimConnectConnectionState.Connected => new SolidColorBrush(Color.FromRgb(44, 122, 125)),
-            SimConnectConnectionState.Faulted => new SolidColorBrush(Color.FromRgb(212, 98, 90)),
-            _ => new SolidColorBrush(Color.FromRgb(56, 91, 105)),
+            SimConnectConnectionState.Connected => new SolidColorBrush(MediaColor.FromRgb(44, 122, 125)),
+            SimConnectConnectionState.Faulted => new SolidColorBrush(MediaColor.FromRgb(212, 98, 90)),
+            _ => new SolidColorBrush(MediaColor.FromRgb(56, 91, 105)),
         };
 
         SyncStatusText = snapshot.BackgroundSyncStatus?.Enabled == true
             ? (snapshot.BackgroundSyncStatus.LastErrorMessage is null ? "SYNCED" : "SYNC RETRY")
             : "SYNC READY";
         SyncStatusBrush = snapshot.BackgroundSyncStatus?.LastErrorMessage is null
-            ? new SolidColorBrush(Color.FromRgb(56, 91, 105))
-            : new SolidColorBrush(Color.FromRgb(212, 98, 90));
+            ? new SolidColorBrush(MediaColor.FromRgb(56, 91, 105))
+            : new SolidColorBrush(MediaColor.FromRgb(212, 98, 90));
 
         PhaseTitle = phase.ToString().ToUpperInvariant();
         HeaderFlightText = BuildHeaderFlightText(activeState);
@@ -671,8 +673,8 @@ public sealed class MainWindowViewModel : ObservableObject
     private static ScoreRowModel CreateScoreRow(PhaseScoreResult phaseScore)
     {
         var accentBrush = phaseScore.Phase == FlightPhase.Approach
-            ? new SolidColorBrush(Color.FromRgb(243, 169, 106))
-            : new SolidColorBrush(Color.FromRgb(54, 130, 139));
+            ? new SolidColorBrush(MediaColor.FromRgb(243, 169, 106))
+            : new SolidColorBrush(MediaColor.FromRgb(54, 130, 139));
         var fillWidth = phaseScore.MaxPoints <= 0
             ? 0
             : 112 * (phaseScore.AwardedPoints / phaseScore.MaxPoints);
@@ -693,10 +695,10 @@ public sealed class MainWindowViewModel : ObservableObject
     private static List<ScoreRowModel> CreateSampleScoreRows() =>
         new()
         {
-            new ScoreRowModel("Preflight", "5/5", 112, new SolidColorBrush(Color.FromRgb(54, 130, 139))),
-            new ScoreRowModel("Taxi Out", "8/8", 112, new SolidColorBrush(Color.FromRgb(54, 130, 139))),
-            new ScoreRowModel("Approach", "10/12", 96, new SolidColorBrush(Color.FromRgb(243, 169, 106))),
-            new ScoreRowModel("Landing", "--", 0, new SolidColorBrush(Color.FromRgb(217, 223, 214))),
+            new ScoreRowModel("Preflight", "5/5", 112, new SolidColorBrush(MediaColor.FromRgb(54, 130, 139))),
+            new ScoreRowModel("Taxi Out", "8/8", 112, new SolidColorBrush(MediaColor.FromRgb(54, 130, 139))),
+            new ScoreRowModel("Approach", "10/12", 96, new SolidColorBrush(MediaColor.FromRgb(243, 169, 106))),
+            new ScoreRowModel("Landing", "--", 0, new SolidColorBrush(MediaColor.FromRgb(217, 223, 214))),
         };
 
     private void PopulatePhasePills(FlightPhase currentPhase)

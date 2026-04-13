@@ -2,10 +2,11 @@ using System.ComponentModel;
 using System.Windows;
 using SimCrewOps.App.Wpf.Services;
 using SimCrewOps.App.Wpf.ViewModels;
+using WpfApplication = System.Windows.Application;
 
 namespace SimCrewOps.App.Wpf;
 
-public partial class App : Application
+public partial class App : WpfApplication
 {
     private TrackerShellHost? _shellHost;
     private MainWindow? _mainWindow;

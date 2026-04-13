@@ -1,4 +1,5 @@
 using System.Windows.Media;
+using Brush = System.Windows.Media.Brush;
 
 namespace SimCrewOps.App.Wpf.Models;
 
