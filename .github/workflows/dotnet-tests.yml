@@ -50,8 +50,14 @@ jobs:
       - name: Build solution
         run: dotnet build SimCrewOps.sln --configuration Release --no-restore
 
-      - name: Test solution
-        run: dotnet test SimCrewOps.sln --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+      - name: Test scoring
+        run: dotnet test SimCrewOps.Scoring.Tests/SimCrewOps.Scoring.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=scoring-tests.trx" --results-directory TestResults
+
+      - name: Test tracking
+        run: dotnet test SimCrewOps.Tracking.Tests/SimCrewOps.Tracking.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=tracking-tests.trx" --results-directory TestResults
+
+      - name: Test phase engine
+        run: dotnet test SimCrewOps.PhaseEngine.Tests/SimCrewOps.PhaseEngine.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=phase-engine-tests.trx" --results-directory TestResults
 
       - name: Upload test results
         if: always()
