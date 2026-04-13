@@ -42,5 +42,6 @@ public sealed record TelemetryFrame
     public bool Engine4Running { get; init; }
 
     public double? TouchdownZoneExcessDistanceFeet { get; init; }
+    // Reserved for future gate-arrival precision scoring.
     public double? GateArrivalDistanceFeet { get; init; }
 }

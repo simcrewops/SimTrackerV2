@@ -59,6 +59,9 @@ jobs:
       - name: Test phase engine
         run: dotnet test SimCrewOps.PhaseEngine.Tests/SimCrewOps.PhaseEngine.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=phase-engine-tests.trx" --results-directory TestResults
 
+      - name: Test runways
+        run: dotnet test SimCrewOps.Runways.Tests/SimCrewOps.Runways.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=runways-tests.trx" --results-directory TestResults
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
