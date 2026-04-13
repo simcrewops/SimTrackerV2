@@ -28,20 +28,23 @@ public sealed class FlightSessionScoringTrackerTests
         tracker.Ingest(Frame(t0.AddSeconds(35), FlightPhase.Landing, onGround: true, gearDown: true, flaps: 3, altitude: 2200, agl: 0, ias: 110, vs: -120, heading: 90, g: 1.12));
 
         tracker.Ingest(Frame(t0.AddSeconds(40), FlightPhase.TaxiIn, onGround: true, taxiLights: true, landingLights: false, strobes: false, groundSpeed: 18, heading: 90));
-        tracker.Ingest(Frame(t0.AddSeconds(50), FlightPhase.Arrival, onGround: true, taxiLights: true, landingLights: false, strobes: false, parkingBrake: true, gateDistance: 14));
+        tracker.Ingest(Frame(t0.AddSeconds(49), FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 3, heading: 90));
+        tracker.Ingest(Frame(t0.AddSeconds(50), FlightPhase.Arrival, onGround: true, taxiLights: false, landingLights: false, strobes: false, parkingBrake: true, engine1: false, engine2: false));
 
         var input = tracker.BuildScoreInput();
 
         Assert.True(input.Preflight.BeaconOnBeforeTaxi);
         Assert.Equal(0, input.Takeoff.BounceCount);
         Assert.True(input.Takeoff.TailStrikeDetected);
+        Assert.Equal(1.0, input.Takeoff.MaxGForce);
         Assert.True(input.Approach.GearDownBy1000Agl);
         Assert.Equal(3, input.Approach.FlapsHandleIndexAt500Agl);
         Assert.Equal(160, input.Landing.TouchdownVerticalSpeedFpm);
         Assert.Equal(1, input.Landing.BounceCount);
         Assert.Equal(120, input.Landing.TouchdownZoneExcessDistanceFeet);
-        Assert.True(input.Arrival.ParkingBrakeSetAtGate);
-        Assert.Equal(14, input.Arrival.GateArrivalDistanceFeet);
+        Assert.True(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
+        Assert.True(input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown);
+        Assert.True(input.Arrival.AllEnginesOffByEndOfSession);
     }
 
     [Fact]
@@ -69,6 +72,58 @@ public sealed class FlightSessionScoringTrackerTests
         Assert.Equal(1, input.Safety.StallEvents);
         Assert.Equal(1, input.Safety.GpwsEvents);
         Assert.Equal(1, input.Safety.EngineShutdownsInFlight);
+    }
+
+    [Fact]
+    public void TrackerCountsCruiseInstabilityAfterFiveSecondsAndAppliesCooldown()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 12, 23, 30, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0.AddSeconds(0), FlightPhase.Cruise, onGround: false, altitude: 35000, agl: 33000, ias: 280, mach: 0.76, heading: 30));
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Cruise, onGround: false, altitude: 35010, agl: 33010, ias: 300, mach: 0.80, heading: 30));
+        tracker.Ingest(Frame(t0.AddSeconds(3), FlightPhase.Cruise, onGround: false, altitude: 35010, agl: 33010, ias: 299, mach: 0.80, heading: 30));
+        tracker.Ingest(Frame(t0.AddSeconds(6), FlightPhase.Cruise, onGround: false, altitude: 35010, agl: 33010, ias: 298, mach: 0.80, heading: 30));
+        tracker.Ingest(Frame(t0.AddSeconds(12), FlightPhase.Cruise, onGround: false, altitude: 35020, agl: 33020, ias: 298, mach: 0.80, heading: 30));
+        tracker.Ingest(Frame(t0.AddSeconds(17), FlightPhase.Cruise, onGround: false, altitude: 35020, agl: 33020, ias: 297, mach: 0.80, heading: 30));
+        tracker.Ingest(Frame(t0.AddSeconds(18), FlightPhase.Cruise, onGround: false, altitude: 35020, agl: 33020, ias: 280, mach: 0.76, heading: 30));
+
+        var input = tracker.BuildScoreInput();
+
+        Assert.Equal(2, input.Cruise.SpeedInstabilityEvents);
+    }
+
+    [Fact]
+    public void TrackerMarksArrivalViolationWhenAllEnginesShutdownBeforeParkingBrake()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 12, 23, 45, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0.AddSeconds(0), FlightPhase.TaxiIn, onGround: true, taxiLights: true, landingLights: false, strobes: false, groundSpeed: 8, heading: 180));
+        tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 2, heading: 180, engine1: false, engine2: false));
+        tracker.Ingest(Frame(t0.AddSeconds(8), FlightPhase.Arrival, onGround: true, taxiLights: false, landingLights: false, strobes: false, parkingBrake: true, engine1: false, engine2: false));
+
+        var input = tracker.BuildScoreInput();
+
+        Assert.True(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
+        Assert.False(input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown);
+        Assert.True(input.Arrival.AllEnginesOffByEndOfSession);
+    }
+
+    [Fact]
+    public void TrackerRequiresTaxiLightsOffBeforeParkingBrake_NotSameFrame()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 13, 0, 0, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0.AddSeconds(0), FlightPhase.TaxiIn, onGround: true, taxiLights: true, landingLights: false, strobes: false, groundSpeed: 5, heading: 270));
+        tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.Arrival, onGround: true, taxiLights: false, landingLights: false, strobes: false, parkingBrake: true, engine1: false, engine2: false));
+
+        var input = tracker.BuildScoreInput();
+
+        Assert.False(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
+        Assert.True(input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown);
+        Assert.True(input.Arrival.AllEnginesOffByEndOfSession);
     }
 
     private static TelemetryFrame Frame(
@@ -99,8 +154,7 @@ public sealed class FlightSessionScoringTrackerTests
         bool engine2 = true,
         bool engine3 = false,
         bool engine4 = false,
-        double? touchdownZoneExcess = null,
-        double? gateDistance = null)
+        double? touchdownZoneExcess = null)
     {
         return new TelemetryFrame
         {
@@ -132,7 +186,6 @@ public sealed class FlightSessionScoringTrackerTests
             Engine3Running = engine3,
             Engine4Running = engine4,
             TouchdownZoneExcessDistanceFeet = touchdownZoneExcess,
-            GateArrivalDistanceFeet = gateDistance,
         };
     }
 }

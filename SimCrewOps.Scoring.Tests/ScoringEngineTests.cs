@@ -8,9 +8,145 @@ public sealed class ScoringEngineTests
     private readonly ScoringEngine _engine = new();
 
     [Fact]
-    public void PerfectFlightScoresAPlus()
+    public void PerfectFlightScoresA()
     {
-        var result = _engine.Calculate(new FlightScoreInput
+        var result = _engine.Calculate(BuildBaselineInput());
+
+        Assert.Equal(100, result.FinalScore);
+        Assert.Equal("A", result.Grade);
+        Assert.False(result.AutomaticFail);
+    }
+
+    [Fact]
+    public void CrashCausesAutomaticFail()
+    {
+        var result = _engine.Calculate(BuildBaselineInput() with
+        {
+            Safety = new SafetyMetrics { CrashDetected = true },
+        });
+
+        Assert.True(result.AutomaticFail);
+        Assert.Equal("F", result.Grade);
+        Assert.Contains(result.GlobalFindings, finding => finding.Code == "SAFETY_CRASH");
+    }
+
+    [Fact]
+    public void UnstableApproachAndHardLandingReduceScore()
+    {
+        var result = _engine.Calculate(BuildBaselineInput() with
+        {
+            Approach = new ApproachMetrics
+            {
+                GearDownBy1000Agl = false,
+                FlapsHandleIndexAt500Agl = 1,
+                VerticalSpeedAt500AglFpm = 1200,
+                BankAngleAt500AglDegrees = 14,
+                PitchAngleAt500AglDegrees = 12,
+                GearDownAt500Agl = false,
+            },
+            Landing = new LandingMetrics
+            {
+                TouchdownZoneExcessDistanceFeet = 220,
+                TouchdownVerticalSpeedFpm = 500,
+                TouchdownGForce = 1.60,
+                BounceCount = 1,
+            },
+        });
+
+        Assert.True(result.FinalScore < 85);
+        Assert.False(result.AutomaticFail);
+        Assert.Contains(result.PhaseScores.Single(phase => phase.Phase == FlightPhase.Approach).Findings, finding => finding.Code == "APPROACH_GEAR_1000");
+        Assert.Contains(result.PhaseScores.Single(phase => phase.Phase == FlightPhase.Landing).Findings, finding => finding.Code == "LANDING_BOUNCE");
+    }
+
+    [Fact]
+    public void HardLanding_ExcessiveVerticalSpeed_FailsLandingSectionOnly()
+    {
+        var result = _engine.Calculate(BuildBaselineInput() with
+        {
+            Landing = new LandingMetrics
+            {
+                TouchdownZoneExcessDistanceFeet = 0,
+                TouchdownVerticalSpeedFpm = 650,
+                TouchdownGForce = 1.20,
+                BounceCount = 0,
+            },
+        });
+
+        var landing = result.PhaseScores.Single(ps => ps.Phase == FlightPhase.Landing);
+        Assert.False(result.AutomaticFail);
+        Assert.True(landing.SectionFailed);
+        Assert.Equal(0, landing.AwardedPoints);
+        Assert.Equal("B", result.Grade);
+        Assert.Contains(landing.Findings, f => f.Code == "LANDING_VERTICAL_SPEED" && f.IsAutomaticFail);
+    }
+
+    [Fact]
+    public void HardLanding_ExcessiveGForce_FailsLandingSectionOnly()
+    {
+        var result = _engine.Calculate(BuildBaselineInput() with
+        {
+            Landing = new LandingMetrics
+            {
+                TouchdownZoneExcessDistanceFeet = 0,
+                TouchdownVerticalSpeedFpm = 200,
+                TouchdownGForce = 2.10,
+                BounceCount = 0,
+            },
+        });
+
+        var landing = result.PhaseScores.Single(ps => ps.Phase == FlightPhase.Landing);
+        Assert.False(result.AutomaticFail);
+        Assert.True(landing.SectionFailed);
+        Assert.Equal(0, landing.AwardedPoints);
+        Assert.Equal("B", result.Grade);
+        Assert.Contains(landing.Findings, f => f.Code == "LANDING_GFORCE" && f.IsAutomaticFail);
+    }
+
+    [Fact]
+    public void LandingThresholdEdges_MaxOutDeductionsWithoutSectionFail()
+    {
+        var result = _engine.Calculate(BuildBaselineInput() with
+        {
+            Landing = new LandingMetrics
+            {
+                TouchdownZoneExcessDistanceFeet = 0,
+                TouchdownVerticalSpeedFpm = 600,
+                TouchdownGForce = 2.0,
+                BounceCount = 0,
+            },
+        });
+
+        var landing = result.PhaseScores.Single(ps => ps.Phase == FlightPhase.Landing);
+
+        Assert.False(result.AutomaticFail);
+        Assert.False(landing.SectionFailed);
+        Assert.Equal(8, landing.AwardedPoints);
+        Assert.DoesNotContain(landing.Findings, f => f.IsAutomaticFail);
+    }
+
+    [Fact]
+    public void SafetyDeductionsRespectCaps()
+    {
+        var result = _engine.Calculate(BuildBaselineInput() with
+        {
+            Safety = new SafetyMetrics
+            {
+                OverspeedEvents = 5,
+                SustainedOverspeedEvents = 5,
+                StallEvents = 5,
+                GpwsEvents = 5,
+                EngineShutdownsInFlight = 2,
+            },
+        });
+
+        Assert.Equal(9 + 10 + 9 + 9 + 10, result.GlobalDeductions);
+        Assert.Equal(53, result.FinalScore);
+        Assert.Equal("F", result.Grade);
+    }
+
+    private static FlightScoreInput BuildBaselineInput() =>
+        new()
         {
             Preflight = new PreflightMetrics { BeaconOnBeforeTaxi = true },
             TaxiOut = new TaxiMetrics { MaxGroundSpeedKnots = 18, ExcessiveTurnSpeedEvents = 0, TaxiLightsOn = true },
@@ -20,6 +156,7 @@ public sealed class ScoringEngineTests
                 TailStrikeDetected = false,
                 MaxBankAngleDegrees = 12,
                 MaxPitchAngleDegrees = 14,
+                MaxGForce = 1.20,
                 LandingLightsOnBeforeTakeoff = true,
                 LandingLightsOffByFl180 = true,
                 StrobesOnFromTakeoffToLanding = true,
@@ -73,148 +210,10 @@ public sealed class ScoringEngineTests
             },
             Arrival = new ArrivalMetrics
             {
-                ParkingBrakeSetAtGate = true,
-                GateArrivalDistanceFeet = 12,
+                TaxiLightsOffBeforeParkingBrakeSet = true,
+                ParkingBrakeSetBeforeAllEnginesShutdown = true,
+                AllEnginesOffByEndOfSession = true,
             },
             Safety = new SafetyMetrics(),
-        });
-
-        Assert.Equal(100, result.FinalScore);
-        Assert.Equal("A+", result.Grade);
-        Assert.False(result.AutomaticFail);
-    }
-
-    [Fact]
-    public void CrashCausesAutomaticFail()
-    {
-        var result = _engine.Calculate(new FlightScoreInput
-        {
-            Preflight = new PreflightMetrics { BeaconOnBeforeTaxi = true },
-            TaxiOut = new TaxiMetrics { MaxGroundSpeedKnots = 20, TaxiLightsOn = true },
-            Takeoff = new TakeoffMetrics { LandingLightsOnBeforeTakeoff = true, LandingLightsOffByFl180 = true, StrobesOnFromTakeoffToLanding = true },
-            Climb = new ClimbMetrics(),
-            Cruise = new CruiseMetrics(),
-            Descent = new DescentMetrics { LandingLightsOnByFl180 = true },
-            Approach = new ApproachMetrics { GearDownBy1000Agl = true, FlapsHandleIndexAt500Agl = 2, GearDownAt500Agl = true },
-            Landing = new LandingMetrics(),
-            TaxiIn = new TaxiInMetrics { LandingLightsOff = true, StrobesOff = true, TaxiLightsOn = true },
-            Arrival = new ArrivalMetrics { ParkingBrakeSetAtGate = true },
-            Safety = new SafetyMetrics { CrashDetected = true },
-        });
-
-        Assert.True(result.AutomaticFail);
-        Assert.Equal("F", result.Grade);
-        Assert.Contains(result.GlobalFindings, finding => finding.Code == "SAFETY_CRASH");
-    }
-
-    [Fact]
-    public void UnstableApproachAndHardLandingReduceScore()
-    {
-        var result = _engine.Calculate(new FlightScoreInput
-        {
-            Preflight = new PreflightMetrics { BeaconOnBeforeTaxi = true },
-            TaxiOut = new TaxiMetrics { MaxGroundSpeedKnots = 22, TaxiLightsOn = true },
-            Takeoff = new TakeoffMetrics
-            {
-                MaxBankAngleDegrees = 16,
-                MaxPitchAngleDegrees = 16,
-                LandingLightsOnBeforeTakeoff = true,
-                LandingLightsOffByFl180 = true,
-                StrobesOnFromTakeoffToLanding = true,
-            },
-            Climb = new ClimbMetrics { MaxIasBelowFl100Knots = 249, MaxBankAngleDegrees = 18, MaxGForce = 1.25 },
-            Cruise = new CruiseMetrics { MaxAltitudeDeviationFeet = 80, MaxBankAngleDegrees = 5, MaxGForce = 1.10 },
-            Descent = new DescentMetrics { MaxIasBelowFl100Knots = 248, MaxBankAngleDegrees = 16, MaxPitchAngleDegrees = 4, MaxGForce = 1.15, LandingLightsOnByFl180 = true },
-            Approach = new ApproachMetrics
-            {
-                GearDownBy1000Agl = false,
-                FlapsHandleIndexAt500Agl = 1,
-                VerticalSpeedAt500AglFpm = 1200,
-                BankAngleAt500AglDegrees = 14,
-                PitchAngleAt500AglDegrees = 12,
-                GearDownAt500Agl = false,
-            },
-            Landing = new LandingMetrics
-            {
-                TouchdownZoneExcessDistanceFeet = 900,
-                TouchdownVerticalSpeedFpm = 500,   // in 400–600 progressive penalty zone
-                TouchdownGForce = 1.40,            // in 1.3–1.5 progressive penalty zone
-                BounceCount = 1,
-            },
-            TaxiIn = new TaxiInMetrics
-            {
-                LandingLightsOff = true,
-                StrobesOff = true,
-                MaxGroundSpeedKnots = 18,
-                TaxiLightsOn = true,
-            },
-            Arrival = new ArrivalMetrics { ParkingBrakeSetAtGate = true, GateArrivalDistanceFeet = 18 },
-            Safety = new SafetyMetrics(),
-        });
-
-        Assert.True(result.FinalScore < 85);
-        Assert.False(result.AutomaticFail);
-        Assert.Contains(result.PhaseScores.Single(phase => phase.Phase == FlightPhase.Approach).Findings, finding => finding.Code == "APPROACH_GEAR_1000");
-        Assert.Contains(result.PhaseScores.Single(phase => phase.Phase == FlightPhase.Landing).Findings, finding => finding.Code == "LANDING_BOUNCE");
-    }
-
-    [Fact]
-    public void HardLanding_ExcessiveVerticalSpeed_CausesAutomaticFail()
-    {
-        var result = _engine.Calculate(new FlightScoreInput
-        {
-            Preflight = new PreflightMetrics { BeaconOnBeforeTaxi = true },
-            TaxiOut = new TaxiMetrics { MaxGroundSpeedKnots = 20, TaxiLightsOn = true },
-            Takeoff = new TakeoffMetrics { LandingLightsOnBeforeTakeoff = true, LandingLightsOffByFl180 = true, StrobesOnFromTakeoffToLanding = true },
-            Climb = new ClimbMetrics(),
-            Cruise = new CruiseMetrics(),
-            Descent = new DescentMetrics { LandingLightsOnByFl180 = true },
-            Approach = new ApproachMetrics { GearDownBy1000Agl = true, FlapsHandleIndexAt500Agl = 3, GearDownAt500Agl = true },
-            Landing = new LandingMetrics
-            {
-                TouchdownZoneExcessDistanceFeet = 0,
-                TouchdownVerticalSpeedFpm = 650,   // above 600 fpm auto-fail threshold
-                TouchdownGForce = 1.20,
-                BounceCount = 0,
-            },
-            TaxiIn = new TaxiInMetrics { LandingLightsOff = true, StrobesOff = true, TaxiLightsOn = true },
-            Arrival = new ArrivalMetrics { ParkingBrakeSetAtGate = true },
-            Safety = new SafetyMetrics(),
-        });
-
-        Assert.True(result.AutomaticFail);
-        Assert.Equal("F", result.Grade);
-        var landingFindings = result.PhaseScores.Single(ps => ps.Phase == FlightPhase.Landing).Findings;
-        Assert.Contains(landingFindings, f => f.Code == "LANDING_VERTICAL_SPEED" && f.IsAutomaticFail);
-    }
-
-    [Fact]
-    public void HardLanding_ExcessiveGForce_CausesAutomaticFail()
-    {
-        var result = _engine.Calculate(new FlightScoreInput
-        {
-            Preflight = new PreflightMetrics { BeaconOnBeforeTaxi = true },
-            TaxiOut = new TaxiMetrics { MaxGroundSpeedKnots = 20, TaxiLightsOn = true },
-            Takeoff = new TakeoffMetrics { LandingLightsOnBeforeTakeoff = true, LandingLightsOffByFl180 = true, StrobesOnFromTakeoffToLanding = true },
-            Climb = new ClimbMetrics(),
-            Cruise = new CruiseMetrics(),
-            Descent = new DescentMetrics { LandingLightsOnByFl180 = true },
-            Approach = new ApproachMetrics { GearDownBy1000Agl = true, FlapsHandleIndexAt500Agl = 3, GearDownAt500Agl = true },
-            Landing = new LandingMetrics
-            {
-                TouchdownZoneExcessDistanceFeet = 0,
-                TouchdownVerticalSpeedFpm = 200,
-                TouchdownGForce = 1.6,             // above 1.5G auto-fail threshold
-                BounceCount = 0,
-            },
-            TaxiIn = new TaxiInMetrics { LandingLightsOff = true, StrobesOff = true, TaxiLightsOn = true },
-            Arrival = new ArrivalMetrics { ParkingBrakeSetAtGate = true },
-            Safety = new SafetyMetrics(),
-        });
-
-        Assert.True(result.AutomaticFail);
-        Assert.Equal("F", result.Grade);
-        var landingFindings = result.PhaseScores.Single(ps => ps.Phase == FlightPhase.Landing).Findings;
-        Assert.Contains(landingFindings, f => f.Code == "LANDING_GFORCE" && f.IsAutomaticFail);
-    }
+        };
 }

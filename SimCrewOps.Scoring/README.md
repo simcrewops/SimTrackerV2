@@ -39,7 +39,8 @@ A simulator-agnostic C# scoring engine for phase-based airline-ops grading.
 - Tail strike is a precomputed boolean from the telemetry engine.
 - Takeoff bounce is separate from landing bounce.
 - Approach stabilization is evaluated at 500 feet AGL.
-- Non-landing G-force thresholds are conservative defaults and can be tuned.
+- Landing section fail is separate from whole-flight fail.
+- Crash/reset is the only current whole-flight automatic fail.
 
 ## Example
 
@@ -57,6 +58,7 @@ var result = engine.Calculate(new FlightScoreInput
     {
         MaxBankAngleDegrees = 8,
         MaxPitchAngleDegrees = 13,
+        MaxGForce = 1.1,
         LandingLightsOnBeforeTakeoff = true,
         LandingLightsOffByFl180 = true,
         StrobesOnFromTakeoffToLanding = true
@@ -67,7 +69,12 @@ var result = engine.Calculate(new FlightScoreInput
     Approach = new ApproachMetrics { GearDownBy1000Agl = true, FlapsHandleIndexAt500Agl = 3, VerticalSpeedAt500AglFpm = 730, BankAngleAt500AglDegrees = 4, PitchAngleAt500AglDegrees = 3, GearDownAt500Agl = true },
     Landing = new LandingMetrics { TouchdownZoneExcessDistanceFeet = 120, TouchdownVerticalSpeedFpm = 145, TouchdownGForce = 1.18, BounceCount = 0 },
     TaxiIn = new TaxiInMetrics { LandingLightsOff = true, StrobesOff = true, MaxGroundSpeedKnots = 18, TaxiLightsOn = true },
-    Arrival = new ArrivalMetrics { ParkingBrakeSetAtGate = true, GateArrivalDistanceFeet = 12 },
+    Arrival = new ArrivalMetrics
+    {
+        TaxiLightsOffBeforeParkingBrakeSet = true,
+        ParkingBrakeSetBeforeAllEnginesShutdown = true,
+        AllEnginesOffByEndOfSession = true
+    },
     Safety = new SafetyMetrics()
 });
 

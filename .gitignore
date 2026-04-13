@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# .NET build output
+bin/
+obj/
+TestResults/
+
+# IDE / tooling
+.vs/
+.idea/
+*.user
+*.suo
+
+# Local research / scratch repos
+node-simconnect-src/
+simcrewopstracker-review/

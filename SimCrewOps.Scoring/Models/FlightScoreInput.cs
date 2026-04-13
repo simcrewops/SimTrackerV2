@@ -33,6 +33,7 @@ public sealed record TakeoffMetrics
     public bool TailStrikeDetected { get; init; }
     public double MaxBankAngleDegrees { get; init; }
     public double MaxPitchAngleDegrees { get; init; }
+    public double MaxGForce { get; init; }
     public bool LandingLightsOnBeforeTakeoff { get; init; }
     public bool LandingLightsOffByFl180 { get; init; }
     public bool StrobesOnFromTakeoffToLanding { get; init; }
@@ -90,8 +91,9 @@ public sealed record TaxiInMetrics : TaxiMetrics
 
 public sealed record ArrivalMetrics
 {
-    public bool ParkingBrakeSetAtGate { get; init; }
-    public double GateArrivalDistanceFeet { get; init; }
+    public bool TaxiLightsOffBeforeParkingBrakeSet { get; init; }
+    public bool ParkingBrakeSetBeforeAllEnginesShutdown { get; init; }
+    public bool AllEnginesOffByEndOfSession { get; init; }
 }
 
 public sealed record SafetyMetrics

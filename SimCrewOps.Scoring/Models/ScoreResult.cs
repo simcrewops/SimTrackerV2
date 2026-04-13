@@ -13,6 +13,7 @@ public sealed record PhaseScoreResult(
     IReadOnlyList<ScoreFinding> Findings)
 {
     public double PointsDeducted => Findings.Sum(f => f.PointsDeducted);
+    public bool SectionFailed => Findings.Any(f => f.IsAutomaticFail);
 }
 
 public sealed record ScoreResult(

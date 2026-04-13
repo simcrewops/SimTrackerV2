@@ -28,8 +28,7 @@ public sealed class ScoringEngine
         var maximumScore = phaseScores.Sum(phase => phase.MaxPoints);
         var phaseSubtotal = phaseScores.Sum(phase => phase.AwardedPoints);
         var globalDeductions = globalFindings.Sum(finding => finding.PointsDeducted);
-        var automaticFail = globalFindings.Any(finding => finding.IsAutomaticFail)
-            || phaseScores.SelectMany(ps => ps.Findings).Any(f => f.IsAutomaticFail);
+        var automaticFail = globalFindings.Any(finding => finding.IsAutomaticFail);
         var finalScore = ScoreMath.Clamp(phaseSubtotal - globalDeductions, 0, maximumScore);
         var grade = automaticFail ? "F" : GradeFromScore(finalScore);
 
@@ -108,6 +107,12 @@ public sealed class ScoringEngine
             "Takeoff pitch exceeded the 20 degree target.",
             ScoreMath.AbsoluteLinearPenalty(metrics.MaxPitchAngleDegrees, 20, 30, weights.PitchAngle));
 
+        AddPenalty(
+            findings,
+            "TAKEOFF_GFORCE",
+            "Takeoff G-force exceeded the comfort target.",
+            ScoreMath.LinearPenalty(metrics.MaxGForce, weights.GForcePerfect, weights.GForceMax, weights.GForce));
+
         if (!metrics.LandingLightsOnBeforeTakeoff)
         {
             findings.Add(new ScoreFinding(
@@ -156,7 +161,7 @@ public sealed class ScoringEngine
             findings,
             "CLIMB_GFORCE",
             "Climb G-force exceeded the comfort target.",
-            ScoreMath.LinearPenalty(metrics.MaxGForce, 1.70, 2.20, weights.GForce));
+            ScoreMath.LinearPenalty(metrics.MaxGForce, weights.GForcePerfect, weights.GForceMax, weights.GForce));
 
         return CreatePhaseResult(FlightPhase.Climb, weights.Total, findings);
     }
@@ -196,7 +201,7 @@ public sealed class ScoringEngine
             findings,
             "CRUISE_GFORCE",
             "Cruise G-force exceeded the comfort target.",
-            ScoreMath.LinearPenalty(metrics.MaxGForce, 1.50, 2.00, weights.GForce));
+            ScoreMath.LinearPenalty(metrics.MaxGForce, weights.GForcePerfect, weights.GForceMax, weights.GForce));
 
         return CreatePhaseResult(FlightPhase.Cruise, weights.Total, findings);
     }
@@ -227,7 +232,7 @@ public sealed class ScoringEngine
             findings,
             "DESCENT_GFORCE",
             "Descent G-force exceeded the comfort target.",
-            ScoreMath.LinearPenalty(metrics.MaxGForce, 1.70, 2.20, weights.GForce));
+            ScoreMath.LinearPenalty(metrics.MaxGForce, weights.GForcePerfect, weights.GForceMax, weights.GForce));
 
         if (!metrics.LandingLightsOnByFl180)
         {
@@ -305,14 +310,13 @@ public sealed class ScoringEngine
             findings,
             "LANDING_TOUCHDOWN_ZONE",
             "Touchdown occurred outside the touchdown zone target.",
-            ScoreMath.LinearPenalty(metrics.TouchdownZoneExcessDistanceFeet, 0, 1500, weights.TouchdownZone));
+            ScoreMath.LinearPenalty(metrics.TouchdownZoneExcessDistanceFeet, 0, 300, weights.TouchdownZone));
 
-        // Vertical speed: 0–perfThreshold = no deduction, perfThreshold–failThreshold = progressive, >failThreshold = automatic fail
         if (metrics.TouchdownVerticalSpeedFpm > weights.VerticalSpeedAutoFailFpm)
         {
             findings.Add(new ScoreFinding(
                 "LANDING_VERTICAL_SPEED",
-                $"Hard landing: touchdown vertical speed exceeded {weights.VerticalSpeedAutoFailFpm} fpm.",
+                $"Hard landing: touchdown vertical speed exceeded {weights.VerticalSpeedAutoFailFpm} fpm and failed the landing section.",
                 weights.VerticalSpeed,
                 IsAutomaticFail: true));
         }
@@ -329,12 +333,11 @@ public sealed class ScoringEngine
                     weights.VerticalSpeed));
         }
 
-        // G-force: 0–perfThreshold = no deduction, perfThreshold–failThreshold = progressive, >failThreshold = automatic fail
         if (metrics.TouchdownGForce > weights.GForceAutoFail)
         {
             findings.Add(new ScoreFinding(
                 "LANDING_GFORCE",
-                $"Hard landing: touchdown G-force exceeded {weights.GForceAutoFail}G.",
+                $"Hard landing: touchdown G-force exceeded {weights.GForceAutoFail}G and failed the landing section.",
                 weights.GForce,
                 IsAutomaticFail: true));
         }
@@ -407,19 +410,29 @@ public sealed class ScoringEngine
     {
         var findings = new List<ScoreFinding>();
 
-        if (!metrics.ParkingBrakeSetAtGate)
+        if (!metrics.TaxiLightsOffBeforeParkingBrakeSet)
         {
             findings.Add(new ScoreFinding(
-                "ARRIVAL_PARKING_BRAKE",
-                "Parking brake was not set at the gate.",
-                weights.ParkingBrakeSetAtGate));
+                "ARRIVAL_TAXI_LIGHTS_ORDER",
+                "Taxi lights were not turned off before the parking brake was set.",
+                weights.TaxiLightsOffBeforeParkingBrakeSet));
         }
 
-        AddPenalty(
-            findings,
-            "ARRIVAL_GATE_PRECISION",
-            "Gate arrival precision was outside the 30 foot target.",
-            ScoreMath.LinearPenalty(metrics.GateArrivalDistanceFeet, 30, 90, weights.GateArrivalPrecision));
+        if (!metrics.ParkingBrakeSetBeforeAllEnginesShutdown)
+        {
+            findings.Add(new ScoreFinding(
+                "ARRIVAL_PARKING_BRAKE_ORDER",
+                "All engines were shut down before the parking brake was set.",
+                weights.ParkingBrakeBeforeAllEnginesShutdown));
+        }
+
+        if (!metrics.AllEnginesOffByEndOfSession)
+        {
+            findings.Add(new ScoreFinding(
+                "ARRIVAL_ENGINE_SHUTDOWN_COMPLETE",
+                "All engines were not shut down by the end of the session.",
+                weights.AllEnginesOffByEndOfSession));
+        }
 
         return CreatePhaseResult(FlightPhase.Arrival, weights.Total, findings);
     }
@@ -441,13 +454,13 @@ public sealed class ScoringEngine
             findings,
             "SAFETY_OVERSPEED",
             "Overspeed events detected.",
-            ScoreMath.PerEventPenalty(metrics.OverspeedEvents, weights.OverspeedEvent, double.MaxValue));
+            ScoreMath.PerEventPenalty(metrics.OverspeedEvents, weights.OverspeedEvent, weights.MaxOverspeedPenalty));
 
         AddPenalty(
             findings,
             "SAFETY_OVERSPEED_SUSTAINED",
             "Sustained overspeed events detected.",
-            ScoreMath.PerEventPenalty(metrics.SustainedOverspeedEvents, weights.SustainedOverspeedEvent, double.MaxValue));
+            ScoreMath.PerEventPenalty(metrics.SustainedOverspeedEvents, weights.SustainedOverspeedEvent, weights.MaxSustainedOverspeedPenalty));
 
         AddPenalty(
             findings,
@@ -473,7 +486,8 @@ public sealed class ScoringEngine
     private static PhaseScoreResult CreatePhaseResult(FlightPhase phase, double maxPoints, IReadOnlyList<ScoreFinding> findings)
     {
         var deductions = findings.Sum(finding => finding.PointsDeducted);
-        var awardedPoints = ScoreMath.Clamp(maxPoints - deductions, 0, maxPoints);
+        var sectionFailed = findings.Any(finding => finding.IsAutomaticFail);
+        var awardedPoints = sectionFailed ? 0 : ScoreMath.Clamp(maxPoints - deductions, 0, maxPoints);
         return new PhaseScoreResult(phase, maxPoints, awardedPoints, findings);
     }
 
@@ -490,7 +504,6 @@ public sealed class ScoringEngine
     private static string GradeFromScore(double score) =>
         score switch
         {
-            >= 95 => "A+",
             >= 90 => "A",
             >= 80 => "B",
             >= 70 => "C",

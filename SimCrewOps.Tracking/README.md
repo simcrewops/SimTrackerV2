@@ -20,15 +20,18 @@ This project sits between live simulator telemetry and the scoring library.
 - beacon before taxi
 - taxi speed and high-speed turns
 - takeoff bounce and tail strike
+- takeoff max G-force
 - climb/descent speed compliance below FL100
-- cruise altitude drift and crude speed instability events
+- cruise altitude drift and sustained speed instability events
 - gear/flaps/stabilized approach samples at 1000/500 AGL
 - touchdown vertical speed from the 2-second pre-touchdown buffer
+- touchdown G-force from the same low-AGL window
 - landing bounce
+- arrival shutdown-order checks
 - crash, overspeed, stall, GPWS, engine shutdowns in flight
 
 ## Notes
 
-- touchdown zone excess distance and gate arrival distance are accepted from telemetry frames as optional fields
+- touchdown zone excess distance is accepted from telemetry frames as an optional field
 - the tracker assumes phases are already determined by the session/phase engine
 - this project is intentionally simulator-agnostic

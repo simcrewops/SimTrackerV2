@@ -25,6 +25,7 @@ public sealed class FlightSessionScoringTracker
     private bool _takeoffStrobesOnFromTakeoffToLanding = true;
     private double _takeoffMaxBank;
     private double _takeoffMaxPitch;
+    private double _takeoffMaxG;
     private int _takeoffBounceCount;
     private bool _takeoffTailStrikeDetected;
     private DateTimeOffset? _lastTakeoffLiftoffAt;
@@ -40,6 +41,8 @@ public sealed class FlightSessionScoringTracker
     private double _cruiseMaxG;
     private int _cruiseSpeedInstabilityEvents;
     private DateTimeOffset? _lastCruiseSpeedInstabilityAt;
+    private DateTimeOffset? _cruiseSpeedInstabilityStartedAt;
+    private bool _cruiseSpeedInstabilityActive;
     private double? _cruiseTargetAltitudeFeet;
     private double? _pendingCruiseTargetAltitudeFeet;
     private DateTimeOffset? _pendingCruiseTargetStartedAt;
@@ -79,8 +82,10 @@ public sealed class FlightSessionScoringTracker
     private DateTimeOffset? _lastTaxiInTurnEventAt;
 
     private bool _arrivalSeen;
-    private bool _arrivalParkingBrakeSetAtGate;
-    private double _arrivalGateArrivalDistanceFeet;
+    private bool _arrivalParkingBrakeObserved;
+    private bool _arrivalTaxiLightsOffBeforeParkingBrakeSet;
+    private bool _arrivalParkingBrakeSetBeforeAllEnginesShutdown = true;
+    private bool _arrivalAllEnginesOffByEndOfSession;
 
     private bool _crashDetected;
     private int _overspeedEvents;
@@ -111,6 +116,7 @@ public sealed class FlightSessionScoringTracker
         UpdateApproach(frame);
         UpdateLanding(frame);
         UpdateTaxiIn(frame);
+        UpdateArrivalLifecycle(frame);
         UpdateArrival(frame);
         UpdateSafety(frame);
 
@@ -137,6 +143,7 @@ public sealed class FlightSessionScoringTracker
                 TailStrikeDetected = _takeoffTailStrikeDetected,
                 MaxBankAngleDegrees = _takeoffMaxBank,
                 MaxPitchAngleDegrees = _takeoffMaxPitch,
+                MaxGForce = _takeoffMaxG,
                 LandingLightsOnBeforeTakeoff = _takeoffSeen && _takeoffLandingLightsOnBeforeTakeoff,
                 LandingLightsOffByFl180 = _takeoffSeen && _takeoffLandingLightsOffByFl180,
                 StrobesOnFromTakeoffToLanding = _takeoffSeen && _takeoffStrobesOnFromTakeoffToLanding,
@@ -190,8 +197,9 @@ public sealed class FlightSessionScoringTracker
             },
             Arrival = new ArrivalMetrics
             {
-                ParkingBrakeSetAtGate = _arrivalSeen && _arrivalParkingBrakeSetAtGate,
-                GateArrivalDistanceFeet = _arrivalGateArrivalDistanceFeet,
+                TaxiLightsOffBeforeParkingBrakeSet = _arrivalSeen && _arrivalParkingBrakeObserved && _arrivalTaxiLightsOffBeforeParkingBrakeSet,
+                ParkingBrakeSetBeforeAllEnginesShutdown = _arrivalSeen && _arrivalParkingBrakeObserved && _arrivalParkingBrakeSetBeforeAllEnginesShutdown,
+                AllEnginesOffByEndOfSession = _arrivalSeen && _arrivalAllEnginesOffByEndOfSession,
             },
             Safety = new SafetyMetrics
             {
@@ -244,6 +252,7 @@ public sealed class FlightSessionScoringTracker
             _takeoffSeen = true;
             _takeoffMaxBank = Math.Max(_takeoffMaxBank, Math.Abs(frame.BankAngleDegrees));
             _takeoffMaxPitch = Math.Max(_takeoffMaxPitch, Math.Abs(frame.PitchAngleDegrees));
+            _takeoffMaxG = Math.Max(_takeoffMaxG, frame.GForce);
 
             if (!frame.LandingLightsOn)
             {
@@ -353,12 +362,33 @@ public sealed class FlightSessionScoringTracker
         {
             var machDelta = Math.Abs(frame.Mach - _previousFrame.Mach);
             var iasDelta = Math.Abs(frame.IndicatedAirspeedKnots - _previousFrame.IndicatedAirspeedKnots);
-            if ((machDelta > 0.03 || iasDelta > 15) &&
-                (_lastCruiseSpeedInstabilityAt is null || frame.TimestampUtc - _lastCruiseSpeedInstabilityAt >= TimeSpan.FromSeconds(10)))
+            var unstable = machDelta > 0.03 || iasDelta > 15;
+
+            if (unstable)
             {
-                _cruiseSpeedInstabilityEvents++;
-                _lastCruiseSpeedInstabilityAt = frame.TimestampUtc;
+                if (!_cruiseSpeedInstabilityActive)
+                {
+                    _cruiseSpeedInstabilityActive = true;
+                    _cruiseSpeedInstabilityStartedAt = frame.TimestampUtc;
+                }
+                else if (_cruiseSpeedInstabilityStartedAt is not null &&
+                         frame.TimestampUtc - _cruiseSpeedInstabilityStartedAt >= TimeSpan.FromSeconds(5) &&
+                         (_lastCruiseSpeedInstabilityAt is null || frame.TimestampUtc - _lastCruiseSpeedInstabilityAt >= TimeSpan.FromSeconds(10)))
+                {
+                    _cruiseSpeedInstabilityEvents++;
+                    _lastCruiseSpeedInstabilityAt = frame.TimestampUtc;
+                }
             }
+            else
+            {
+                _cruiseSpeedInstabilityActive = false;
+                _cruiseSpeedInstabilityStartedAt = null;
+            }
+        }
+        else
+        {
+            _cruiseSpeedInstabilityActive = false;
+            _cruiseSpeedInstabilityStartedAt = null;
         }
     }
 
@@ -499,18 +529,44 @@ public sealed class FlightSessionScoringTracker
 
     private void UpdateArrival(TelemetryFrame frame)
     {
-        if (frame.Phase != FlightPhase.Arrival)
+        if (frame.Phase == FlightPhase.Arrival)
+        {
+            _arrivalSeen = true;
+        }
+    }
+
+    private void UpdateArrivalLifecycle(TelemetryFrame frame)
+    {
+        if (frame.Phase is not FlightPhase.TaxiIn and not FlightPhase.Arrival)
         {
             return;
         }
 
-        _arrivalSeen = true;
-        _arrivalParkingBrakeSetAtGate = frame.ParkingBrakeSet;
-
-        if (frame.GateArrivalDistanceFeet is not null)
+        if (frame.ParkingBrakeSet)
         {
-            _arrivalGateArrivalDistanceFeet = frame.GateArrivalDistanceFeet.Value;
+            _arrivalSeen = true;
         }
+
+        if (!_arrivalParkingBrakeObserved)
+        {
+            if (!frame.ParkingBrakeSet)
+            {
+                // This tracks the last known taxi-light state before the parking brake was set.
+                // A same-frame brake+lights-off update does not prove the required order.
+                _arrivalTaxiLightsOffBeforeParkingBrakeSet = !frame.TaxiLightsOn;
+
+                if (!AnyEngineRunning(frame))
+                {
+                    _arrivalParkingBrakeSetBeforeAllEnginesShutdown = false;
+                }
+            }
+            else
+            {
+                _arrivalParkingBrakeObserved = true;
+            }
+        }
+
+        _arrivalAllEnginesOffByEndOfSession = !AnyEngineRunning(frame);
     }
 
     private void UpdateSafety(TelemetryFrame frame)
@@ -570,6 +626,12 @@ public sealed class FlightSessionScoringTracker
             _engineShutdownsInFlight++;
         }
     }
+
+    private static bool AnyEngineRunning(TelemetryFrame frame) =>
+        frame.Engine1Running ||
+        frame.Engine2Running ||
+        frame.Engine3Running ||
+        frame.Engine4Running;
 
     private void AddRecentSample(TelemetryFrame frame)
     {
