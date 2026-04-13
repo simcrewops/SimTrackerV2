@@ -1,6 +1,7 @@
 using SimCrewOps.Scoring.Models;
 using SimCrewOps.Tracking.Models;
 using SimCrewOps.Tracking.Tracking;
+using Xunit;
 
 namespace SimCrewOps.Tracking.Tests;
 

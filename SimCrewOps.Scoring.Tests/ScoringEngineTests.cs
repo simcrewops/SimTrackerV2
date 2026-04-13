@@ -1,5 +1,6 @@
 using SimCrewOps.Scoring.Models;
 using SimCrewOps.Scoring.Scoring;
+using Xunit;
 
 namespace SimCrewOps.Scoring.Tests;
 

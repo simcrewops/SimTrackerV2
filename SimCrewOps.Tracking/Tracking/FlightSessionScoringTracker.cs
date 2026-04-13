@@ -30,12 +30,10 @@ public sealed class FlightSessionScoringTracker
     private bool _takeoffTailStrikeDetected;
     private DateTimeOffset? _lastTakeoffLiftoffAt;
 
-    private bool _climbSeen;
     private double _climbMaxIasBelowFl100;
     private double _climbMaxBank;
     private double _climbMaxG;
 
-    private bool _cruiseSeen;
     private double _cruiseMaxAltitudeDeviation;
     private double _cruiseMaxBank;
     private double _cruiseMaxG;
@@ -55,7 +53,6 @@ public sealed class FlightSessionScoringTracker
     private double _descentMaxG;
     private bool _descentLandingLightsOnByFl180 = true;
 
-    private bool _approachSeen;
     private bool _capturedApproach1000Agl;
     private bool _gearDownBy1000Agl;
     private bool _capturedApproach500Agl;
@@ -65,7 +62,6 @@ public sealed class FlightSessionScoringTracker
     private double _approachPitchAt500Agl;
     private bool _approachGearDownAt500Agl;
 
-    private bool _landingSeen;
     private int _landingBounceCount;
     private double _landingTouchdownZoneExcessDistanceFeet;
     private double _landingTouchdownVerticalSpeedFpm;
@@ -306,8 +302,6 @@ public sealed class FlightSessionScoringTracker
             return;
         }
 
-        _climbSeen = true;
-
         if (frame.IndicatedAltitudeFeet < 10000)
         {
             _climbMaxIasBelowFl100 = Math.Max(_climbMaxIasBelowFl100, frame.IndicatedAirspeedKnots);
@@ -324,7 +318,6 @@ public sealed class FlightSessionScoringTracker
             return;
         }
 
-        _cruiseSeen = true;
         _cruiseMaxBank = Math.Max(_cruiseMaxBank, Math.Abs(frame.BankAngleDegrees));
         _cruiseMaxG = Math.Max(_cruiseMaxG, frame.GForce);
 
@@ -423,8 +416,6 @@ public sealed class FlightSessionScoringTracker
             return;
         }
 
-        _approachSeen = true;
-
         if (_previousFrame is not null)
         {
             if (!_capturedApproach1000Agl &&
@@ -451,11 +442,6 @@ public sealed class FlightSessionScoringTracker
 
     private void UpdateLanding(TelemetryFrame frame)
     {
-        if (frame.Phase == FlightPhase.Landing)
-        {
-            _landingSeen = true;
-        }
-
         if (_previousFrame is null)
         {
             if (frame.TouchdownZoneExcessDistanceFeet is not null)
@@ -468,7 +454,6 @@ public sealed class FlightSessionScoringTracker
 
         if (!_previousFrame.OnGround && frame.OnGround)
         {
-            _landingSeen = true;
             _lastTouchdownAt = frame.TimestampUtc;
             _landingTouchdownVerticalSpeedFpm = Math.Max(_landingTouchdownVerticalSpeedFpm, CalculateTouchdownVerticalSpeed());
             _landingTouchdownGForce = Math.Max(_landingTouchdownGForce, CalculateTouchdownGForce());

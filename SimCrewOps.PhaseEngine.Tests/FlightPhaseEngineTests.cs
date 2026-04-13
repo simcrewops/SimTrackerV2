@@ -2,6 +2,7 @@ using SimCrewOps.PhaseEngine.Models;
 using SimCrewOps.PhaseEngine.PhaseEngine;
 using SimCrewOps.Scoring.Models;
 using SimCrewOps.Tracking.Models;
+using Xunit;
 
 namespace SimCrewOps.PhaseEngine.Tests;
 
