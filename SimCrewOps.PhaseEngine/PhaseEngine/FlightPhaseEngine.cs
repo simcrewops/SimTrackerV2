@@ -59,6 +59,36 @@ public sealed class FlightPhaseEngine
         _approachRecoveryActive = false;
     }
 
+    /// <summary>
+    /// Restore durable engine state from a previously persisted session.
+    /// Short-lived sustain timers are intentionally reset and re-established from new telemetry.
+    /// </summary>
+    public void Restore(
+        FlightPhase currentPhase,
+        TelemetryFrame? previousFrame,
+        IEnumerable<BlockEvent>? blockEvents = null)
+    {
+        _currentPhase = currentPhase;
+        _previousFrame = previousFrame;
+        _blockEvents.Clear();
+
+        if (blockEvents is not null)
+        {
+            _blockEvents.AddRange(blockEvents.OrderBy(static blockEvent => blockEvent.TimestampUtc));
+        }
+
+        ResetSustainedConditions();
+
+        var latestWheelsOn = _blockEvents.LastOrDefault(static blockEvent => blockEvent.Type == BlockEventType.WheelsOn);
+        _wheelsOnAt = currentPhase == FlightPhase.Landing ? latestWheelsOn?.TimestampUtc : null;
+        _approachRecoveryActive =
+            currentPhase == FlightPhase.Climb &&
+            previousFrame is not null &&
+            !previousFrame.OnGround &&
+            previousFrame.GearDown &&
+            previousFrame.AltitudeAglFeet < 3000;
+    }
+
     // -------------------------------------------------------------------------
     //  Core state-machine step
     // -------------------------------------------------------------------------

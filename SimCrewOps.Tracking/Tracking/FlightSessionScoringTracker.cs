@@ -6,7 +6,7 @@ namespace SimCrewOps.Tracking.Tracking;
 
 public sealed class FlightSessionScoringTracker
 {
-    private readonly FlightSessionProfile _profile;
+    private FlightSessionProfile _profile;
     private readonly Queue<RecentSample> _recentSamples = new();
 
     private TelemetryFrame? _previousFrame;
@@ -103,6 +103,125 @@ public sealed class FlightSessionScoringTracker
     public FlightSessionScoringTracker(FlightSessionProfile? profile = null)
     {
         _profile = profile ?? new FlightSessionProfile();
+    }
+
+    public void Restore(
+        FlightScoreInput input,
+        FlightPhase currentPhase,
+        TelemetryFrame? lastTelemetryFrame,
+        FlightSessionProfile? profile = null,
+        DateTimeOffset? wheelsOffUtc = null,
+        DateTimeOffset? wheelsOnUtc = null)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+
+        _profile = profile ?? new FlightSessionProfile
+        {
+            HeavyFourEngineAircraft = input.Climb.HeavyFourEngineAircraft,
+        };
+
+        _recentSamples.Clear();
+        _previousFrame = lastTelemetryFrame;
+
+        _preflightBeaconSeen = input.Preflight.BeaconOnBeforeTaxi;
+
+        _taxiOutSeen = HasReachedPhase(currentPhase, FlightPhase.TaxiOut);
+        _taxiOutTaxiLightsValid = !_taxiOutSeen || input.TaxiOut.TaxiLightsOn;
+        _taxiOutMaxGroundSpeed = input.TaxiOut.MaxGroundSpeedKnots;
+        _taxiOutTurnSpeedEvents = input.TaxiOut.ExcessiveTurnSpeedEvents;
+        _lastTaxiOutTurnEventAt = null;
+
+        _takeoffSeen = HasReachedPhase(currentPhase, FlightPhase.Takeoff);
+        _takeoffLandingLightsOnBeforeTakeoff = !_takeoffSeen || input.Takeoff.LandingLightsOnBeforeTakeoff;
+        _takeoffLandingLightsOffByFl180 = !_takeoffSeen || input.Takeoff.LandingLightsOffByFl180;
+        _takeoffStrobesOnFromTakeoffToLanding = !_takeoffSeen || input.Takeoff.StrobesOnFromTakeoffToLanding;
+        _takeoffMaxBank = input.Takeoff.MaxBankAngleDegrees;
+        _takeoffMaxPitch = input.Takeoff.MaxPitchAngleDegrees;
+        _takeoffMaxG = input.Takeoff.MaxGForce;
+        _takeoffBounceCount = input.Takeoff.BounceCount;
+        _takeoffTailStrikeDetected = input.Takeoff.TailStrikeDetected;
+        _lastTakeoffLiftoffAt = wheelsOffUtc;
+
+        _climbMaxIasBelowFl100 = input.Climb.MaxIasBelowFl100Knots;
+        _climbMaxBank = input.Climb.MaxBankAngleDegrees;
+        _climbMaxG = input.Climb.MaxGForce;
+
+        _cruiseMaxAltitudeDeviation = input.Cruise.MaxAltitudeDeviationFeet;
+        _cruiseMaxBank = input.Cruise.MaxBankAngleDegrees;
+        _cruiseMaxG = input.Cruise.MaxGForce;
+        _cruiseSpeedInstabilityEvents = input.Cruise.SpeedInstabilityEvents;
+        _lastCruiseSpeedInstabilityAt = null;
+        _cruiseSpeedInstabilityStartedAt = null;
+        _cruiseSpeedInstabilityActive = false;
+        _pendingCruiseTargetAltitudeFeet = null;
+        _pendingCruiseTargetStartedAt = null;
+        _newFlightLevelCaptureSeconds = input.Cruise.NewFlightLevelCaptureSeconds;
+
+        if (HasReachedPhase(currentPhase, FlightPhase.Cruise) && lastTelemetryFrame is not null)
+        {
+            _cruiseReferenceIasKnots = lastTelemetryFrame.IndicatedAirspeedKnots;
+            _cruiseReferenceMach = lastTelemetryFrame.Mach;
+            _cruiseTargetAltitudeFeet = Math.Round(lastTelemetryFrame.IndicatedAltitudeFeet / 100.0) * 100.0;
+        }
+        else
+        {
+            _cruiseReferenceIasKnots = null;
+            _cruiseReferenceMach = null;
+            _cruiseTargetAltitudeFeet = null;
+        }
+
+        _descentSeen = HasReachedPhase(currentPhase, FlightPhase.Descent);
+        _descentMaxIasBelowFl100 = input.Descent.MaxIasBelowFl100Knots;
+        _descentMaxBank = input.Descent.MaxBankAngleDegrees;
+        _descentMaxPitch = input.Descent.MaxPitchAngleDegrees;
+        _descentMaxG = input.Descent.MaxGForce;
+        _descentLandingLightsOnByFl180 = !_descentSeen || input.Descent.LandingLightsOnByFl180;
+
+        _capturedApproach1000Agl = input.Approach.GearDownBy1000Agl;
+        _gearDownBy1000Agl = input.Approach.GearDownBy1000Agl;
+        _capturedApproach500Agl = input.Approach.GearDownAt500Agl || input.Approach.FlapsHandleIndexAt500Agl > 0;
+        _approachFlapsAt500Agl = input.Approach.FlapsHandleIndexAt500Agl;
+        _approachVsAt500Agl = input.Approach.VerticalSpeedAt500AglFpm;
+        _approachBankAt500Agl = input.Approach.BankAngleAt500AglDegrees;
+        _approachPitchAt500Agl = input.Approach.PitchAngleAt500AglDegrees;
+        _approachGearDownAt500Agl = input.Approach.GearDownAt500Agl;
+
+        _landingBounceCount = input.Landing.BounceCount;
+        _landingTouchdownZoneExcessDistanceFeet = input.Landing.TouchdownZoneExcessDistanceFeet;
+        _landingTouchdownVerticalSpeedFpm = input.Landing.TouchdownVerticalSpeedFpm;
+        _landingTouchdownBankAngleDegrees = input.Landing.TouchdownBankAngleDegrees;
+        _landingTouchdownIndicatedAirspeedKnots = input.Landing.TouchdownIndicatedAirspeedKnots;
+        _landingTouchdownPitchAngleDegrees = input.Landing.TouchdownPitchAngleDegrees;
+        _landingTouchdownGForce = input.Landing.TouchdownGForce;
+        _lastTouchdownAt = wheelsOnUtc;
+        _airborneAfterTouchdownAt = null;
+
+        _taxiInSeen = HasReachedPhase(currentPhase, FlightPhase.TaxiIn);
+        _taxiInLandingLightsOff = !_taxiInSeen || input.TaxiIn.LandingLightsOff;
+        _taxiInStrobesOff = !_taxiInSeen || input.TaxiIn.StrobesOff;
+        _taxiInTaxiLightsValid = !_taxiInSeen || input.TaxiIn.TaxiLightsOn;
+        _taxiInMaxGroundSpeed = input.TaxiIn.MaxGroundSpeedKnots;
+        _taxiInTurnSpeedEvents = input.TaxiIn.ExcessiveTurnSpeedEvents;
+        _lastTaxiInTurnEventAt = null;
+
+        _arrivalSeen = currentPhase == FlightPhase.Arrival;
+        _arrivalParkingBrakeObserved = currentPhase == FlightPhase.Arrival;
+        _arrivalTaxiLightsOffBeforeParkingBrakeSet = input.Arrival.TaxiLightsOffBeforeParkingBrakeSet;
+        _arrivalParkingBrakeSetBeforeAllEnginesShutdown =
+            !_arrivalSeen || input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown;
+        _arrivalAllEnginesOffByEndOfSession = input.Arrival.AllEnginesOffByEndOfSession;
+
+        _crashDetected = input.Safety.CrashDetected;
+        _overspeedEvents = input.Safety.OverspeedEvents;
+        _sustainedOverspeedEvents = input.Safety.SustainedOverspeedEvents;
+        _stallEvents = input.Safety.StallEvents;
+        _gpwsEvents = input.Safety.GpwsEvents;
+        _engineShutdownsInFlight = input.Safety.EngineShutdownsInFlight;
+        _overspeedActive = false;
+        _overspeedSustainedCounted = false;
+        _overspeedStartedAt = null;
+        _stallActive = false;
+        _gpwsActive = false;
     }
 
     public void Ingest(TelemetryFrame frame)
@@ -704,6 +823,9 @@ public sealed class FlightSessionScoringTracker
 
     private static bool IsAirbornePhase(FlightPhase phase) =>
         phase is FlightPhase.Takeoff or FlightPhase.Climb or FlightPhase.Cruise or FlightPhase.Descent or FlightPhase.Approach or FlightPhase.Landing;
+
+    private static bool HasReachedPhase(FlightPhase currentPhase, FlightPhase requiredPhase) =>
+        currentPhase >= requiredPhase;
 
     private static double NormalizeHeadingDelta(double degrees)
     {

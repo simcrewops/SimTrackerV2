@@ -102,6 +102,85 @@ public sealed class RuntimeCoordinatorTests
         Assert.Equal(0, touchdown.State.ScoreInput.Landing.TouchdownZoneExcessDistanceFeet);
     }
 
+    [Fact]
+    public async Task RuntimeCoordinator_Restore_ContinuesSavedSessionWithoutRestarting()
+    {
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext(),
+            new RunwayResolver(new StubRunwayDataProvider(null)));
+
+        var t0 = new DateTimeOffset(2026, 4, 13, 14, 0, 0, TimeSpan.Zero);
+        coordinator.Restore(new FlightSessionRuntimeState
+        {
+            Context = new FlightSessionContext
+            {
+                DepartureAirportIcao = "KDEP",
+                ArrivalAirportIcao = "KARR",
+                Profile = new FlightSessionProfile
+                {
+                    HeavyFourEngineAircraft = true,
+                    EngineCount = 4,
+                },
+            },
+            CurrentPhase = FlightPhase.TaxiIn,
+            BlockTimes = new FlightSessionBlockTimes
+            {
+                BlocksOffUtc = t0.AddHours(-2),
+                WheelsOffUtc = t0.AddHours(-1.9),
+                WheelsOnUtc = t0.AddMinutes(-5),
+            },
+            LastTelemetryFrame = Frame(
+                t0,
+                onGround: true,
+                groundSpeed: 18,
+                heading: 180) with
+            {
+                Phase = FlightPhase.TaxiIn,
+                TaxiLightsOn = true,
+                Engine1Running = true,
+                Engine2Running = true,
+                Engine3Running = true,
+                Engine4Running = true,
+            },
+            ScoreInput = new FlightScoreInput
+            {
+                Preflight = new PreflightMetrics
+                {
+                    BeaconOnBeforeTaxi = true,
+                },
+                Climb = new ClimbMetrics
+                {
+                    HeavyFourEngineAircraft = true,
+                },
+            },
+            ScoreResult = new ScoreResult(100, 92, "A", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
+        });
+
+        var arrival = await coordinator.ProcessFrameAsync(
+            Frame(
+                t0.AddSeconds(1),
+                onGround: true,
+                parkingBrake: true,
+                groundSpeed: 0,
+                heading: 180) with
+            {
+                TaxiLightsOn = false,
+                Engine1Running = true,
+                Engine2Running = true,
+                Engine3Running = true,
+                Engine4Running = true,
+            });
+
+        Assert.Equal(FlightPhase.Arrival, arrival.State.CurrentPhase);
+        Assert.NotNull(arrival.State.BlockTimes.BlocksOffUtc);
+        Assert.NotNull(arrival.State.BlockTimes.WheelsOffUtc);
+        Assert.NotNull(arrival.State.BlockTimes.WheelsOnUtc);
+        Assert.NotNull(arrival.State.BlockTimes.BlocksOnUtc);
+        Assert.True(arrival.State.ScoreInput.Preflight.BeaconOnBeforeTaxi);
+        Assert.True(arrival.State.ScoreInput.Climb.HeavyFourEngineAircraft);
+        Assert.Equal("KARR", arrival.State.Context.ArrivalAirportIcao);
+    }
+
     private static TelemetryFrame Frame(
         DateTimeOffset timestampUtc,
         bool onGround,

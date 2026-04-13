@@ -52,6 +52,14 @@ public sealed class PersistentRuntimeCoordinator
         };
     }
 
+    public void Restore(FlightSessionRuntimeState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        _runtimeCoordinator.Restore(state);
+        _completedSessionQueued = state.IsComplete;
+    }
+
     public Task ClearCurrentSessionAsync(CancellationToken cancellationToken = default)
     {
         _completedSessionQueued = false;

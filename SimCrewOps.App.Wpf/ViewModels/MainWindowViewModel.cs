@@ -22,7 +22,6 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly DispatcherTimer _pollingTimer;
 
     private TrackerShellSnapshot? _latestSnapshot;
-    private FlightSessionRuntimeState? _recoveredState;
     private bool _isRefreshing;
     private NavPage _selectedPage = NavPage.Dashboard;
     private string _msfsStatusText = "WAITING FOR SIM";
@@ -367,7 +366,7 @@ public sealed class MainWindowViewModel : ObservableObject
     public async Task InitializeAsync(Window owner)
     {
         await _shellHost.InitializeAsync();
-        var snapshot = await _shellHost.PollAsync();
+        var snapshot = _shellHost.GetSnapshot();
         _latestSnapshot = snapshot;
 
         if (snapshot.RecoverySnapshot.HasRecoverableCurrentSession)
@@ -381,16 +380,18 @@ public sealed class MainWindowViewModel : ObservableObject
             if (recoveryDialog.DiscardRequested)
             {
                 await _shellHost.DiscardRecoveryAsync();
-                snapshot = await _shellHost.PollAsync();
+                snapshot = _shellHost.GetSnapshot();
                 _latestSnapshot = snapshot;
             }
             else if (recoveryDialog.ResumeRequested)
             {
-                _recoveredState = snapshot.RecoverySnapshot.CurrentSession?.State;
+                snapshot = await _shellHost.ResumeRecoveryAsync();
+                _latestSnapshot = snapshot;
             }
         }
 
         ApplySnapshot(snapshot);
+        await RefreshAsync();
         _pollingTimer.Start();
     }
 
@@ -448,7 +449,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void ApplySnapshot(TrackerShellSnapshot snapshot)
     {
-        var activeState = snapshot.RuntimeState ?? _recoveredState;
+        var activeState = snapshot.RuntimeState;
         var telemetry = activeState?.LastTelemetryFrame;
         var phase = activeState?.CurrentPhase ?? FlightPhase.Approach;
 
@@ -516,7 +517,7 @@ public sealed class MainWindowViewModel : ObservableObject
             ? "22:43 Dispatch updated winds to 270/18G24."
             : "ACARS and dispatch threads will surface here when messaging is wired.";
 
-        SessionHealthTitle = snapshot.RecoverySnapshot.HasRecoverableCurrentSession ? "Recovery available" : "Autosave OK";
+        SessionHealthTitle = activeState is null && snapshot.RecoverySnapshot.HasRecoverableCurrentSession ? "Recovery available" : "Autosave OK";
         SessionHealthLine1 = $"API Queue {snapshot.RecoverySnapshot.PendingCompletedSessions.Count}";
         SessionHealthLine2 = snapshot.BackgroundSyncStatus?.LastRunCompletedUtc is { } lastRun
             ? $"Last sync {lastRun.ToLocalTime():HH:mm}"
@@ -532,7 +533,9 @@ public sealed class MainWindowViewModel : ObservableObject
         DiagnosticsSyncState = snapshot.BackgroundSyncStatus is null
             ? "Background sync disabled"
             : $"{snapshot.BackgroundSyncStatus.LastTrigger ?? "idle"} • failures {snapshot.BackgroundSyncStatus.ConsecutiveFailureCount}";
-        DiagnosticsRecoveryState = snapshot.RecoverySnapshot.HasRecoverableCurrentSession
+        DiagnosticsRecoveryState = activeState is not null && snapshot.RecoverySnapshot.HasRecoverableCurrentSession
+            ? $"Resumed session active • last autosave {snapshot.RecoverySnapshot.CurrentSession!.SavedUtc.ToLocalTime():g}"
+            : snapshot.RecoverySnapshot.HasRecoverableCurrentSession
             ? $"Recoverable current session saved {snapshot.RecoverySnapshot.CurrentSession!.SavedUtc.ToLocalTime():g}"
             : "No recoverable session";
         DiagnosticsSettingsPath = snapshot.SettingsFilePath;

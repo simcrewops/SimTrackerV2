@@ -216,6 +216,31 @@ public sealed class FlightPhaseEngineTests
         Assert.Single(engine.BlockEvents.Where(e => e.Type == BlockEventType.WheelsOn));
     }
 
+    [Fact]
+    public void Restore_ContinuesTaxiInSessionIntoArrival()
+    {
+        var engine = new FlightPhaseEngine();
+        var t0 = new DateTimeOffset(2026, 4, 12, 15, 0, 0, TimeSpan.Zero);
+        var previousFrame = Frame(t0, onGround: true, gs: 18);
+
+        engine.Restore(
+            FlightPhase.TaxiIn,
+            previousFrame,
+            new[]
+            {
+                new BlockEvent { Type = BlockEventType.BlocksOff, TimestampUtc = t0.AddMinutes(-45) },
+                new BlockEvent { Type = BlockEventType.WheelsOff, TimestampUtc = t0.AddMinutes(-44) },
+                new BlockEvent { Type = BlockEventType.WheelsOn, TimestampUtc = t0.AddMinutes(-1) },
+            });
+
+        var blocksOn = engine.Process(Frame(t0.AddSeconds(1), onGround: true, parkingBrake: true, gs: 0));
+
+        Assert.Equal(FlightPhase.Arrival, blocksOn.Phase);
+        Assert.NotNull(blocksOn.BlockEvent);
+        Assert.Equal(BlockEventType.BlocksOn, blocksOn.BlockEvent!.Type);
+        Assert.Equal(4, engine.BlockEvents.Count);
+    }
+
     // -------------------------------------------------------------------------
     //  Helpers
     // -------------------------------------------------------------------------

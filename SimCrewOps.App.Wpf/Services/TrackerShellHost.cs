@@ -8,6 +8,7 @@ using SimCrewOps.Runways.Providers;
 using SimCrewOps.Runways.Services;
 using SimCrewOps.Runtime.Models;
 using SimCrewOps.Runtime.Runtime;
+using SimCrewOps.SimConnect.Models;
 using SimCrewOps.SimConnect.Services;
 using SimCrewOps.Tracking.Models;
 
@@ -77,6 +78,8 @@ public sealed class TrackerShellHost : IAsyncDisposable
             .ConfigureAwait(false);
     }
 
+    public TrackerShellSnapshot GetSnapshot() => BuildSnapshot();
+
     public async Task<TrackerShellSnapshot> PollAsync(CancellationToken cancellationToken = default)
     {
         var simConnectPoll = await _simConnectHost.PollAsync(cancellationToken).ConfigureAwait(false);
@@ -91,15 +94,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
                 .ConfigureAwait(false);
         }
 
-        return new TrackerShellSnapshot
-        {
-            Settings = Settings,
-            SettingsFilePath = _settingsFilePath,
-            RecoverySnapshot = _recoverySnapshot,
-            SimConnectStatus = simConnectPoll.Status,
-            RuntimeState = _runtimeState,
-            BackgroundSyncStatus = _serviceStack.BackgroundSyncCoordinator?.Status,
-        };
+        return BuildSnapshot(simConnectPoll.Status);
     }
 
     public async Task SaveSettingsAsync(TrackerAppSettings settings, CancellationToken cancellationToken = default)
@@ -111,9 +106,27 @@ public sealed class TrackerShellHost : IAsyncDisposable
     public async Task DiscardRecoveryAsync(CancellationToken cancellationToken = default)
     {
         await _persistentRuntimeCoordinator.ClearCurrentSessionAsync(cancellationToken).ConfigureAwait(false);
+        _runtimeState = null;
         _recoverySnapshot = await _persistentRuntimeCoordinator
             .GetRecoverySnapshotAsync(cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    public async Task<TrackerShellSnapshot> ResumeRecoveryAsync(CancellationToken cancellationToken = default)
+    {
+        var recoveredState = _recoverySnapshot.CurrentSession?.State;
+        if (recoveredState is null)
+        {
+            return BuildSnapshot();
+        }
+
+        _persistentRuntimeCoordinator.Restore(recoveredState);
+        _runtimeState = recoveredState;
+        _recoverySnapshot = await _persistentRuntimeCoordinator
+            .GetRecoverySnapshotAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return BuildSnapshot();
     }
 
     public async Task SyncNowAsync(CancellationToken cancellationToken = default)
@@ -173,4 +186,15 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
         yield return Path.Combine(AppContext.BaseDirectory, "data", "ourairports-runways.csv");
     }
+
+    private TrackerShellSnapshot BuildSnapshot(SimConnectHostStatus? simConnectStatus = null) =>
+        new()
+        {
+            Settings = Settings,
+            SettingsFilePath = _settingsFilePath,
+            RecoverySnapshot = _recoverySnapshot,
+            SimConnectStatus = simConnectStatus ?? _simConnectHost.Status,
+            RuntimeState = _runtimeState,
+            BackgroundSyncStatus = _serviceStack.BackgroundSyncCoordinator?.Status,
+        };
 }

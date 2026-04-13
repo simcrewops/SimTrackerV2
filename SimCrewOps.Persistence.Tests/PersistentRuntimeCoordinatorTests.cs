@@ -129,6 +129,86 @@ public sealed class PersistentRuntimeCoordinatorTests
         Assert.Equal("queued-1", snapshot.PendingCompletedSessions[0].SessionId);
     }
 
+    [Fact]
+    public async Task Restore_ContinuesRecoveredSessionAndQueuesCompletionOnce()
+    {
+        var store = new SpyFlightSessionStore();
+        var coordinator = CreateCoordinator(store, arrivalAirportIcao: "KTEST");
+        var t0 = new DateTimeOffset(2026, 4, 13, 15, 0, 0, TimeSpan.Zero);
+
+        coordinator.Restore(new FlightSessionRuntimeState
+        {
+            Context = new FlightSessionContext
+            {
+                DepartureAirportIcao = "KDEP",
+                ArrivalAirportIcao = "KTEST",
+                Profile = new FlightSessionProfile
+                {
+                    HeavyFourEngineAircraft = true,
+                    EngineCount = 4,
+                },
+            },
+            CurrentPhase = FlightPhase.TaxiIn,
+            BlockTimes = new FlightSessionBlockTimes
+            {
+                BlocksOffUtc = t0.AddHours(-2),
+                WheelsOffUtc = t0.AddHours(-1.9),
+                WheelsOnUtc = t0.AddMinutes(-4),
+            },
+            LastTelemetryFrame = Frame(
+                t0,
+                onGround: true,
+                altitudeAgl: 0,
+                groundSpeed: 18,
+                heading: 180) with
+            {
+                Phase = FlightPhase.TaxiIn,
+                TaxiLightsOn = true,
+                Engine1Running = true,
+                Engine2Running = true,
+                Engine3Running = true,
+                Engine4Running = true,
+            },
+            ScoreInput = new FlightScoreInput
+            {
+                Preflight = new PreflightMetrics
+                {
+                    BeaconOnBeforeTaxi = true,
+                },
+                Climb = new ClimbMetrics
+                {
+                    HeavyFourEngineAircraft = true,
+                },
+            },
+            ScoreResult = new ScoreResult(100, 91, "A", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
+        });
+
+        var arrival = await coordinator.ProcessFrameAsync(
+            Frame(
+                t0.AddSeconds(1),
+                onGround: true,
+                altitudeAgl: 0,
+                groundSpeed: 0,
+                parkingBrake: true,
+                heading: 180) with
+            {
+                TaxiLightsOn = false,
+                Engine1Running = true,
+                Engine2Running = true,
+                Engine3Running = true,
+                Engine4Running = true,
+            });
+
+        Assert.True(arrival.RuntimeFrame.State.IsComplete);
+        Assert.True(arrival.Persistence.CurrentSessionCleared);
+        Assert.NotNull(arrival.Persistence.QueuedCompletedSession);
+        Assert.Equal(1, store.QueueCompletedSessionCallCount);
+        Assert.Equal(1, store.ClearCurrentSessionCallCount);
+        Assert.True(store.LastQueuedCompletedState!.ScoreInput.Preflight.BeaconOnBeforeTaxi);
+        Assert.True(store.LastQueuedCompletedState.ScoreInput.Climb.HeavyFourEngineAircraft);
+        Assert.NotNull(store.LastQueuedCompletedState.BlockTimes.BlocksOnUtc);
+    }
+
     private static PersistentRuntimeCoordinator CreateCoordinator(
         SpyFlightSessionStore store,
         string? arrivalAirportIcao = null)

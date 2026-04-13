@@ -11,7 +11,7 @@ namespace SimCrewOps.Runtime.Runtime;
 
 public sealed class RuntimeCoordinator
 {
-    private readonly FlightSessionContext _context;
+    private FlightSessionContext _context;
     private readonly FlightPhaseEngine _phaseEngine;
     private readonly FlightSessionScoringTracker _scoringTracker;
     private readonly ScoringEngine _scoringEngine;
@@ -36,6 +36,29 @@ public sealed class RuntimeCoordinator
         _phaseEngine = phaseEngine ?? new FlightPhaseEngine();
         _scoringTracker = scoringTracker ?? new FlightSessionScoringTracker(context.Profile);
         _scoringEngine = scoringEngine ?? new ScoringEngine();
+    }
+
+    public void Restore(FlightSessionRuntimeState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        _context = state.Context;
+        _blockTimes = state.BlockTimes;
+        _landingRunwayResolution = state.LandingRunwayResolution;
+        _lastTelemetryFrame = state.LastTelemetryFrame;
+
+        _phaseEngine.Restore(
+            state.CurrentPhase,
+            state.LastTelemetryFrame,
+            BuildRestoredBlockEvents(state));
+
+        _scoringTracker.Restore(
+            state.ScoreInput,
+            state.CurrentPhase,
+            state.LastTelemetryFrame,
+            state.Context.Profile,
+            state.BlockTimes.WheelsOffUtc,
+            state.BlockTimes.WheelsOnUtc);
     }
 
     public async Task<RuntimeFrameResult> ProcessFrameAsync(
@@ -120,5 +143,35 @@ public sealed class RuntimeCoordinator
             BlockEventType.BlocksOn => _blockTimes with { BlocksOnUtc = blockEvent.TimestampUtc },
             _ => _blockTimes,
         };
+    }
+
+    private static IReadOnlyList<BlockEvent> BuildRestoredBlockEvents(FlightSessionRuntimeState state)
+    {
+        var events = new List<BlockEvent>(capacity: 4);
+        AddBlockEvent(events, BlockEventType.BlocksOff, state.BlockTimes.BlocksOffUtc, state.LastTelemetryFrame);
+        AddBlockEvent(events, BlockEventType.WheelsOff, state.BlockTimes.WheelsOffUtc, state.LastTelemetryFrame);
+        AddBlockEvent(events, BlockEventType.WheelsOn, state.BlockTimes.WheelsOnUtc, state.LastTelemetryFrame);
+        AddBlockEvent(events, BlockEventType.BlocksOn, state.BlockTimes.BlocksOnUtc, state.LastTelemetryFrame);
+        return events;
+    }
+
+    private static void AddBlockEvent(
+        ICollection<BlockEvent> events,
+        BlockEventType type,
+        DateTimeOffset? timestampUtc,
+        TelemetryFrame? referenceFrame)
+    {
+        if (timestampUtc is null)
+        {
+            return;
+        }
+
+        events.Add(new BlockEvent
+        {
+            Type = type,
+            TimestampUtc = timestampUtc.Value,
+            LatitudeDeg = referenceFrame?.Latitude ?? 0,
+            LongitudeDeg = referenceFrame?.Longitude ?? 0,
+        });
     }
 }
