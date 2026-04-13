@@ -4,7 +4,7 @@ using SimCrewOps.Sync.Models;
 
 namespace SimCrewOps.Sync.Sync;
 
-public sealed class CompletedSessionSyncService
+public sealed class CompletedSessionSyncService : ICompletedSessionSyncService
 {
     private readonly IFlightSessionStore _flightSessionStore;
     private readonly ICompletedSessionUploader _completedSessionUploader;

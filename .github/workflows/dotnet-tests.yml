@@ -71,6 +71,9 @@ jobs:
       - name: Test sync
         run: dotnet test SimCrewOps.Sync.Tests/SimCrewOps.Sync.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=sync-tests.trx" --results-directory TestResults
 
+      - name: Test hosting
+        run: dotnet test SimCrewOps.Hosting.Tests/SimCrewOps.Hosting.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=hosting-tests.trx" --results-directory TestResults
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
