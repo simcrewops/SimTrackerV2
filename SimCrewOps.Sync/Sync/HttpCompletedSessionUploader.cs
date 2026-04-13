@@ -75,7 +75,9 @@ public sealed class HttpCompletedSessionUploader : ICompletedSessionUploader
 
     private Uri BuildRequestUri()
     {
-        if (Uri.TryCreate(_options.SimSessionsPath, UriKind.Absolute, out var absoluteUri))
+        if (Uri.TryCreate(_options.SimSessionsPath, UriKind.RelativeOrAbsolute, out var absoluteUri) &&
+            absoluteUri.IsAbsoluteUri &&
+            (absoluteUri.Scheme == Uri.UriSchemeHttp || absoluteUri.Scheme == Uri.UriSchemeHttps))
         {
             return absoluteUri;
         }
