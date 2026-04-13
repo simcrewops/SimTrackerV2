@@ -41,6 +41,8 @@ public sealed class FlightSessionScoringTracker
     private DateTimeOffset? _lastCruiseSpeedInstabilityAt;
     private DateTimeOffset? _cruiseSpeedInstabilityStartedAt;
     private bool _cruiseSpeedInstabilityActive;
+    private double? _cruiseReferenceIasKnots;
+    private double? _cruiseReferenceMach;
     private double? _cruiseTargetAltitudeFeet;
     private double? _pendingCruiseTargetAltitudeFeet;
     private DateTimeOffset? _pendingCruiseTargetStartedAt;
@@ -351,35 +353,41 @@ public sealed class FlightSessionScoringTracker
             _pendingCruiseTargetStartedAt = null;
         }
 
-        if (_previousFrame is not null && _previousFrame.Phase == FlightPhase.Cruise)
+        if (_previousFrame is null || _previousFrame.Phase != FlightPhase.Cruise)
         {
-            var machDelta = Math.Abs(frame.Mach - _previousFrame.Mach);
-            var iasDelta = Math.Abs(frame.IndicatedAirspeedKnots - _previousFrame.IndicatedAirspeedKnots);
-            var unstable = machDelta > 0.03 || iasDelta > 15;
+            _cruiseReferenceIasKnots = frame.IndicatedAirspeedKnots;
+            _cruiseReferenceMach = frame.Mach;
+            _cruiseSpeedInstabilityActive = false;
+            _cruiseSpeedInstabilityStartedAt = null;
+            return;
+        }
 
-            if (unstable)
+        _cruiseReferenceIasKnots ??= _previousFrame.IndicatedAirspeedKnots;
+        _cruiseReferenceMach ??= _previousFrame.Mach;
+
+        var machDelta = Math.Abs(frame.Mach - _cruiseReferenceMach.Value);
+        var iasDelta = Math.Abs(frame.IndicatedAirspeedKnots - _cruiseReferenceIasKnots.Value);
+        var unstable = machDelta > 0.03 || iasDelta > 15;
+
+        if (unstable)
+        {
+            if (!_cruiseSpeedInstabilityActive)
             {
-                if (!_cruiseSpeedInstabilityActive)
-                {
-                    _cruiseSpeedInstabilityActive = true;
-                    _cruiseSpeedInstabilityStartedAt = frame.TimestampUtc;
-                }
-                else if (_cruiseSpeedInstabilityStartedAt is not null &&
-                         frame.TimestampUtc - _cruiseSpeedInstabilityStartedAt >= TimeSpan.FromSeconds(5) &&
-                         (_lastCruiseSpeedInstabilityAt is null || frame.TimestampUtc - _lastCruiseSpeedInstabilityAt >= TimeSpan.FromSeconds(10)))
-                {
-                    _cruiseSpeedInstabilityEvents++;
-                    _lastCruiseSpeedInstabilityAt = frame.TimestampUtc;
-                }
+                _cruiseSpeedInstabilityActive = true;
+                _cruiseSpeedInstabilityStartedAt = frame.TimestampUtc;
             }
-            else
+            else if (_cruiseSpeedInstabilityStartedAt is not null &&
+                     frame.TimestampUtc - _cruiseSpeedInstabilityStartedAt >= TimeSpan.FromSeconds(5) &&
+                     (_lastCruiseSpeedInstabilityAt is null || frame.TimestampUtc - _lastCruiseSpeedInstabilityAt >= TimeSpan.FromSeconds(10)))
             {
-                _cruiseSpeedInstabilityActive = false;
-                _cruiseSpeedInstabilityStartedAt = null;
+                _cruiseSpeedInstabilityEvents++;
+                _lastCruiseSpeedInstabilityAt = frame.TimestampUtc;
             }
         }
         else
         {
+            _cruiseReferenceIasKnots = frame.IndicatedAirspeedKnots;
+            _cruiseReferenceMach = frame.Mach;
             _cruiseSpeedInstabilityActive = false;
             _cruiseSpeedInstabilityStartedAt = null;
         }
