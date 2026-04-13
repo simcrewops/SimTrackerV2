@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\SimCrewOps.Runways\SimCrewOps.Runways.csproj" />
     <ProjectReference Include="..\SimCrewOps.Tracking\SimCrewOps.Tracking.csproj" />
   </ItemGroup>
 </Project>

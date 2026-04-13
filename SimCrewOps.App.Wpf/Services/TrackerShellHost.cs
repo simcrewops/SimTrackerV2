@@ -1,8 +1,10 @@
+using System.IO;
 using SimCrewOps.App.Wpf.Models;
 using SimCrewOps.Hosting.Config;
 using SimCrewOps.Hosting.Models;
 using SimCrewOps.Persistence.Models;
 using SimCrewOps.Persistence.Persistence;
+using SimCrewOps.Runways.Providers;
 using SimCrewOps.Runways.Services;
 using SimCrewOps.Runtime.Models;
 using SimCrewOps.Runtime.Runtime;
@@ -39,9 +41,10 @@ public sealed class TrackerShellHost : IAsyncDisposable
         _simConnectHost = new MsfsSimConnectHost(
             new SimulatorProcessDetector(new SystemProcessListProvider()),
             new ManagedSimConnectClient());
+        var runwayDataProvider = CreateRunwayDataProvider(settingsFilePath);
         var runtimeCoordinator = new RuntimeCoordinator(
             new FlightSessionContext(),
-            new RunwayResolver(new NullRunwayDataProvider()));
+            new RunwayResolver(runwayDataProvider));
         _persistentRuntimeCoordinator = new PersistentRuntimeCoordinator(
             runtimeCoordinator,
             serviceStack.FlightSessionStore);
@@ -134,5 +137,40 @@ public sealed class TrackerShellHost : IAsyncDisposable
         }
 
         await _simConnectHost.DisconnectAsync().ConfigureAwait(false);
+    }
+
+    private static IRunwayDataProvider CreateRunwayDataProvider(string settingsFilePath)
+    {
+        var providers = new List<IRunwayDataProvider>
+        {
+            new SimConnectFacilityRunwayProvider(),
+        };
+
+        foreach (var csvPath in GetFallbackCsvPaths(settingsFilePath))
+        {
+            if (!File.Exists(csvPath))
+            {
+                continue;
+            }
+
+            providers.Add(OurAirportsCsvRunwayDataProvider.FromFile(csvPath));
+            break;
+        }
+
+        return providers.Count == 1
+            ? providers[0]
+            : new FallbackRunwayDataProvider(providers.ToArray());
+    }
+
+    private static IEnumerable<string> GetFallbackCsvPaths(string settingsFilePath)
+    {
+        var settingsDirectory = Path.GetDirectoryName(settingsFilePath);
+        if (!string.IsNullOrWhiteSpace(settingsDirectory))
+        {
+            yield return Path.Combine(settingsDirectory, "ourairports-runways.csv");
+            yield return Path.Combine(settingsDirectory, "data", "ourairports-runways.csv");
+        }
+
+        yield return Path.Combine(AppContext.BaseDirectory, "data", "ourairports-runways.csv");
     }
 }

@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\SimCrewOps.Runways\SimCrewOps.Runways.csproj" />
     <ProjectReference Include="..\SimCrewOps.SimConnect\SimCrewOps.SimConnect.csproj" />
     <ProjectReference Include="..\SimCrewOps.Tracking\SimCrewOps.Tracking.csproj" />
   </ItemGroup>
