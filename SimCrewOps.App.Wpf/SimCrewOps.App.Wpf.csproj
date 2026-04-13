@@ -7,6 +7,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>12.0</LangVersion>
+    <AssemblyName>SimTrackerV2</AssemblyName>
+    <RootNamespace>SimCrewOps.App.Wpf</RootNamespace>
+    <Version>2.0.0-alpha</Version>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <FileVersion>2.0.0.0</FileVersion>
+    <InformationalVersion>2.0.0-alpha</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

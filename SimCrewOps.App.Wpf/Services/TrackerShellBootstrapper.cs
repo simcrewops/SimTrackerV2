@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using SimCrewOps.Hosting.Config;
 using SimCrewOps.Hosting.Hosting;
 using SimCrewOps.Hosting.Models;
@@ -53,7 +54,7 @@ public static class TrackerShellBootstrapper
             {
                 BaseUri = new Uri("https://simcrewops.com", UriKind.Absolute),
                 SimSessionsPath = "/api/sim-sessions",
-                TrackerVersion = "2.0.0-alpha",
+                TrackerVersion = ResolveDefaultTrackerVersion(),
             },
             BackgroundSync = new BackgroundSyncSettings
             {
@@ -62,4 +63,19 @@ public static class TrackerShellBootstrapper
                 MaxSessionsPerPass = 10,
             },
         };
+
+    private static string ResolveDefaultTrackerVersion()
+    {
+        var assembly = Assembly.GetEntryAssembly() ?? typeof(TrackerShellBootstrapper).Assembly;
+        var informationalVersion = assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion;
+
+        if (!string.IsNullOrWhiteSpace(informationalVersion))
+        {
+            return informationalVersion;
+        }
+
+        return assembly.GetName().Version?.ToString() ?? "2.0.0-alpha";
+    }
 }

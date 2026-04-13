@@ -5,15 +5,21 @@ on:
     paths:
       - "**/*.cs"
       - "**/*.csproj"
+      - "**/*.pubxml"
+      - "**/*.ps1"
       - "**/*.sln"
       - "**/*.xaml"
+      - "packaging/**"
       - ".github/workflows/dotnet-tests.yml"
   pull_request:
     paths:
       - "**/*.cs"
       - "**/*.csproj"
+      - "**/*.pubxml"
+      - "**/*.ps1"
       - "**/*.sln"
       - "**/*.xaml"
+      - "packaging/**"
       - ".github/workflows/dotnet-tests.yml"
   workflow_dispatch:
 
@@ -94,3 +100,62 @@ jobs:
           name: test-results-${{ matrix.os }}
           path: TestResults/**/*.trx
           if-no-files-found: ignore
+
+  publish-windows-alpha:
+    name: Publish Windows Alpha
+    needs: test
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      PACKAGE_VERSION: 2.0.0-alpha.${{ github.run_number }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up .NET 8 SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+
+      - name: Restore WPF app
+        run: dotnet restore SimCrewOps.App.Wpf/SimCrewOps.App.Wpf.csproj -r win-x64
+
+      - name: Publish WPF app
+        run: >
+          dotnet publish SimCrewOps.App.Wpf/SimCrewOps.App.Wpf.csproj
+          --configuration Release
+          --no-restore
+          -p:PublishProfile=Alpha-win-x64
+          -p:Version=${{ env.PACKAGE_VERSION }}
+          -p:InformationalVersion=${{ env.PACKAGE_VERSION }}+${{ github.sha }}
+
+      - name: Stage alpha package
+        shell: pwsh
+        run: >
+          ./packaging/windows/prepare-alpha-package.ps1
+          -PublishOutputDirectory "SimCrewOps.App.Wpf/artifacts/publish/SimTrackerV2-win-x64"
+          -PackageOutputDirectory "artifacts/package/SimTrackerV2-alpha-win-x64"
+          -Version "${{ env.PACKAGE_VERSION }}"
+          -CommitSha "${{ github.sha }}"
+
+      - name: Archive alpha package
+        shell: pwsh
+        run: >
+          Compress-Archive
+          -Path "artifacts/package/SimTrackerV2-alpha-win-x64/*"
+          -DestinationPath "artifacts/package/SimTrackerV2-alpha-win-x64.zip"
+          -Force
+
+      - name: Upload alpha package
+        uses: actions/upload-artifact@v7
+        with:
+          name: simtracker-alpha-win-x64
+          path: |
+            artifacts/package/SimTrackerV2-alpha-win-x64.zip
+            artifacts/package/SimTrackerV2-alpha-win-x64/**
+          if-no-files-found: error
