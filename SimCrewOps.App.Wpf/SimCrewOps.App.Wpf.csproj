@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12.0</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SimCrewOps.Hosting\SimCrewOps.Hosting.csproj" />
+    <ProjectReference Include="..\SimCrewOps.Persistence\SimCrewOps.Persistence.csproj" />
+    <ProjectReference Include="..\SimCrewOps.Runways\SimCrewOps.Runways.csproj" />
+    <ProjectReference Include="..\SimCrewOps.Runtime\SimCrewOps.Runtime.csproj" />
+    <ProjectReference Include="..\SimCrewOps.Scoring\SimCrewOps.Scoring.csproj" />
+    <ProjectReference Include="..\SimCrewOps.SimConnect\SimCrewOps.SimConnect.csproj" />
+    <ProjectReference Include="..\SimCrewOps.Tracking\SimCrewOps.Tracking.csproj" />
+  </ItemGroup>
+</Project>

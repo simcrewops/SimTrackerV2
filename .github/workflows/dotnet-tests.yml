@@ -6,12 +6,14 @@ on:
       - "**/*.cs"
       - "**/*.csproj"
       - "**/*.sln"
+      - "**/*.xaml"
       - ".github/workflows/dotnet-tests.yml"
   pull_request:
     paths:
       - "**/*.cs"
       - "**/*.csproj"
       - "**/*.sln"
+      - "**/*.xaml"
       - ".github/workflows/dotnet-tests.yml"
   workflow_dispatch:
 
@@ -49,6 +51,14 @@ jobs:
 
       - name: Build solution
         run: dotnet build SimCrewOps.sln --configuration Release --no-restore
+
+      - name: Restore WPF shell
+        if: matrix.os == 'windows-latest'
+        run: dotnet restore SimCrewOps.App.Wpf/SimCrewOps.App.Wpf.csproj
+
+      - name: Build WPF shell
+        if: matrix.os == 'windows-latest'
+        run: dotnet build SimCrewOps.App.Wpf/SimCrewOps.App.Wpf.csproj --configuration Release --no-restore
 
       - name: Test scoring
         run: dotnet test SimCrewOps.Scoring.Tests/SimCrewOps.Scoring.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=scoring-tests.trx" --results-directory TestResults

@@ -1,0 +1,46 @@
+<Application x:Class="SimCrewOps.App.Wpf.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#EBEFE7" />
+        <SolidColorBrush x:Key="ShellSurfaceBrush" Color="#F6F8F2" />
+        <SolidColorBrush x:Key="HeaderBrush" Color="#1A3040" />
+        <SolidColorBrush x:Key="PanelBrush" Color="#E8ECE4" />
+        <SolidColorBrush x:Key="CardBrush" Color="#FBFCF8" />
+        <SolidColorBrush x:Key="HeroBrush" Color="#102532" />
+        <SolidColorBrush x:Key="HeroCardBrush" Color="#16303D" />
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#172B39" />
+        <SolidColorBrush x:Key="TextMutedBrush" Color="#687C82" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#2C8A96" />
+        <SolidColorBrush x:Key="AccentSoftBrush" Color="#58D1C1" />
+        <SolidColorBrush x:Key="AmberBrush" Color="#EEA15F" />
+        <SolidColorBrush x:Key="DangerBrush" Color="#D4625A" />
+        <SolidColorBrush x:Key="DangerSoftBrush" Color="#FFE7E3" />
+        <SolidColorBrush x:Key="DividerBrush" Color="#D2D8CF" />
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+
+        <Style x:Key="ShellActionButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="#5A6A70" />
+            <Setter Property="Background" Value="#D2D9D0" />
+            <Setter Property="BorderBrush" Value="#D2D9D0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="16,6" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="12">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Application.Resources>
+</Application>
