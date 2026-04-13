@@ -23,6 +23,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimCrewOps.Runtime", "SimCr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimCrewOps.Runtime.Tests", "SimCrewOps.Runtime.Tests\SimCrewOps.Runtime.Tests.csproj", "{D80DA441-CB9A-44D5-8B7B-A68DD99818F1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimCrewOps.Persistence", "SimCrewOps.Persistence\SimCrewOps.Persistence.csproj", "{7BEBE4E0-D8BC-47B9-856C-E8EAE672ADFB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimCrewOps.Persistence.Tests", "SimCrewOps.Persistence.Tests\SimCrewOps.Persistence.Tests.csproj", "{5A1F0E6D-7143-4E47-BDC9-A0AA2E438C96}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -69,6 +73,14 @@ Global
 		{D80DA441-CB9A-44D5-8B7B-A68DD99818F1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D80DA441-CB9A-44D5-8B7B-A68DD99818F1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D80DA441-CB9A-44D5-8B7B-A68DD99818F1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7BEBE4E0-D8BC-47B9-856C-E8EAE672ADFB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7BEBE4E0-D8BC-47B9-856C-E8EAE672ADFB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7BEBE4E0-D8BC-47B9-856C-E8EAE672ADFB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7BEBE4E0-D8BC-47B9-856C-E8EAE672ADFB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5A1F0E6D-7143-4E47-BDC9-A0AA2E438C96}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5A1F0E6D-7143-4E47-BDC9-A0AA2E438C96}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5A1F0E6D-7143-4E47-BDC9-A0AA2E438C96}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5A1F0E6D-7143-4E47-BDC9-A0AA2E438C96}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
