@@ -206,7 +206,7 @@ public sealed class FlightPhaseEngineTests
         var tagFrame = engine.Process(Frame(t0.AddSeconds(322), onGround: false, agl: 50, gs: 120));
         Assert.Equal(FlightPhase.Climb, tagFrame.Phase);
         Assert.Null(tagFrame.BlockEvent);
-        Assert.Empty(engine.BlockEvents.Where(e => e.Type == BlockEventType.WheelsOn));
+        Assert.DoesNotContain(engine.BlockEvents, e => e.Type == BlockEventType.WheelsOn);
 
         // Fly a normal second approach and landing — WheelsOn fires again
         engine.Process(Frame(t0.AddSeconds(330), onGround: false, agl: 500, vs: -300));
