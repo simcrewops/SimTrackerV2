@@ -79,7 +79,7 @@ public sealed class BackgroundSyncCoordinatorTests
 
     private sealed class SignalingCompletedSessionSyncService : ICompletedSessionSyncService
     {
-        private readonly TaskCompletionSource _firstCall = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _firstCall = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public int CallCount { get; private set; }
         public Task FirstCall => _firstCall.Task;
@@ -87,7 +87,7 @@ public sealed class BackgroundSyncCoordinatorTests
         public Task<PendingSessionSyncSummary> SyncPendingSessionsAsync(int? maxSessions = null, CancellationToken cancellationToken = default)
         {
             CallCount++;
-            _firstCall.TrySetResult();
+            _firstCall.TrySetResult(true);
 
             return Task.FromResult(new PendingSessionSyncSummary
             {
