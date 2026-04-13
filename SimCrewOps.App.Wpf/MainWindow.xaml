@@ -209,8 +209,7 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate DataType="{x:Type model:MetricTileModel}">
-                                                    <Border Style="{StaticResource MetricCardStyle}"
-                                                            Width="220"
+                                                    <Border Width="220"
                                                             Height="40"
                                                             Background="#16303D"
                                                             Padding="16,8"

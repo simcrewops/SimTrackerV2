@@ -35,7 +35,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
     private readonly MethodInfo _receiveMessageMethod;
     private readonly uint _userObjectId;
 
-    private LatestSimConnectState _latestState;
+    private LatestSimConnectState _latestState = new();
     private bool _disposed;
 
     public ReflectionSimConnectManagedBridge(Assembly managedAssembly, SimConnectHostOptions options)
