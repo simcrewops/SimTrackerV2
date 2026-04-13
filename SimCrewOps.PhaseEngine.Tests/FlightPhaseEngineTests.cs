@@ -99,17 +99,15 @@ public sealed class FlightPhaseEngineTests
 
         // First approach — low and slow, gear down
         engine.Process(Frame(t0.AddSeconds(300), onGround: false, agl: 1000, gearDown: true));
+        engine.Process(Frame(t0.AddSeconds(305), onGround: false, agl: 350, gearDown: true, vs: -500));
 
-        // Go-around: aircraft climbs back above 400 ft while not on ground
-        var goAroundFrame = engine.Process(Frame(t0.AddSeconds(310), onGround: false, agl: 600));
+        // Go-around: aircraft climbs back through 400 ft while still airborne
+        var goAroundFrame = engine.Process(Frame(t0.AddSeconds(310), onGround: false, agl: 600, gearDown: true, vs: 1200));
         Assert.Equal(FlightPhase.Climb, goAroundFrame.Phase);
 
-        // Descend again into another approach (simulate by getting below 3000 AGL with gear)
-        engine.Process(Frame(t0.AddSeconds(320), onGround: false, agl: 500, vs: -300));
-        // Need to re-enter Approach: vs level then descent again is complex — shortcut by going to
-        // 3000 ft and back below with gear
-        engine.Process(Frame(t0.AddSeconds(330), onGround: false, agl: 3200, vs: 100));
-        var backToApproach = engine.Process(Frame(t0.AddSeconds(340), onGround: false, agl: 2800, gearDown: true));
+        // Descend again into another approach
+        engine.Process(Frame(t0.AddSeconds(330), onGround: false, agl: 3200, vs: -300));
+        var backToApproach = engine.Process(Frame(t0.AddSeconds(340), onGround: false, agl: 2800, gearDown: true, vs: -300));
         Assert.Equal(FlightPhase.Approach, backToApproach.Phase);
 
         // Touchdown on second approach
@@ -209,9 +207,8 @@ public sealed class FlightPhaseEngineTests
         Assert.DoesNotContain(engine.BlockEvents, e => e.Type == BlockEventType.WheelsOn);
 
         // Fly a normal second approach and landing — WheelsOn fires again
-        engine.Process(Frame(t0.AddSeconds(330), onGround: false, agl: 500, vs: -300));
-        engine.Process(Frame(t0.AddSeconds(340), onGround: false, agl: 3200));
-        engine.Process(Frame(t0.AddSeconds(350), onGround: false, agl: 2800, gearDown: true));
+        engine.Process(Frame(t0.AddSeconds(330), onGround: false, agl: 3200, vs: -300));
+        engine.Process(Frame(t0.AddSeconds(350), onGround: false, agl: 2800, gearDown: true, vs: -300));
         engine.Process(Frame(t0.AddSeconds(360), onGround: false, agl: 200));
         var secondTouchdown = engine.Process(Frame(t0.AddSeconds(370), onGround: true, agl: 0, gs: 90));
         Assert.Equal(FlightPhase.Landing, secondTouchdown.Phase);

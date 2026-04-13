@@ -23,6 +23,7 @@ public sealed class FlightPhaseEngine
 
     // WheelsOn timestamp — used to detect touch-and-go within 3 s
     private DateTimeOffset? _wheelsOnAt;
+    private bool _approachRecoveryActive;
 
     public FlightPhase CurrentPhase => _currentPhase;
 
@@ -55,6 +56,7 @@ public sealed class FlightPhaseEngine
         _descentConditionStart = null;
         _slowOnGroundStart = null;
         _wheelsOnAt = null;
+        _approachRecoveryActive = false;
     }
 
     // -------------------------------------------------------------------------
@@ -65,11 +67,16 @@ public sealed class FlightPhaseEngine
     {
         // ----- 1. Edge-case backward / lateral transitions -----
 
-        // Go-around: APPROACH or LANDING, airborne, above 400 ft AGL
+        // Go-around: while established on final/landing, aircraft climbs back through 400 ft AGL.
         if (_currentPhase is FlightPhase.Approach or FlightPhase.Landing
-            && !frame.OnGround && frame.AltitudeAglFeet > 400)
+            && _previousFrame is not null
+            && !_previousFrame.OnGround
+            && !frame.OnGround
+            && _previousFrame.AltitudeAglFeet <= 400
+            && frame.AltitudeAglFeet > 400)
         {
             _currentPhase = FlightPhase.Climb;
+            _approachRecoveryActive = true;
             ResetSustainedConditions();
             return null;
         }
@@ -91,6 +98,7 @@ public sealed class FlightPhaseEngine
             _blockEvents.RemoveAll(e => e.Type == BlockEventType.WheelsOn);
             _wheelsOnAt = null;
             _currentPhase = FlightPhase.Climb;
+            _approachRecoveryActive = true;
             ResetSustainedConditions();
             return null;
         }
@@ -149,6 +157,14 @@ public sealed class FlightPhaseEngine
                 break;
 
             case FlightPhase.Climb:
+                if (_approachRecoveryActive && !frame.OnGround && frame.AltitudeAglFeet < 3000 && frame.GearDown)
+                {
+                    _currentPhase = FlightPhase.Approach;
+                    _approachRecoveryActive = false;
+                    ResetSustainedConditions();
+                    break;
+                }
+
                 // Require VS between -200 and +200 fpm sustained for 30 s → Cruise
                 if (frame.VerticalSpeedFpm >= -200 && frame.VerticalSpeedFpm <= 200)
                 {
@@ -187,6 +203,7 @@ public sealed class FlightPhaseEngine
                 if (frame.AltitudeAglFeet < 3000 && frame.GearDown)
                 {
                     _currentPhase = FlightPhase.Approach;
+                    _approachRecoveryActive = false;
                 }
                 break;
 
