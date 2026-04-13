@@ -89,10 +89,13 @@ public sealed class MsfsSimConnectHost
         if (!_simConnectClient.IsConnected)
         {
             var status = await ConnectAsync(cancellationToken).ConfigureAwait(false);
-            return new SimConnectPollResult
+            if (status.ConnectionState != SimConnectConnectionState.Connected)
             {
-                Status = status,
-            };
+                return new SimConnectPollResult
+                {
+                    Status = status,
+                };
+            }
         }
 
         try
