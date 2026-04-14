@@ -473,7 +473,6 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         definition.ValueType switch
         {
             SimConnectValueType.Int32 => SimConnectDataType.Int32,
-            SimConnectValueType.Float32 => SimConnectDataType.Float32,
             _ => SimConnectDataType.Float64,
         };
 
