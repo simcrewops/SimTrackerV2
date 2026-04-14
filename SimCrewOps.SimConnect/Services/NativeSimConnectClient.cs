@@ -505,6 +505,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         "number" => "Number",
         "percent" => "Percent Over 100",
         "gforce" => "GForce",
+        "mach" => "Mach",
         _ => unit,
     };
 

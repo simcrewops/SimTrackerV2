@@ -15,7 +15,7 @@ public static class SimConnectDefinitionCatalog
     [
         Define("latitude", "PLANE LATITUDE", "degrees", SimConnectUpdateRate.SimFrame),
         Define("longitude", "PLANE LONGITUDE", "degrees", SimConnectUpdateRate.SimFrame),
-        Define("agl", "PLANE ALT ABOVE GROUND LEVEL", "feet", SimConnectUpdateRate.SimFrame),
+        Define("agl", "PLANE ALT ABOVE GROUND", "feet", SimConnectUpdateRate.SimFrame),
         Define("altitude", "PLANE ALTITUDE", "feet", SimConnectUpdateRate.SimFrame),
         Define("indicated_altitude", "INDICATED ALTITUDE", "feet", SimConnectUpdateRate.SimFrame),
         Define("ias", "AIRSPEED INDICATED", "knots", SimConnectUpdateRate.SimFrame),

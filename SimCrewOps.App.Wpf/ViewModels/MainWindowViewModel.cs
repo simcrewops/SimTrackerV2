@@ -630,7 +630,7 @@ public sealed class MainWindowViewModel : ObservableObject
         FlightPhase.Preflight or FlightPhase.TaxiOut or FlightPhase.TaxiIn => new[]
         {
             new MetricTileModel("GS", telemetry is null ? "-- kt" : $"{telemetry.GroundSpeedKnots:0} kt"),
-            new MetricTileModel("HDG", telemetry is null ? "--°" : $"{telemetry.HeadingTrueDegrees:0}°"),
+            new MetricTileModel("HDG", telemetry is null ? "--°" : $"{telemetry.HeadingMagneticDegrees:0}°"),
             new MetricTileModel("TAXI LT", telemetry is null ? "--" : telemetry.TaxiLightsOn ? "ON" : "OFF"),
             new MetricTileModel("PB", telemetry is null ? "--" : telemetry.ParkingBrakeSet ? "SET" : "OFF"),
         },
@@ -647,7 +647,7 @@ public sealed class MainWindowViewModel : ObservableObject
             new MetricTileModel("IAS", telemetry is null ? "-- kt" : $"{telemetry.IndicatedAirspeedKnots:0} kt"),
             new MetricTileModel("ALT", telemetry is null ? "-- ft" : $"{telemetry.IndicatedAltitudeFeet:0} ft"),
             new MetricTileModel("VS", telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm", telemetry is { VerticalSpeedFpm: < -1000 or > 1000 }),
-            new MetricTileModel("HDG", telemetry is null ? "--°" : $"{telemetry.HeadingTrueDegrees:0}°"),
+            new MetricTileModel("HDG", telemetry is null ? "--°" : $"{telemetry.HeadingMagneticDegrees:0}°"),
         },
         FlightPhase.Landing => new[]
         {
@@ -805,7 +805,7 @@ public sealed class MainWindowViewModel : ObservableObject
         FlightPhase.Arrival => "Arrival sequence checks: taxi lights, parking brake, engines off",
         _ => telemetry is null
             ? "Waiting for telemetry"
-            : $"IAS {telemetry.IndicatedAirspeedKnots:0} • VS {telemetry.VerticalSpeedFpm:0} • HDG {telemetry.HeadingTrueDegrees:0}",
+            : $"IAS {telemetry.IndicatedAirspeedKnots:0} • VS {telemetry.VerticalSpeedFpm:0} • HDG {telemetry.HeadingMagneticDegrees:0}",
     };
 
     private static string BuildLandingMetrics(FlightSessionRuntimeState? activeState)
