@@ -417,7 +417,25 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
     private void UpdateOperational(OperationalSnapshot snapshot)
     {
-        var lightStates = snapshot.LightStates;
+        // Prefer individual LIGHT_ bool SimVars (positions 12-15 in the struct) over the
+        // LIGHT STATES bitmask. The bitmask bits differ across MSFS builds/editions; the
+        // individual SimVars are a simple 0/1 and work reliably on MSFS 2024 Game Pass.
+        // Fall back to bitmask decode only if all four individual values are still zero
+        // (i.e. the SimVars failed to register and returned nothing useful).
+        var beacon  = snapshot.BeaconLightOn;
+        var taxi    = snapshot.TaxiLightsOn;
+        var landing = snapshot.LandingLightsOn;
+        var strobe  = snapshot.StrobesOn;
+
+        if (beacon == 0 && taxi == 0 && landing == 0 && strobe == 0)
+        {
+            // Individual SimVars all zero — try decoding the LIGHT STATES bitmask as fallback.
+            var lightStates = snapshot.LightStates;
+            beacon  = SimConnectLightStateDecoder.IsBeaconOn(lightStates)  ? 1 : 0;
+            taxi    = SimConnectLightStateDecoder.IsTaxiOn(lightStates)    ? 1 : 0;
+            landing = SimConnectLightStateDecoder.IsLandingOn(lightStates) ? 1 : 0;
+            strobe  = SimConnectLightStateDecoder.IsStrobeOn(lightStates)  ? 1 : 0;
+        }
 
         _latestState = _latestState with
         {
@@ -433,10 +451,10 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             Engine2Running = snapshot.Engine2Running,
             Engine3Running = snapshot.Engine3Running,
             Engine4Running = snapshot.Engine4Running,
-            BeaconLightOn = SimConnectLightStateDecoder.IsBeaconOn(lightStates) ? 1 : 0,
-            TaxiLightsOn = SimConnectLightStateDecoder.IsTaxiOn(lightStates) ? 1 : 0,
-            LandingLightsOn = SimConnectLightStateDecoder.IsLandingOn(lightStates) ? 1 : 0,
-            StrobesOn = SimConnectLightStateDecoder.IsStrobeOn(lightStates) ? 1 : 0,
+            BeaconLightOn  = beacon,
+            TaxiLightsOn   = taxi,
+            LandingLightsOn = landing,
+            StrobesOn      = strobe,
             StallWarning = snapshot.StallWarning,
             GpwsAlert = snapshot.GpwsAlert,
             OverspeedWarning = snapshot.OverspeedWarning,
