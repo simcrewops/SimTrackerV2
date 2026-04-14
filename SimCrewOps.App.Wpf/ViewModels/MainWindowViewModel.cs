@@ -67,6 +67,30 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _diagnosticsRawTelemetry = "Raw SimConnect values will appear here when telemetry diagnostics are enabled.";
     private string _settingsSaveStatus = "Changes are saved for the next launch.";
 
+    // Persistent instruments
+    private string _liveIas = "---";
+    private string _liveGs = "---";
+    private string _liveMach = "-.---";
+    private string _liveAlt = "-----";
+    private string _liveAgl = "-----";
+    private string _liveVs = "----";
+    private string _liveHdg = "---°";
+    private string _liveGForce = "-.--";
+    private bool _liveVsAlert;
+    private bool _liveGForceAlert;
+    private bool _liveAglAlert;
+
+    // Systems LED brushes
+    private Brush _ledBeaconBrush = new SolidColorBrush(MediaColor.FromRgb(42, 64, 80));
+    private Brush _ledStrobeBrush = new SolidColorBrush(MediaColor.FromRgb(42, 64, 80));
+    private Brush _ledLandingBrush = new SolidColorBrush(MediaColor.FromRgb(42, 64, 80));
+    private Brush _ledTaxiBrush = new SolidColorBrush(MediaColor.FromRgb(42, 64, 80));
+    private Brush _ledGearBrush = new SolidColorBrush(MediaColor.FromRgb(42, 64, 80));
+    private string _flapsLabel = "F--";
+    private Brush _ledEng1Brush = new SolidColorBrush(MediaColor.FromRgb(42, 64, 80));
+    private Brush _ledEng2Brush = new SolidColorBrush(MediaColor.FromRgb(42, 64, 80));
+    private Brush _ledParkingBrakeBrush = new SolidColorBrush(MediaColor.FromRgb(42, 64, 80));
+
     public MainWindowViewModel(TrackerShellBootstrapResult bootstrap)
     {
         ArgumentNullException.ThrowIfNull(bootstrap);
@@ -367,6 +391,30 @@ public sealed class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _settingsSaveStatus, value);
     }
 
+    // Persistent instrument display properties
+    public string LiveIas { get => _liveIas; private set => SetProperty(ref _liveIas, value); }
+    public string LiveGs { get => _liveGs; private set => SetProperty(ref _liveGs, value); }
+    public string LiveMach { get => _liveMach; private set => SetProperty(ref _liveMach, value); }
+    public string LiveAlt { get => _liveAlt; private set => SetProperty(ref _liveAlt, value); }
+    public string LiveAgl { get => _liveAgl; private set => SetProperty(ref _liveAgl, value); }
+    public string LiveVs { get => _liveVs; private set => SetProperty(ref _liveVs, value); }
+    public string LiveHdg { get => _liveHdg; private set => SetProperty(ref _liveHdg, value); }
+    public string LiveGForce { get => _liveGForce; private set => SetProperty(ref _liveGForce, value); }
+    public bool LiveVsAlert { get => _liveVsAlert; private set => SetProperty(ref _liveVsAlert, value); }
+    public bool LiveGForceAlert { get => _liveGForceAlert; private set => SetProperty(ref _liveGForceAlert, value); }
+    public bool LiveAglAlert { get => _liveAglAlert; private set => SetProperty(ref _liveAglAlert, value); }
+
+    // Systems LED brushes
+    public Brush LedBeaconBrush { get => _ledBeaconBrush; private set => SetProperty(ref _ledBeaconBrush, value); }
+    public Brush LedStrobeBrush { get => _ledStrobeBrush; private set => SetProperty(ref _ledStrobeBrush, value); }
+    public Brush LedLandingBrush { get => _ledLandingBrush; private set => SetProperty(ref _ledLandingBrush, value); }
+    public Brush LedTaxiBrush { get => _ledTaxiBrush; private set => SetProperty(ref _ledTaxiBrush, value); }
+    public Brush LedGearBrush { get => _ledGearBrush; private set => SetProperty(ref _ledGearBrush, value); }
+    public string FlapsLabel { get => _flapsLabel; private set => SetProperty(ref _flapsLabel, value); }
+    public Brush LedEng1Brush { get => _ledEng1Brush; private set => SetProperty(ref _ledEng1Brush, value); }
+    public Brush LedEng2Brush { get => _ledEng2Brush; private set => SetProperty(ref _ledEng2Brush, value); }
+    public Brush LedParkingBrakeBrush { get => _ledParkingBrakeBrush; private set => SetProperty(ref _ledParkingBrakeBrush, value); }
+
     public NavPage SelectedPage
     {
         get => _selectedPage;
@@ -525,6 +573,7 @@ public sealed class MainWindowViewModel : ObservableObject
         OnTime = FormatTime(activeState?.BlockTimes.WheelsOnUtc, "--:--");
         InTime = FormatTime(activeState?.BlockTimes.BlocksOnUtc, "--:--");
 
+        UpdatePersistentInstruments(telemetry);
         PopulatePhasePills(phase);
         PopulateMetricTiles(phase, telemetry);
         PopulateStatusChips(phase, telemetry);
@@ -884,4 +933,71 @@ public sealed class MainWindowViewModel : ObservableObject
             $"LIGHT STATES decoded => Beacon {rawFrame.BeaconLightOn:0} • Taxi {rawFrame.TaxiLightsOn:0} • Landing {rawFrame.LandingLightsOn:0} • Strobe {rawFrame.StrobesOn:0}\n" +
             $"IAS {rawFrame.IndicatedAirspeedKnots:0.##} • GS {rawFrame.GroundSpeedKnots:0.##} • VS {rawFrame.VerticalSpeedFpm:0.##}";
     }
+
+    private void UpdatePersistentInstruments(TelemetryFrame? telemetry)
+    {
+        if (telemetry is null)
+        {
+            LiveIas = "---";
+            LiveGs = "---";
+            LiveMach = "-.---";
+            LiveAlt = "-----";
+            LiveAgl = "-----";
+            LiveVs = "----";
+            LiveHdg = "---°";
+            LiveGForce = "-.--";
+            LiveVsAlert = false;
+            LiveGForceAlert = false;
+            LiveAglAlert = false;
+            LedBeaconBrush = LedDimBrush();
+            LedStrobeBrush = LedDimBrush();
+            LedLandingBrush = LedDimBrush();
+            LedTaxiBrush = LedDimBrush();
+            LedGearBrush = LedDimBrush();
+            FlapsLabel = "F--";
+            LedEng1Brush = LedDimBrush();
+            LedEng2Brush = LedDimBrush();
+            LedParkingBrakeBrush = LedDimBrush();
+            return;
+        }
+
+        LiveIas = $"{telemetry.IndicatedAirspeedKnots:0}";
+        LiveGs = $"{telemetry.GroundSpeedKnots:0}";
+        LiveMach = $"{telemetry.Mach:0.000}";
+        LiveAlt = $"{telemetry.IndicatedAltitudeFeet:0}";
+        LiveAgl = $"{telemetry.AltitudeAglFeet:0}";
+        LiveVs = telemetry.VerticalSpeedFpm >= 0
+            ? $"+{telemetry.VerticalSpeedFpm:0}"
+            : $"{telemetry.VerticalSpeedFpm:0}";
+        LiveHdg = $"{telemetry.HeadingMagneticDegrees:0}°";
+        LiveGForce = $"{telemetry.GForce:0.00}";
+
+        LiveVsAlert = telemetry.VerticalSpeedFpm < -1500;
+        LiveGForceAlert = telemetry.GForce > 2.0 || telemetry.GForce < 0.5;
+        LiveAglAlert = !telemetry.OnGround && telemetry.AltitudeAglFeet < 50 && telemetry.VerticalSpeedFpm < -200;
+
+        LedBeaconBrush = LedOnBrush(telemetry.BeaconLightOn);
+        LedStrobeBrush = LedOnBrush(telemetry.StrobesOn);
+        LedLandingBrush = LedOnBrush(telemetry.LandingLightsOn);
+        LedTaxiBrush = LedOnBrush(telemetry.TaxiLightsOn);
+        LedGearBrush = telemetry.GearDown
+            ? new SolidColorBrush(MediaColor.FromRgb(98, 245, 176))
+            : new SolidColorBrush(MediaColor.FromRgb(243, 169, 106));
+        FlapsLabel = $"F{telemetry.FlapsHandleIndex}";
+        LedEng1Brush = telemetry.Engine1Running
+            ? new SolidColorBrush(MediaColor.FromRgb(98, 245, 176))
+            : new SolidColorBrush(MediaColor.FromRgb(212, 98, 90));
+        LedEng2Brush = telemetry.Engine2Running
+            ? new SolidColorBrush(MediaColor.FromRgb(98, 245, 176))
+            : new SolidColorBrush(MediaColor.FromRgb(212, 98, 90));
+        LedParkingBrakeBrush = LedOnBrush(telemetry.ParkingBrakeSet, MediaColor.FromRgb(243, 169, 106));
+    }
+
+    private static Brush LedDimBrush() => new SolidColorBrush(MediaColor.FromRgb(42, 64, 80));
+    private static Brush LedOnBrush(bool on) => on
+        ? new SolidColorBrush(MediaColor.FromRgb(98, 245, 176))
+        : LedDimBrush();
+    private static Brush LedOnBrush(bool on, MediaColor onColor) => on
+        ? new SolidColorBrush(onColor)
+        : LedDimBrush();
 }

@@ -174,9 +174,9 @@
                             <ColumnDefinition Width="298" />
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="434" />
+                            <RowDefinition Height="490" />
                             <RowDefinition Height="24" />
-                            <RowDefinition Height="240" />
+                            <RowDefinition Height="180" />
                         </Grid.RowDefinitions>
 
                         <Border Grid.Column="0" Background="{StaticResource HeroBrush}" CornerRadius="28" Padding="28" Grid.RowSpan="1">
@@ -194,53 +194,146 @@
                                 <TextBlock Grid.Row="2" Text="{Binding PhaseSubtitle}" Foreground="#83A4AE" FontSize="16" Margin="0,10,0,0" TextWrapping="Wrap" />
                                 <TextBlock Grid.Row="2" Text="{Binding PhaseStatusLine}" Foreground="#83A4AE" FontSize="15" Margin="0,34,0,0" TextWrapping="Wrap" />
 
-                                <Border Grid.Row="3" Margin="0,22,0,0" Background="#0C1D25" BorderBrush="#2E4C59" BorderThickness="2" CornerRadius="26">
-                                    <Grid Margin="28,24,28,22">
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="*" />
-                                        </Grid.RowDefinitions>
-                                        <TextBlock Text="PHASE GRID" Foreground="#8FB3BE" FontSize="13" FontWeight="Bold" />
-                                        <ItemsControl Grid.Row="1" ItemsSource="{Binding MetricTiles}" Margin="0,16,0,0">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <WrapPanel Orientation="Horizontal" ItemWidth="248" ItemHeight="56" />
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate DataType="{x:Type model:MetricTileModel}">
-                                                    <Border Width="220"
-                                                            Height="40"
-                                                            Background="#16303D"
-                                                            Padding="16,8"
-                                                            Margin="0,0,22,16">
-                                                        <Border.Style>
-                                                            <Style TargetType="Border" BasedOn="{StaticResource MetricCardStyle}">
-                                                                <Setter Property="Background" Value="#16303D" />
-                                                                <Setter Property="BorderBrush" Value="Transparent" />
-                                                                <Setter Property="BorderThickness" Value="0" />
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsAlert}" Value="True">
-                                                                        <Setter Property="Background" Value="#22333B" />
-                                                                        <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
-                                                                        <Setter Property="BorderThickness" Value="2" />
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Border.Style>
-                                                        <Grid>
-                                                            <Grid.RowDefinitions>
-                                                                <RowDefinition Height="Auto" />
-                                                                <RowDefinition Height="Auto" />
-                                                            </Grid.RowDefinitions>
-                                                            <TextBlock Text="{Binding Label}" Foreground="#7EA4AF" FontSize="12" FontWeight="Bold" />
-                                                            <TextBlock Grid.Row="1" Text="{Binding Value}" Foreground="#F0F6F3" FontSize="27" FontWeight="Bold" />
-                                                        </Grid>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </Grid>
+                                <Border Grid.Row="3" Margin="0,18,0,0" Background="#0C1D25" BorderBrush="#2E4C59" BorderThickness="2" CornerRadius="26">
+                                    <StackPanel Margin="22,18,22,14">
+                                        <TextBlock Text="INSTRUMENTS" Foreground="#8FB3BE" FontSize="13" FontWeight="Bold" />
+
+                                        <!-- Speed row: IAS · GS · MACH · G -->
+                                        <UniformGrid Columns="4" Margin="0,12,0,0">
+                                            <Border Margin="0,0,8,0" Background="#16303D" CornerRadius="12" Padding="12,8">
+                                                <StackPanel>
+                                                    <TextBlock Text="IAS  kt" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
+                                                    <TextBlock Text="{Binding LiveIas}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Margin="4,0,4,0" Background="#16303D" CornerRadius="12" Padding="12,8">
+                                                <StackPanel>
+                                                    <TextBlock Text="GS  kt" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
+                                                    <TextBlock Text="{Binding LiveGs}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Margin="4,0,4,0" Background="#16303D" CornerRadius="12" Padding="12,8">
+                                                <StackPanel>
+                                                    <TextBlock Text="MACH" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
+                                                    <TextBlock Text="{Binding LiveMach}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Margin="8,0,0,0" CornerRadius="12" Padding="12,8">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="#16303D" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding LiveGForceAlert}" Value="True">
+                                                                <Setter Property="Background" Value="#1E2E36" />
+                                                                <Setter Property="BorderBrush" Value="#D4625A" />
+                                                                <Setter Property="BorderThickness" Value="2" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <StackPanel>
+                                                    <TextBlock Text="G-FORCE" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
+                                                    <TextBlock Text="{Binding LiveGForce}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                </StackPanel>
+                                            </Border>
+                                        </UniformGrid>
+
+                                        <!-- Position row: ALT · AGL · VS · HDG -->
+                                        <UniformGrid Columns="4" Margin="0,8,0,0">
+                                            <Border Margin="0,0,8,0" Background="#16303D" CornerRadius="12" Padding="12,8">
+                                                <StackPanel>
+                                                    <TextBlock Text="ALT  ft" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
+                                                    <TextBlock Text="{Binding LiveAlt}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Margin="4,0,4,0" CornerRadius="12" Padding="12,8">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="#16303D" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding LiveAglAlert}" Value="True">
+                                                                <Setter Property="Background" Value="#1E2E36" />
+                                                                <Setter Property="BorderBrush" Value="#D4625A" />
+                                                                <Setter Property="BorderThickness" Value="2" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <StackPanel>
+                                                    <TextBlock Text="AGL  ft" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
+                                                    <TextBlock Text="{Binding LiveAgl}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Margin="4,0,4,0" CornerRadius="12" Padding="12,8">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="#16303D" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding LiveVsAlert}" Value="True">
+                                                                <Setter Property="Background" Value="#1E2E36" />
+                                                                <Setter Property="BorderBrush" Value="#D4625A" />
+                                                                <Setter Property="BorderThickness" Value="2" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <StackPanel>
+                                                    <TextBlock Text="VS  fpm" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
+                                                    <TextBlock Text="{Binding LiveVs}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Margin="8,0,0,0" Background="#16303D" CornerRadius="12" Padding="12,8">
+                                                <StackPanel>
+                                                    <TextBlock Text="HDG MAG" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
+                                                    <TextBlock Text="{Binding LiveHdg}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                </StackPanel>
+                                            </Border>
+                                        </UniformGrid>
+
+                                        <!-- Systems LED strip -->
+                                        <Border Margin="0,12,0,0" Background="#101D25" CornerRadius="12" Padding="14,10">
+                                            <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
+                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedBeaconBrush}" Margin="0,2,5,0" />
+                                                    <TextBlock Text="BCN" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
+                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedStrobeBrush}" Margin="0,2,5,0" />
+                                                    <TextBlock Text="STB" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
+                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedLandingBrush}" Margin="0,2,5,0" />
+                                                    <TextBlock Text="LDG" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,24,0">
+                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedTaxiBrush}" Margin="0,2,5,0" />
+                                                    <TextBlock Text="TAXI" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                </StackPanel>
+                                                <Border Width="1" Height="13" Background="#2E4C59" Margin="0,1,24,0" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
+                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedGearBrush}" Margin="0,2,5,0" />
+                                                    <TextBlock Text="GEAR" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,24,0">
+                                                    <TextBlock Text="{Binding FlapsLabel}" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                </StackPanel>
+                                                <Border Width="1" Height="13" Background="#2E4C59" Margin="0,1,24,0" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
+                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedEng1Brush}" Margin="0,2,5,0" />
+                                                    <TextBlock Text="ENG1" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,24,0">
+                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedEng2Brush}" Margin="0,2,5,0" />
+                                                    <TextBlock Text="ENG2" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                </StackPanel>
+                                                <Border Width="1" Height="13" Background="#2E4C59" Margin="0,1,24,0" />
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedParkingBrakeBrush}" Margin="0,2,5,0" />
+                                                    <TextBlock Text="P-BRK" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                </StackPanel>
+                                            </WrapPanel>
+                                        </Border>
+                                    </StackPanel>
                                 </Border>
 
                                 <ItemsControl Grid.Row="4" ItemsSource="{Binding StatusChips}" Margin="0,16,0,0">
