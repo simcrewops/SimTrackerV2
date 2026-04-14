@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using SimCrewOps.Hosting.Models;
 
 namespace SimCrewOps.Hosting.Hosting;
@@ -13,6 +14,7 @@ public sealed class LiveMapService : IAsyncDisposable
 {
     internal const string LiveFlightsPath = "/api/tracker/live-flights";
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     private readonly HttpClient _httpClient;
     private readonly Uri _baseUri;
@@ -98,7 +100,7 @@ public sealed class LiveMapService : IAsyncDisposable
             response.EnsureSuccessStatusCode();
 
             var flights = await response.Content
-                .ReadFromJsonAsync<List<LiveFlight>>(cancellationToken)
+                .ReadFromJsonAsync<List<LiveFlight>>(JsonOptions, cancellationToken)
                 .ConfigureAwait(false);
 
             if (flights is not null)
