@@ -198,7 +198,7 @@ public sealed class LiveMapCanvas : FrameworkElement
         var text = new FormattedText(
             $"{flight.Callsign}  FL{(int)(flight.Altitude / 100):000}",
             System.Globalization.CultureInfo.InvariantCulture,
-            FlowDirection.LeftToRight,
+            System.Windows.FlowDirection.LeftToRight,
             LabelTypeface,
             LabelFontSize,
             LabelBrush,
@@ -217,7 +217,7 @@ public sealed class LiveMapCanvas : FrameworkElement
         var text = new FormattedText(
             "No aircraft online — connect your API token in Settings to see live fleet positions",
             System.Globalization.CultureInfo.InvariantCulture,
-            FlowDirection.LeftToRight,
+            System.Windows.FlowDirection.LeftToRight,
             LabelTypeface,
             13,
             new SolidColorBrush(Color.FromRgb(0x3A, 0x50, 0x60)),
