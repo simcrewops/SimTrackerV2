@@ -22,6 +22,7 @@
     <ProjectReference Include="..\SimCrewOps.Runtime\SimCrewOps.Runtime.csproj" />
     <ProjectReference Include="..\SimCrewOps.Scoring\SimCrewOps.Scoring.csproj" />
     <ProjectReference Include="..\SimCrewOps.SimConnect\SimCrewOps.SimConnect.csproj" />
+    <ProjectReference Include="..\SimCrewOps.Sync\SimCrewOps.Sync.csproj" />
     <ProjectReference Include="..\SimCrewOps.Tracking\SimCrewOps.Tracking.csproj" />
   </ItemGroup>
 </Project>

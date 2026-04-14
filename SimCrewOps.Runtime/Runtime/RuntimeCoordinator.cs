@@ -54,6 +54,23 @@ public sealed class RuntimeCoordinator
         _livePositionUploader = uploader;
     }
 
+    /// <summary>
+    /// Updates the flight session context (departure, arrival, flight mode, etc.).
+    /// Only applies when no session is in progress — if blocks-off has already fired
+    /// the context is preserved to keep the current flight's data intact.
+    /// </summary>
+    public void UpdateContext(FlightSessionContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        // Don't overwrite context mid-flight — blocks-off already fired means
+        // the session is in progress and changing context would corrupt its records.
+        if (_blockTimes.BlocksOffUtc is null)
+        {
+            _context = context;
+        }
+    }
+
     public void Restore(FlightSessionRuntimeState state)
     {
         ArgumentNullException.ThrowIfNull(state);

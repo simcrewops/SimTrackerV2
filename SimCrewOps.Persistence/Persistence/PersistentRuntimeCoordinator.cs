@@ -59,6 +59,13 @@ public sealed class PersistentRuntimeCoordinator
     public void UpdateLivePositionUploader(ILivePositionUploader? uploader)
         => _runtimeCoordinator.UpdateLivePositionUploader(uploader);
 
+    /// <summary>
+    /// Updates the flight session context with data fetched from the web app
+    /// (departure/arrival ICAO, flight number, etc.). No-op if a flight is already in progress.
+    /// </summary>
+    public void UpdateContext(FlightSessionContext context)
+        => _runtimeCoordinator.UpdateContext(context);
+
     public void Restore(FlightSessionRuntimeState state)
     {
         ArgumentNullException.ThrowIfNull(state);

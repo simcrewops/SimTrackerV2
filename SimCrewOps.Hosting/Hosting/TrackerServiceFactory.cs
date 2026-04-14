@@ -60,6 +60,18 @@ public sealed class TrackerServiceFactory
                     TrackerVersion = settings.Api.TrackerVersion,
                 });
 
+        var activeFlightFetcher = string.IsNullOrWhiteSpace(settings.Api.PilotApiToken)
+            ? null
+            : new HttpActiveFlightFetcher(
+                _httpClientFactory(),
+                new SimCrewOpsApiUploaderOptions
+                {
+                    BaseUri = settings.Api.BaseUri,
+                    SimSessionsPath = settings.Api.SimSessionsPath,
+                    PilotApiToken = settings.Api.PilotApiToken!,
+                    TrackerVersion = settings.Api.TrackerVersion,
+                });
+
         if (!settings.BackgroundSync.Enabled || string.IsNullOrWhiteSpace(settings.Api.PilotApiToken))
         {
             return new TrackerServiceStack
@@ -67,6 +79,7 @@ public sealed class TrackerServiceFactory
                 Settings = settings,
                 FlightSessionStore = flightSessionStore,
                 LivePositionUploader = livePositionUploader,
+                ActiveFlightFetcher = activeFlightFetcher,
             };
         }
 
@@ -94,6 +107,7 @@ public sealed class TrackerServiceFactory
             CompletedSessionUploader = uploader,
             CompletedSessionSyncService = syncService,
             BackgroundSyncCoordinator = backgroundSyncCoordinator,
+            ActiveFlightFetcher = activeFlightFetcher,
         };
     }
 }

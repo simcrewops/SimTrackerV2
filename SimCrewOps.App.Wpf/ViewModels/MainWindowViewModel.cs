@@ -10,6 +10,7 @@ using SimCrewOps.App.Wpf.Views;
 using SimCrewOps.Runtime.Models;
 using SimCrewOps.Scoring.Models;
 using SimCrewOps.SimConnect.Models;
+using SimCrewOps.Sync.Models;
 using SimCrewOps.Tracking.Models;
 using Brush = System.Windows.Media.Brush;
 using MediaColor = System.Windows.Media.Color;
@@ -590,12 +591,12 @@ public sealed class MainWindowViewModel : ObservableObject
             : new SolidColorBrush(MediaColor.FromRgb(90, 106, 112));
 
         PhaseTitle = phase.ToString().ToUpperInvariant();
-        HeaderFlightText = BuildHeaderFlightText(activeState);
+        HeaderFlightText = BuildHeaderFlightText(activeState, snapshot.ActiveFlight);
         PhaseSubtitle = BuildPhaseSubtitle(phase);
         PhaseStatusLine = BuildPhaseStatusLine(telemetry, phase);
 
         CareerTier = BuildProfileDisplay(activeState);
-        BidDisplay = string.IsNullOrWhiteSpace(activeState?.Context.BidId) ? "Free Flight" : $"Bid #{activeState!.Context.BidId}";
+        BidDisplay = BuildBidDisplay(activeState, snapshot.ActiveFlight);
         ReputationDisplay = BuildModeDisplay(activeState);
 
         OutTime = FormatTime(activeState?.BlockTimes.BlocksOffUtc, "19:45");
@@ -898,21 +899,46 @@ public sealed class MainWindowViewModel : ObservableObject
         return $"VS {landing.TouchdownVerticalSpeedFpm:0}   G {landing.TouchdownGForce:0.00}   Bank {landing.TouchdownBankAngleDegrees:0.#}   Pitch {landing.TouchdownPitchAngleDegrees:0.#}   TZ Excess {landing.TouchdownZoneExcessDistanceFeet:0}";
     }
 
-    private static string BuildHeaderFlightText(FlightSessionRuntimeState? activeState)
+    private static string BuildHeaderFlightText(
+        FlightSessionRuntimeState? activeState,
+        ActiveFlightResponse? activeFlight = null)
     {
-        if (activeState is null)
+        // Active session in progress — use the live runtime context.
+        if (activeState is not null)
         {
-            return "Waiting for flight context • MSFS telemetry will populate here";
+            var departure = string.IsNullOrWhiteSpace(activeState.Context.DepartureAirportIcao)
+                ? "----"
+                : activeState.Context.DepartureAirportIcao!.ToUpperInvariant();
+            var arrival = string.IsNullOrWhiteSpace(activeState.Context.ArrivalAirportIcao)
+                ? "----"
+                : activeState.Context.ArrivalAirportIcao!.ToUpperInvariant();
+            return $"{departure} to {arrival} • {BuildModeDisplay(activeState)} • {BuildProfileDisplay(activeState)}";
         }
 
-        var departure = string.IsNullOrWhiteSpace(activeState.Context.DepartureAirportIcao)
-            ? "----"
-            : activeState.Context.DepartureAirportIcao!.ToUpperInvariant();
-        var arrival = string.IsNullOrWhiteSpace(activeState.Context.ArrivalAirportIcao)
-            ? "----"
-            : activeState.Context.ArrivalAirportIcao!.ToUpperInvariant();
+        // No active session yet — show the assignment loaded from the web app if available.
+        if (activeFlight is not null)
+        {
+            var dep = (activeFlight.Departure ?? "----").ToUpperInvariant();
+            var arr = (activeFlight.Arrival ?? "----").ToUpperInvariant();
+            var fn  = string.IsNullOrWhiteSpace(activeFlight.FlightNumber) ? "" : $" • {activeFlight.FlightNumber.ToUpperInvariant()}";
+            var ac  = string.IsNullOrWhiteSpace(activeFlight.AircraftType)  ? "" : $" • {activeFlight.AircraftType}";
+            return $"{dep} to {arr}{fn}{ac} • Career Mode";
+        }
 
-        return $"{departure} to {arrival} • {BuildModeDisplay(activeState)} • {BuildProfileDisplay(activeState)}";
+        return "Waiting for flight context • MSFS telemetry will populate here";
+    }
+
+    private static string BuildBidDisplay(
+        FlightSessionRuntimeState? activeState,
+        ActiveFlightResponse? activeFlight = null)
+    {
+        if (!string.IsNullOrWhiteSpace(activeState?.Context.BidId))
+            return $"Bid #{activeState!.Context.BidId}";
+
+        if (!string.IsNullOrWhiteSpace(activeFlight?.FlightNumber))
+            return activeFlight!.FlightNumber.ToUpperInvariant();
+
+        return "Free Flight";
     }
 
     private static string BuildProfileDisplay(FlightSessionRuntimeState? activeState)

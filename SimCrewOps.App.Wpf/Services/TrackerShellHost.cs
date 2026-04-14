@@ -11,6 +11,7 @@ using SimCrewOps.Runtime.Models;
 using SimCrewOps.Runtime.Runtime;
 using SimCrewOps.SimConnect.Models;
 using SimCrewOps.SimConnect.Services;
+using SimCrewOps.Sync.Models;
 using SimCrewOps.Tracking.Models;
 
 namespace SimCrewOps.App.Wpf.Services;
@@ -28,6 +29,11 @@ public sealed class TrackerShellHost : IAsyncDisposable
     private SessionRecoverySnapshot _recoverySnapshot = new();
     private SimConnectRawTelemetryFrame? _lastRawTelemetryFrame;
     private FlightSessionRuntimeState? _runtimeState;
+    private ActiveFlightResponse? _activeFlight;
+    private DateTimeOffset _activeFlightFetchedUtc = DateTimeOffset.MinValue;
+
+    // Refresh the active flight from the API every 5 minutes while the app is running.
+    private static readonly TimeSpan ActiveFlightRefreshInterval = TimeSpan.FromMinutes(5);
 
     public TrackerShellHost(
         ITrackerAppSettingsStore settingsStore,
@@ -81,12 +87,22 @@ public sealed class TrackerShellHost : IAsyncDisposable
         _recoverySnapshot = await _persistentRuntimeCoordinator
             .GetRecoverySnapshotAsync(cancellationToken)
             .ConfigureAwait(false);
+
+        // Fetch the pilot's next assigned flight from the web app to pre-populate
+        // departure/arrival ICAO and flight number in the tracker UI.
+        await RefreshActiveFlightAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public TrackerShellSnapshot GetSnapshot() => BuildSnapshot();
 
     public async Task<TrackerShellSnapshot> PollAsync(CancellationToken cancellationToken = default)
     {
+        // Refresh active flight info from the API every 5 minutes.
+        if (DateTimeOffset.UtcNow - _activeFlightFetchedUtc > ActiveFlightRefreshInterval)
+        {
+            await RefreshActiveFlightAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         var simConnectPoll = await _simConnectHost.PollAsync(cancellationToken).ConfigureAwait(false);
         if (simConnectPoll.HasTelemetry)
         {
@@ -101,6 +117,44 @@ public sealed class TrackerShellHost : IAsyncDisposable
         }
 
         return BuildSnapshot(simConnectPoll.Status);
+    }
+
+    /// <summary>
+    /// Fetches the pilot's next assigned flight from the API and pushes it into
+    /// the runtime coordinator as the current session context.
+    /// </summary>
+    private async Task RefreshActiveFlightAsync(CancellationToken cancellationToken = default)
+    {
+        if (_serviceStack.ActiveFlightFetcher is null)
+            return;
+
+        try
+        {
+            var flight = await _serviceStack.ActiveFlightFetcher
+                .FetchAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            _activeFlight = flight;
+            _activeFlightFetchedUtc = DateTimeOffset.UtcNow;
+
+            // Build a FlightSessionContext from the fetched data and push it into
+            // the runtime coordinator so departure/arrival ICAO are used for runway
+            // resolution and live position uploads.
+            var context = flight is not null
+                ? new FlightSessionContext
+                {
+                    DepartureAirportIcao = flight.Departure,
+                    ArrivalAirportIcao   = flight.Arrival,
+                    FlightMode           = "career",
+                }
+                : new FlightSessionContext();
+
+            _persistentRuntimeCoordinator.UpdateContext(context);
+        }
+        catch
+        {
+            // Swallow — active flight is optional; don't crash the tracker over it.
+        }
     }
 
     public async Task SaveSettingsAsync(TrackerAppSettings settings, CancellationToken cancellationToken = default)
@@ -209,5 +263,6 @@ public sealed class TrackerShellHost : IAsyncDisposable
             RuntimeState = _runtimeState,
             BackgroundSyncStatus = _serviceStack.BackgroundSyncCoordinator?.Status,
             LivePositionEnabled = !string.IsNullOrWhiteSpace(Settings.Api.PilotApiToken),
+            ActiveFlight = _activeFlight,
         };
 }
