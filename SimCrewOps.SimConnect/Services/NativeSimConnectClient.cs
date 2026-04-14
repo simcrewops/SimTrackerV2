@@ -417,37 +417,22 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
     private void UpdateOperational(OperationalSnapshot snapshot)
     {
-        // Prefer individual LIGHT_ bool SimVars (positions 12-15 in the struct) over the
-        // LIGHT STATES bitmask. The bitmask bits differ across MSFS builds/editions; the
-        // individual SimVars are a simple 0/1 and work reliably on MSFS 2024 Game Pass.
-        // Fall back to bitmask decode only if all four individual values are still zero
-        // (i.e. the SimVars failed to register and returned nothing useful).
+        // Always use the individual LIGHT_ bool SimVars directly.
+        // The LIGHT STATES bitmask is unreliable on MSFS 2024 Xbox Game Pass (always 0x0000).
+        // The fallback condition "use bitmask if all individual vars are zero" was wrong —
+        // it permanently locked lights to off whenever all lights were genuinely off, or
+        // when the first operational frame hadn't arrived yet (HasOperational still false).
         var rawBeacon  = snapshot.BeaconLightOn;
         var rawTaxi    = snapshot.TaxiLightsOn;
         var rawLanding = snapshot.LandingLightsOn;
         var rawStrobe  = snapshot.StrobesOn;
         var lightStates = snapshot.LightStates;
-        bool usedIndividual;
 
-        int beacon, taxi, landing, strobe;
-        if (rawBeacon != 0 || rawTaxi != 0 || rawLanding != 0 || rawStrobe != 0)
-        {
-            // At least one individual SimVar is live — use them.
-            beacon  = rawBeacon;
-            taxi    = rawTaxi;
-            landing = rawLanding;
-            strobe  = rawStrobe;
-            usedIndividual = true;
-        }
-        else
-        {
-            // Individual SimVars all zero — try decoding the LIGHT STATES bitmask as fallback.
-            beacon  = SimConnectLightStateDecoder.IsBeaconOn(lightStates)  ? 1 : 0;
-            taxi    = SimConnectLightStateDecoder.IsTaxiOn(lightStates)    ? 1 : 0;
-            landing = SimConnectLightStateDecoder.IsLandingOn(lightStates) ? 1 : 0;
-            strobe  = SimConnectLightStateDecoder.IsStrobeOn(lightStates)  ? 1 : 0;
-            usedIndividual = false;
-        }
+        var beacon  = rawBeacon;
+        var taxi    = rawTaxi;
+        var landing = rawLanding;
+        var strobe  = rawStrobe;
+        var usedIndividual = true;
 
         _latestState = _latestState with
         {
