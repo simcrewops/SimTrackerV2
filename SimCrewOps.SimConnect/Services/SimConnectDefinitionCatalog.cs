@@ -24,7 +24,7 @@ public static class SimConnectDefinitionCatalog
         Define("bank", "PLANE BANK DEGREES", "degrees", SimConnectUpdateRate.SimFrame),
         Define("pitch", "PLANE PITCH DEGREES", "degrees", SimConnectUpdateRate.SimFrame),
         Define("parking_brake", "PARKING BRAKE INDICATOR", "bool", SimConnectUpdateRate.SimFrame),
-        Define("on_ground", "SIM ON GROUND", "bool", SimConnectUpdateRate.SimFrame),
+        Define("on_ground", "GEAR IS ON GROUND:1", "bool", SimConnectUpdateRate.SimFrame),
         Define("crash_flag", "CRASH FLAG", "bool", SimConnectUpdateRate.SimFrame),
     ];
 
