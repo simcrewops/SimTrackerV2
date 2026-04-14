@@ -355,9 +355,17 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         {
             case SimConnectRecvId.Null:
                 break;
+            case SimConnectRecvId.Open:
+                System.Diagnostics.Debug.WriteLine("[SimConnect] SIMCONNECT_RECV_OPEN received — handshake complete, SimVars registered.");
+                break;
             case SimConnectRecvId.Exception:
                 var exception = Marshal.PtrToStructure<SimConnectRecvException>(dispatchPointer);
-                throw new InvalidOperationException($"SimConnect exception received: {exception.ExceptionCode}.");
+                // Non-fatal: log the exception and continue. A single bad SimVar name causes
+                // SIMCONNECT_EXCEPTION_UNIMPLEMENTED (13) or DATA_ERROR (7); throwing here would
+                // kill the entire session and suppress all data from the remaining valid vars.
+                System.Diagnostics.Debug.WriteLine(
+                    $"[SimConnect] SIMCONNECT_RECV_EXCEPTION code={exception.ExceptionCode} sendId={exception.SendId} index={exception.Index}");
+                break;
             case SimConnectRecvId.Quit:
                 throw new InvalidOperationException("Microsoft Flight Simulator closed the SimConnect session.");
             case SimConnectRecvId.SimObjectData:
