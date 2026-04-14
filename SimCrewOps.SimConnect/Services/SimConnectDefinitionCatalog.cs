@@ -15,7 +15,7 @@ public static class SimConnectDefinitionCatalog
     [
         Define("latitude", "PLANE LATITUDE", "degrees", SimConnectUpdateRate.SimFrame),
         Define("longitude", "PLANE LONGITUDE", "degrees", SimConnectUpdateRate.SimFrame),
-        Define("agl", "PLANE ALT ABOVE GROUND", "feet", SimConnectUpdateRate.SimFrame),
+        Define("agl", "PLANE ALT ABOVE GROUND LEVEL", "feet", SimConnectUpdateRate.SimFrame),
         Define("altitude", "PLANE ALTITUDE", "feet", SimConnectUpdateRate.SimFrame),
         Define("indicated_altitude", "INDICATED ALTITUDE", "feet", SimConnectUpdateRate.SimFrame),
         Define("ias", "AIRSPEED INDICATED", "knots", SimConnectUpdateRate.SimFrame),
@@ -23,7 +23,7 @@ public static class SimConnectDefinitionCatalog
         Define("vertical_speed", "VERTICAL SPEED", "feet per minute", SimConnectUpdateRate.SimFrame),
         Define("bank", "PLANE BANK DEGREES", "degrees", SimConnectUpdateRate.SimFrame),
         Define("pitch", "PLANE PITCH DEGREES", "degrees", SimConnectUpdateRate.SimFrame),
-        Define("parking_brake", "BRAKE PARKING POSITION", "bool", SimConnectUpdateRate.SimFrame),
+        Define("parking_brake", "PARKING BRAKE INDICATOR", "bool", SimConnectUpdateRate.SimFrame),
         Define("on_ground", "SIM ON GROUND", "bool", SimConnectUpdateRate.SimFrame),
         Define("crash_flag", "CRASH FLAG", "bool", SimConnectUpdateRate.SimFrame),
     ];
