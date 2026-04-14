@@ -26,7 +26,7 @@ public sealed record SimConnectRawTelemetryFrame
     public double OnGround { get; init; }
     public double CrashFlag { get; init; }
     public double FlapsHandleIndex { get; init; }
-    public double GearPosition { get; init; }
+    public double GearPosition { get; init; }   // GEAR HANDLE POSITION: 0.0 = up, 1.0 = down
 
     // Final decoded light values (individual SimVar preferred; bitmask fallback)
     public double BeaconLightOn { get; init; }

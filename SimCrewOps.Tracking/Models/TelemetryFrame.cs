@@ -26,8 +26,9 @@ public sealed record TelemetryFrame
     public bool OnGround { get; init; }
     public bool ParkingBrakeSet { get; init; }
     public bool GearDown { get; init; }
-    // Raw position: 0.0 = up/locked, 1.0 = down/locked, values in between = in transit.
-    // Used for tri-state gear LED (dim / amber / green).
+    // Gear handle position: 0.0 = handle up, 1.0 = handle down.
+    // Source is GEAR HANDLE POSITION (non-indexed bool SimVar).
+    // Used for gear LED: dim = up, green = down.
     public double GearPosition { get; init; }
     public int FlapsHandleIndex { get; init; }
 

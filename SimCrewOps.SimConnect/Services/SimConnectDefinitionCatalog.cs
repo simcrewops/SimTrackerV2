@@ -40,7 +40,11 @@ public static class SimConnectDefinitionCatalog
         Define("mach", "AIRSPEED MACH", "mach", SimConnectUpdateRate.Second),
         Define("g_force", "G FORCE", "gforce", SimConnectUpdateRate.Second),
         Define("flaps_index", "FLAPS HANDLE INDEX", "number", SimConnectUpdateRate.Second, SimConnectValueType.Int32),
-        Define("gear_position", "GEAR POSITION:1", "percent", SimConnectUpdateRate.Second),
+        // GEAR POSITION:1 was an indexed SimVar that threw SIMCONNECT_EXCEPTION_UNIMPLEMENTED on
+        // MSFS 2024 XGP, silently shifting every subsequent field in the operational struct by one
+        // slot (GearPosition read engine combustion = 1.0, lights read wrong fields).
+        // GEAR HANDLE POSITION is non-indexed, universally supported, and returns 0 (up) or 1 (down).
+        Define("gear_position", "GEAR HANDLE POSITION", "bool", SimConnectUpdateRate.Second),
         Define("engine1", "ENG COMBUSTION:1", "bool", SimConnectUpdateRate.Second),
         Define("engine2", "ENG COMBUSTION:2", "bool", SimConnectUpdateRate.Second),
         Define("engine3", "ENG COMBUSTION:3", "bool", SimConnectUpdateRate.Second, requiredForScoring: false),

@@ -961,6 +961,7 @@ public sealed class MainWindowViewModel : ObservableObject
         var lightSource = rawFrame.LightSourceIsIndividual ? "individual SimVars" : "LIGHT STATES bitmask fallback";
         return
             $"HDG MAG {rawFrame.HeadingMagneticDegrees:0.##} • HDG TRUE {rawFrame.HeadingTrueDegrees:0.##} • AGL {rawFrame.AltitudeAglFeet:0.##} • ALT {rawFrame.AltitudeFeet:0.##} • ON GND {rawFrame.OnGround:0} • PB {rawFrame.ParkingBrakePosition:0}\n" +
+            $"GEAR HANDLE raw={rawFrame.GearPosition:0.000}  (0.000=up  1.000=down)  FLAPS idx={rawFrame.FlapsHandleIndex:0}\n" +
             $"LIGHT source: {lightSource}\n" +
             $"  individual  => BCN {rawFrame.LightBeaconRaw} • TAXI {rawFrame.LightTaxiRaw} • LDG {rawFrame.LightLandingRaw} • STB {rawFrame.LightStrobeRaw}\n" +
             $"  bitmask raw => 0x{rawFrame.LightStatesRaw:X4}  (BCN=0x0002 LAND=0x0004 TAXI=0x0008 STB=0x0010)\n" +
@@ -1014,13 +1015,12 @@ public sealed class MainWindowViewModel : ObservableObject
         LedStrobeBrush = LedOnBrush(telemetry.StrobesOn);
         LedLandingBrush = LedOnBrush(telemetry.LandingLightsOn);
         LedTaxiBrush = LedOnBrush(telemetry.TaxiLightsOn);
-        // Tri-state gear LED: green = down+locked (>90%), amber = in transit (10–90%), dim = up+locked (<10%).
-        // Both amber-when-up and green-when-down was confusing — dim clearly means "gear is up and stowed."
-        LedGearBrush = telemetry.GearPosition > 0.9
-            ? new SolidColorBrush(MediaColor.FromRgb(98, 245, 176))     // green: down and locked
-            : telemetry.GearPosition > 0.1
-                ? new SolidColorBrush(MediaColor.FromRgb(243, 169, 106)) // amber: in transit
-                : LedDimBrush();                                          // dim: up and locked
+        // Gear LED: green = handle down (≥ 0.5), dim = handle up (< 0.5).
+        // Source is GEAR HANDLE POSITION (bool 0/1), so no true in-transit state.
+        // Dim clearly means "gear is stowed" — previously both states were lit which was confusing.
+        LedGearBrush = telemetry.GearPosition >= 0.5
+            ? new SolidColorBrush(MediaColor.FromRgb(98, 245, 176)) // green: handle down
+            : LedDimBrush();                                         // dim: handle up
         FlapsLabel = $"F{telemetry.FlapsHandleIndex}";
         LedEng1Brush = telemetry.Engine1Running
             ? new SolidColorBrush(MediaColor.FromRgb(98, 245, 176))
