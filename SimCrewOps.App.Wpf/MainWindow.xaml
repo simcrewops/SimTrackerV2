@@ -52,8 +52,7 @@
                 <TextBlock Text="SIMCREWOPS"
                            Foreground="#c9d1d9"
                            FontSize="13"
-                           FontWeight="Bold"
-                           LetterSpacing="0.5" />
+                           FontWeight="Bold" />
                 <TextBlock Text="TrackerV2"
                            Foreground="{StaticResource TextSubtleBrush}"
                            FontSize="11"

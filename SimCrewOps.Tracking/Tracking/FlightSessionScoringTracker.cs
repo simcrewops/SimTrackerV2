@@ -255,7 +255,8 @@ public sealed class FlightSessionScoringTracker
             {
                 MaxGroundSpeedKnots = _taxiOutMaxGroundSpeed,
                 ExcessiveTurnSpeedEvents = _taxiOutTurnSpeedEvents,
-                TaxiLightsOn = _taxiOutSeen && _taxiOutTaxiLightsValid,
+                // Pass if the phase hasn't been seen yet — only penalise once we enter it.
+                TaxiLightsOn = !_taxiOutSeen || _taxiOutTaxiLightsValid,
             },
             Takeoff = new TakeoffMetrics
             {
@@ -264,9 +265,10 @@ public sealed class FlightSessionScoringTracker
                 MaxBankAngleDegrees = _takeoffMaxBank,
                 MaxPitchAngleDegrees = _takeoffMaxPitch,
                 MaxGForce = _takeoffMaxG,
-                LandingLightsOnBeforeTakeoff = _takeoffSeen && _takeoffLandingLightsOnBeforeTakeoff,
-                LandingLightsOffByFl180 = _takeoffSeen && _takeoffLandingLightsOffByFl180,
-                StrobesOnFromTakeoffToLanding = _takeoffSeen && _takeoffStrobesOnFromTakeoffToLanding,
+                // Pass if the phase hasn't been seen yet — only penalise once we enter it.
+                LandingLightsOnBeforeTakeoff = !_takeoffSeen || _takeoffLandingLightsOnBeforeTakeoff,
+                LandingLightsOffByFl180 = !_takeoffSeen || _takeoffLandingLightsOffByFl180,
+                StrobesOnFromTakeoffToLanding = !_takeoffSeen || _takeoffStrobesOnFromTakeoffToLanding,
             },
             Climb = new ClimbMetrics
             {
@@ -289,16 +291,20 @@ public sealed class FlightSessionScoringTracker
                 MaxBankAngleDegrees = _descentMaxBank,
                 MaxPitchAngleDegrees = _descentMaxPitch,
                 MaxGForce = _descentMaxG,
-                LandingLightsOnByFl180 = _descentSeen && _descentLandingLightsOnByFl180,
+                // Pass if descent hasn't been seen yet — only penalise once we enter it.
+                LandingLightsOnByFl180 = !_descentSeen || _descentLandingLightsOnByFl180,
             },
             Approach = new ApproachMetrics
             {
-                GearDownBy1000Agl = _capturedApproach1000Agl && _gearDownBy1000Agl,
-                FlapsHandleIndexAt500Agl = _approachFlapsAt500Agl,
+                // Pass gear/flaps checks if the capture snapshot hasn't fired yet —
+                // only penalise once the aircraft actually passes through those altitudes.
+                GearDownBy1000Agl = !_capturedApproach1000Agl || _gearDownBy1000Agl,
+                // Default flaps to 2 (passing) until the 500ft snapshot is captured.
+                FlapsHandleIndexAt500Agl = _capturedApproach500Agl ? _approachFlapsAt500Agl : 2,
                 VerticalSpeedAt500AglFpm = _approachVsAt500Agl,
                 BankAngleAt500AglDegrees = _approachBankAt500Agl,
                 PitchAngleAt500AglDegrees = _approachPitchAt500Agl,
-                GearDownAt500Agl = _capturedApproach500Agl && _approachGearDownAt500Agl,
+                GearDownAt500Agl = !_capturedApproach500Agl || _approachGearDownAt500Agl,
             },
             Landing = new LandingMetrics
             {
@@ -312,17 +318,19 @@ public sealed class FlightSessionScoringTracker
             },
             TaxiIn = new TaxiInMetrics
             {
-                LandingLightsOff = _taxiInSeen && _taxiInLandingLightsOff,
-                StrobesOff = _taxiInSeen && _taxiInStrobesOff,
+                // Pass if the phase hasn't been seen yet — only penalise once we enter it.
+                LandingLightsOff = !_taxiInSeen || _taxiInLandingLightsOff,
+                StrobesOff = !_taxiInSeen || _taxiInStrobesOff,
                 MaxGroundSpeedKnots = _taxiInMaxGroundSpeed,
                 ExcessiveTurnSpeedEvents = _taxiInTurnSpeedEvents,
-                TaxiLightsOn = _taxiInSeen && _taxiInTaxiLightsValid,
+                TaxiLightsOn = !_taxiInSeen || _taxiInTaxiLightsValid,
             },
             Arrival = new ArrivalMetrics
             {
-                TaxiLightsOffBeforeParkingBrakeSet = _arrivalSeen && _arrivalParkingBrakeObserved && _arrivalTaxiLightsOffBeforeParkingBrakeSet,
-                ParkingBrakeSetBeforeAllEnginesShutdown = _arrivalSeen && _arrivalParkingBrakeObserved && _arrivalParkingBrakeSetBeforeAllEnginesShutdown,
-                AllEnginesOffByEndOfSession = _arrivalSeen && _arrivalAllEnginesOffByEndOfSession,
+                // Pass if the phase hasn't been seen yet — only penalise once we enter it.
+                TaxiLightsOffBeforeParkingBrakeSet = !_arrivalSeen || (_arrivalParkingBrakeObserved && _arrivalTaxiLightsOffBeforeParkingBrakeSet),
+                ParkingBrakeSetBeforeAllEnginesShutdown = !_arrivalSeen || (_arrivalParkingBrakeObserved && _arrivalParkingBrakeSetBeforeAllEnginesShutdown),
+                AllEnginesOffByEndOfSession = !_arrivalSeen || _arrivalAllEnginesOffByEndOfSession,
             },
             Safety = new SafetyMetrics
             {
