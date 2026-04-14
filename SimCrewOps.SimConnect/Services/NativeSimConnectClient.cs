@@ -403,18 +403,17 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
     private void UpdateFlightCritical(FlightCriticalSnapshot snapshot)
     {
-        // OnGround is computed from AGL + VS rather than read from a SimVar.
-        // "SIM ON GROUND" returns 0 on MSFS 2024 Xbox Game Pass; indexed gear SimVars
-        // ("GEAR IS ON GROUND:1") cause exceptions that stop the entire data group.
-        //
-        // AGL alone is not enough — on a normal ILS approach the aircraft passes through
-        // 30 ft at ~600-900 fpm descent, which would falsely trigger OnGround mid-flare.
-        // Combining AGL < 30 ft WITH VS > -500 fpm correctly distinguishes:
-        //   • On the ground (taxiing / landing roll): AGL 3-15 ft, VS ≈ 0         → true
-        //   • Final approach through 30 ft: AGL < 30, but VS ≈ -700 fpm           → false
-        //   • After touchdown flare: AGL → 0, VS quickly rises above -500 fpm     → true
-        //   • Cruise / climb / descent: AGL is thousands of feet                  → false
-        var onGround = snapshot.AltitudeAglFeet < 30.0 && snapshot.VerticalSpeedFpm > -500.0 ? 1 : 0;
+        // Primary: SIM ON GROUND SimVar — now reliable because we request it as Float64.
+        // The previous Int32 mixed-type struct had alignment issues that made it always read 0.
+        // Fallback: AGL + VS heuristic for any MSFS build where the SimVar is still broken:
+        //   AGL < 30 ft AND VS > -500 fpm distinguishes ground from approach:
+        //   • Taxiing / landing roll: AGL 3-15 ft, VS ≈ 0          → true
+        //   • ILS approach at 30 ft: VS ≈ -700 fpm                 → false
+        //   • Post-touchdown: AGL → 0, VS recovers above -500       → true
+        //   • Cruise / climb: AGL is thousands of feet              → false
+        var onGroundSimVar = snapshot.OnGround >= 0.5;
+        var onGroundHeuristic = snapshot.AltitudeAglFeet < 30.0 && snapshot.VerticalSpeedFpm > -500.0;
+        var onGround = onGroundSimVar || onGroundHeuristic ? 1 : 0;
 
         _latestState = _latestState with
         {
@@ -444,6 +443,8 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         // The fallback condition "use bitmask if all individual vars are zero" was wrong —
         // it permanently locked lights to off whenever all lights were genuinely off, or
         // when the first operational frame hadn't arrived yet (HasOperational still false).
+        // All snapshot fields are now double (uniform Float64 struct).
+        // Cast to int only for the diagnostic Raw fields that store bitmask/bool as int.
         var rawBeacon  = snapshot.BeaconLightOn;
         var rawTaxi    = snapshot.TaxiLightsOn;
         var rawLanding = snapshot.LandingLightsOn;
@@ -474,11 +475,11 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             TaxiLightsOn   = taxi,
             LandingLightsOn = landing,
             StrobesOn      = strobe,
-            LightStatesRaw = lightStates,
-            LightBeaconRaw = rawBeacon,
-            LightTaxiRaw   = rawTaxi,
-            LightLandingRaw = rawLanding,
-            LightStrobeRaw = rawStrobe,
+            LightStatesRaw = (int)lightStates,
+            LightBeaconRaw = (int)rawBeacon,
+            LightTaxiRaw   = (int)rawTaxi,
+            LightLandingRaw = (int)rawLanding,
+            LightStrobeRaw = (int)rawStrobe,
             LightSourceIsIndividual = usedIndividual,
             StallWarning = snapshot.StallWarning,
             GpwsAlert = snapshot.GpwsAlert,
@@ -541,12 +542,13 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     }
 
     internal static SimConnectDataType NormalizeValueType(SimConnectVariableDefinition definition) =>
-        definition.ValueType switch
-        {
-            SimConnectValueType.Int32 => SimConnectDataType.Int32,
-            _ when string.Equals(definition.Unit, "bool", StringComparison.OrdinalIgnoreCase) => SimConnectDataType.Int32,
-            _ => SimConnectDataType.Float64,
-        };
+        // Always request Float64 regardless of logical type.
+        // Mixed Int32/Float64 definitions cause struct alignment problems on the native
+        // SimConnect DLL — some MSFS builds pad Int32 fields to 8 bytes in the data packet,
+        // shifting all subsequent fields and causing bool SimVars to read wrong (always 0).
+        // Float64 structs are uniform in size and have no alignment ambiguity.
+        // Values ≤ 2^53 (covers all bool/int fields we use) are exactly representable.
+        SimConnectDataType.Float64;
 
     private static string? NormalizeUnit(string? unit) => unit switch
     {
@@ -578,6 +580,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         }
     }
 
+    // All fields are double — uniform 8-byte layout, no mixed-type alignment issues.
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private readonly struct FlightCriticalSnapshot
     {
@@ -591,11 +594,12 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly double VerticalSpeedFpm;
         public readonly double BankAngleDegrees;
         public readonly double PitchAngleDegrees;
-        public readonly int ParkingBrakePosition;
-        // OnGround is computed from AltitudeAglFeet in EnqueueFrame — no SimVar field here.
-        public readonly int CrashFlag;
+        public readonly double ParkingBrakePosition;  // bool SimVar → 0.0 or 1.0
+        public readonly double OnGround;              // SIM ON GROUND → 0.0 or 1.0
+        public readonly double CrashFlag;             // bool SimVar → 0.0 or 1.0
     }
 
+    // All fields are double — uniform 8-byte layout, no mixed-type alignment issues.
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private readonly struct OperationalSnapshot
     {
@@ -604,20 +608,20 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly double TrueAirspeedKnots;
         public readonly double Mach;
         public readonly double GForce;
-        public readonly int FlapsHandleIndex;
+        public readonly double FlapsHandleIndex;  // int SimVar → exact double (values 0-8)
         public readonly double GearPosition;
-        public readonly int Engine1Running;
-        public readonly int Engine2Running;
-        public readonly int Engine3Running;
-        public readonly int Engine4Running;
-        public readonly int BeaconLightOn;
-        public readonly int TaxiLightsOn;
-        public readonly int LandingLightsOn;
-        public readonly int StrobesOn;
-        public readonly int LightStates;
-        public readonly int StallWarning;
-        public readonly int GpwsAlert;
-        public readonly int OverspeedWarning;
+        public readonly double Engine1Running;    // bool SimVar → 0.0 or 1.0
+        public readonly double Engine2Running;
+        public readonly double Engine3Running;
+        public readonly double Engine4Running;
+        public readonly double BeaconLightOn;
+        public readonly double TaxiLightsOn;
+        public readonly double LandingLightsOn;
+        public readonly double StrobesOn;
+        public readonly double LightStates;       // int bitmask → exact double (32-bit mask, ≤ 2^53)
+        public readonly double StallWarning;
+        public readonly double GpwsAlert;
+        public readonly double OverspeedWarning;
     }
 
     [StructLayout(LayoutKind.Sequential)]

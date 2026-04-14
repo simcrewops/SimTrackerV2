@@ -24,11 +24,11 @@ public static class SimConnectDefinitionCatalog
         Define("bank", "PLANE BANK DEGREES", "degrees", SimConnectUpdateRate.SimFrame),
         Define("pitch", "PLANE PITCH DEGREES", "degrees", SimConnectUpdateRate.SimFrame),
         Define("parking_brake", "PARKING BRAKE INDICATOR", "bool", SimConnectUpdateRate.SimFrame),
-        // NOTE: on_ground is intentionally NOT read from a SimVar — "SIM ON GROUND" returns 0
-        // on MSFS 2024 Xbox Game Pass, and indexed SimVars like "GEAR IS ON GROUND:1" cause
-        // SIMCONNECT_EXCEPTION_UNIMPLEMENTED on some builds which can silently stop the entire
-        // definition group from delivering further data.  OnGround is instead computed in the
-        // telemetry mapper from PLANE ALT ABOVE GROUND, which is already present in this group.
+        // SIM ON GROUND is requested as Float64 (all SimVars use uniform Float64 now).
+        // The earlier mixed Int32/Float64 struct had alignment issues that caused it to
+        // always read 0. If the SimVar is still broken on a given MSFS build, the
+        // AGL + VS heuristic in UpdateFlightCritical acts as a fallback.
+        Define("on_ground", "SIM ON GROUND", "bool", SimConnectUpdateRate.SimFrame),
         Define("crash_flag", "CRASH FLAG", "bool", SimConnectUpdateRate.SimFrame),
     ];
 

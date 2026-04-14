@@ -25,8 +25,11 @@ public sealed class NativeSimConnectClientTests
     }
 
     [Fact]
-    public void NormalizeValueType_UsesInt32ForBoolAndMaskDefinitions()
+    public void NormalizeValueType_AlwaysUsesFloat64()
     {
+        // All SimVars are now requested as Float64 to avoid mixed-type alignment issues
+        // on the native SimConnect DLL (Int32 fields in a mixed struct can be silently
+        // padded to 8 bytes on some MSFS builds, shifting all subsequent field reads).
         var boolDefinition = new SimConnectVariableDefinition
         {
             Key = "landing_light",
@@ -47,8 +50,8 @@ public sealed class NativeSimConnectClientTests
             RequiredForScoring = true,
         };
 
-        Assert.Equal(SimConnectDataType.Int32, NativeSimConnectBridge.NormalizeValueType(boolDefinition));
-        Assert.Equal(SimConnectDataType.Int32, NativeSimConnectBridge.NormalizeValueType(maskDefinition));
+        Assert.Equal(SimConnectDataType.Float64, NativeSimConnectBridge.NormalizeValueType(boolDefinition));
+        Assert.Equal(SimConnectDataType.Float64, NativeSimConnectBridge.NormalizeValueType(maskDefinition));
     }
 
     [Fact]
