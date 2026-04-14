@@ -438,23 +438,33 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
     private void UpdateOperational(OperationalSnapshot snapshot)
     {
-        // Always use the individual LIGHT_ bool SimVars directly.
-        // The LIGHT STATES bitmask is unreliable on MSFS 2024 Xbox Game Pass (always 0x0000).
-        // The fallback condition "use bitmask if all individual vars are zero" was wrong —
-        // it permanently locked lights to off whenever all lights were genuinely off, or
-        // when the first operational frame hadn't arrived yet (HasOperational still false).
-        // All snapshot fields are now double (uniform Float64 struct).
-        // Cast to int only for the diagnostic Raw fields that store bitmask/bool as int.
+        // Primary source: individual LIGHT_ bool SimVars (one per channel).
+        // Supplementary source: LIGHT STATES bitmask OR'd in per-bit.
+        //
+        // History:
+        //   • The old "use bitmask if all individual vars are zero" fallback was removed because
+        //     LIGHT STATES was always 0x0000 on MSFS 2024 XGP (the SimVar was registered as Int32
+        //     in a mixed Int32/Float64 struct, which caused struct alignment padding to corrupt it).
+        //   • With the all-Float64 struct fix, LIGHT STATES is now requested as Float64 and returns
+        //     the correct integer bitmask cast to a double (e.g. 0x000A → 10.0). It is now safe to
+        //     OR the bitmask bits in: if either source says a light is on, it is on.
+        //   • This matters for LIGHT TAXI: some MSFS 2024 builds return 0 for the individual
+        //     LIGHT TAXI SimVar even when the taxi light is on. The bitmask bit 0x0008 fills the gap.
+        //
+        // All snapshot fields are double (uniform Float64 struct).
+        // Cast to int only for the diagnostic Raw fields.
         var rawBeacon  = snapshot.BeaconLightOn;
         var rawTaxi    = snapshot.TaxiLightsOn;
         var rawLanding = snapshot.LandingLightsOn;
         var rawStrobe  = snapshot.StrobesOn;
         var lightStates = snapshot.LightStates;
+        var bitmaskInt  = (int)lightStates;
 
-        var beacon  = rawBeacon;
-        var taxi    = rawTaxi;
-        var landing = rawLanding;
-        var strobe  = rawStrobe;
+        // OR individual SimVar with corresponding bitmask bit — whichever source is authoritative wins.
+        var beacon  = rawBeacon  >= 0.5 || SimConnectLightStateDecoder.IsBeaconOn(bitmaskInt)  ? 1.0 : 0.0;
+        var taxi    = rawTaxi    >= 0.5 || SimConnectLightStateDecoder.IsTaxiOn(bitmaskInt)    ? 1.0 : 0.0;
+        var landing = rawLanding >= 0.5 || SimConnectLightStateDecoder.IsLandingOn(bitmaskInt) ? 1.0 : 0.0;
+        var strobe  = rawStrobe  >= 0.5 || SimConnectLightStateDecoder.IsStrobeOn(bitmaskInt)  ? 1.0 : 0.0;
         var usedIndividual = true;
 
         _latestState = _latestState with
@@ -475,7 +485,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             TaxiLightsOn   = taxi,
             LandingLightsOn = landing,
             StrobesOn      = strobe,
-            LightStatesRaw = (int)lightStates,
+            LightStatesRaw = bitmaskInt,
             LightBeaconRaw = (int)rawBeacon,
             LightTaxiRaw   = (int)rawTaxi,
             LightLandingRaw = (int)rawLanding,

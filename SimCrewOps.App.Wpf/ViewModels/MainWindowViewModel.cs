@@ -1014,9 +1014,13 @@ public sealed class MainWindowViewModel : ObservableObject
         LedStrobeBrush = LedOnBrush(telemetry.StrobesOn);
         LedLandingBrush = LedOnBrush(telemetry.LandingLightsOn);
         LedTaxiBrush = LedOnBrush(telemetry.TaxiLightsOn);
-        LedGearBrush = telemetry.GearDown
-            ? new SolidColorBrush(MediaColor.FromRgb(98, 245, 176))
-            : new SolidColorBrush(MediaColor.FromRgb(243, 169, 106));
+        // Tri-state gear LED: green = down+locked (>90%), amber = in transit (10–90%), dim = up+locked (<10%).
+        // Both amber-when-up and green-when-down was confusing — dim clearly means "gear is up and stowed."
+        LedGearBrush = telemetry.GearPosition > 0.9
+            ? new SolidColorBrush(MediaColor.FromRgb(98, 245, 176))     // green: down and locked
+            : telemetry.GearPosition > 0.1
+                ? new SolidColorBrush(MediaColor.FromRgb(243, 169, 106)) // amber: in transit
+                : LedDimBrush();                                          // dim: up and locked
         FlapsLabel = $"F{telemetry.FlapsHandleIndex}";
         LedEng1Brush = telemetry.Engine1Running
             ? new SolidColorBrush(MediaColor.FromRgb(98, 245, 176))

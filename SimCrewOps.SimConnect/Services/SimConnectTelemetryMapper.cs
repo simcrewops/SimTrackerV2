@@ -32,6 +32,7 @@ public sealed class SimConnectTelemetryMapper
             OnGround = ToBool(rawFrame.OnGround),
             ParkingBrakeSet = ToBool(rawFrame.ParkingBrakePosition),
             GearDown = rawFrame.GearPosition >= 0.5,
+            GearPosition = rawFrame.GearPosition,
             FlapsHandleIndex = (int)Math.Round(rawFrame.FlapsHandleIndex, MidpointRounding.AwayFromZero),
             BeaconLightOn = ToBool(rawFrame.BeaconLightOn),
             TaxiLightsOn = ToBool(rawFrame.TaxiLightsOn),
