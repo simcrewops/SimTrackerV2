@@ -327,6 +327,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             Latitude = snapshot.Latitude,
             Longitude = snapshot.Longitude,
             AltitudeAglFeet = snapshot.AltitudeAglFeet,
+            AltitudeFeet = snapshot.AltitudeFeet,
             IndicatedAltitudeFeet = snapshot.IndicatedAltitudeFeet,
             IndicatedAirspeedKnots = snapshot.IndicatedAirspeedKnots,
             GroundSpeedKnots = snapshot.GroundSpeedKnots,
@@ -345,6 +346,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
     {
         _latestState = _latestState with
         {
+            HeadingMagneticDegrees = snapshot.HeadingMagneticDegrees,
             TrueAirspeedKnots = snapshot.TrueAirspeedKnots,
             HeadingTrueDegrees = snapshot.HeadingTrueDegrees,
             Mach = snapshot.Mach,
@@ -380,6 +382,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             Latitude = _latestState.Latitude,
             Longitude = _latestState.Longitude,
             AltitudeAglFeet = _latestState.AltitudeAglFeet,
+            AltitudeFeet = _latestState.AltitudeFeet,
             IndicatedAltitudeFeet = _latestState.IndicatedAltitudeFeet,
             IndicatedAirspeedKnots = _latestState.IndicatedAirspeedKnots,
             TrueAirspeedKnots = _latestState.TrueAirspeedKnots,
@@ -388,6 +391,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             VerticalSpeedFpm = _latestState.VerticalSpeedFpm,
             BankAngleDegrees = _latestState.BankAngleDegrees,
             PitchAngleDegrees = _latestState.PitchAngleDegrees,
+            HeadingMagneticDegrees = _latestState.HeadingMagneticDegrees,
             HeadingTrueDegrees = _latestState.HeadingTrueDegrees,
             GForce = _latestState.GForce,
             ParkingBrakePosition = _latestState.ParkingBrakePosition,
@@ -509,6 +513,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         public readonly double Latitude;
         public readonly double Longitude;
         public readonly double AltitudeAglFeet;
+        public readonly double AltitudeFeet;
         public readonly double IndicatedAltitudeFeet;
         public readonly double IndicatedAirspeedKnots;
         public readonly double GroundSpeedKnots;
@@ -523,6 +528,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private readonly struct OperationalSnapshot
     {
+        public readonly double HeadingMagneticDegrees;
         public readonly double HeadingTrueDegrees;
         public readonly double TrueAirspeedKnots;
         public readonly double Mach;
@@ -548,6 +554,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         public double Latitude { get; init; }
         public double Longitude { get; init; }
         public double AltitudeAglFeet { get; init; }
+        public double AltitudeFeet { get; init; }
         public double IndicatedAltitudeFeet { get; init; }
         public double IndicatedAirspeedKnots { get; init; }
         public double TrueAirspeedKnots { get; init; }
@@ -556,6 +563,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         public double VerticalSpeedFpm { get; init; }
         public double BankAngleDegrees { get; init; }
         public double PitchAngleDegrees { get; init; }
+        public double HeadingMagneticDegrees { get; init; }
         public double HeadingTrueDegrees { get; init; }
         public double GForce { get; init; }
         public double ParkingBrakePosition { get; init; }

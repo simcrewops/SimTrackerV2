@@ -45,7 +45,8 @@ public sealed class TrackerShellHost : IAsyncDisposable
         var runwayDataProvider = CreateRunwayDataProvider(settingsFilePath);
         var runtimeCoordinator = new RuntimeCoordinator(
             new FlightSessionContext(),
-            new RunwayResolver(runwayDataProvider));
+            new RunwayResolver(runwayDataProvider),
+            livePositionUploader: serviceStack.LivePositionUploader);
         _persistentRuntimeCoordinator = new PersistentRuntimeCoordinator(
             runtimeCoordinator,
             serviceStack.FlightSessionStore);

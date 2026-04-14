@@ -8,6 +8,7 @@ public sealed record TrackerServiceStack
 {
     public required TrackerAppSettings Settings { get; init; }
     public required IFlightSessionStore FlightSessionStore { get; init; }
+    public ILivePositionUploader? LivePositionUploader { get; init; }
     public ICompletedSessionUploader? CompletedSessionUploader { get; init; }
     public ICompletedSessionSyncService? CompletedSessionSyncService { get; init; }
     public BackgroundSyncCoordinator? BackgroundSyncCoordinator { get; init; }

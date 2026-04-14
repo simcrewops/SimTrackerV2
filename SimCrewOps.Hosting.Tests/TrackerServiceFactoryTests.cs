@@ -16,6 +16,7 @@ public sealed class TrackerServiceFactoryTests
         var stack = factory.Create(settings);
 
         Assert.NotNull(stack.FlightSessionStore);
+        Assert.NotNull(stack.LivePositionUploader);
         Assert.NotNull(stack.CompletedSessionUploader);
         Assert.NotNull(stack.CompletedSessionSyncService);
         Assert.NotNull(stack.BackgroundSyncCoordinator);
@@ -31,6 +32,7 @@ public sealed class TrackerServiceFactoryTests
         var stack = factory.Create(settings);
 
         Assert.NotNull(stack.FlightSessionStore);
+        Assert.Null(stack.LivePositionUploader);
         Assert.Null(stack.CompletedSessionUploader);
         Assert.Null(stack.CompletedSessionSyncService);
         Assert.Null(stack.BackgroundSyncCoordinator);
@@ -46,6 +48,7 @@ public sealed class TrackerServiceFactoryTests
         var stack = factory.Create(settings);
 
         Assert.NotNull(stack.FlightSessionStore);
+        Assert.NotNull(stack.LivePositionUploader);
         Assert.Null(stack.CompletedSessionUploader);
         Assert.Null(stack.CompletedSessionSyncService);
         Assert.Null(stack.BackgroundSyncCoordinator);

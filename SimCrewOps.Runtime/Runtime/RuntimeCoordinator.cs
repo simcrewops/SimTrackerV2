@@ -1,9 +1,12 @@
+using System.Diagnostics;
 using SimCrewOps.PhaseEngine.Models;
 using SimCrewOps.PhaseEngine.PhaseEngine;
 using SimCrewOps.Runways.Models;
 using SimCrewOps.Runways.Services;
 using SimCrewOps.Runtime.Models;
 using SimCrewOps.Scoring.Scoring;
+using SimCrewOps.Sync.Models;
+using SimCrewOps.Sync.Sync;
 using SimCrewOps.Tracking.Models;
 using SimCrewOps.Tracking.Tracking;
 
@@ -16,14 +19,19 @@ public sealed class RuntimeCoordinator
     private readonly FlightSessionScoringTracker _scoringTracker;
     private readonly ScoringEngine _scoringEngine;
     private readonly RunwayResolver _runwayResolver;
+    private readonly ILivePositionUploader? _livePositionUploader;
 
     private FlightSessionBlockTimes _blockTimes = new();
     private RunwayResolutionResult? _landingRunwayResolution;
     private TelemetryFrame? _lastTelemetryFrame;
+    private DateTimeOffset? _lastLivePositionSentUtc;
+    private double? _lastLivePositionLatitude;
+    private double? _lastLivePositionLongitude;
 
     public RuntimeCoordinator(
         FlightSessionContext context,
         RunwayResolver runwayResolver,
+        ILivePositionUploader? livePositionUploader = null,
         FlightPhaseEngine? phaseEngine = null,
         FlightSessionScoringTracker? scoringTracker = null,
         ScoringEngine? scoringEngine = null)
@@ -33,6 +41,7 @@ public sealed class RuntimeCoordinator
 
         _context = context;
         _runwayResolver = runwayResolver;
+        _livePositionUploader = livePositionUploader;
         _phaseEngine = phaseEngine ?? new FlightPhaseEngine();
         _scoringTracker = scoringTracker ?? new FlightSessionScoringTracker(context.Profile);
         _scoringEngine = scoringEngine ?? new ScoringEngine();
@@ -46,6 +55,9 @@ public sealed class RuntimeCoordinator
         _blockTimes = state.BlockTimes;
         _landingRunwayResolution = state.LandingRunwayResolution;
         _lastTelemetryFrame = state.LastTelemetryFrame;
+        _lastLivePositionSentUtc = null;
+        _lastLivePositionLatitude = state.LastTelemetryFrame?.Latitude;
+        _lastLivePositionLongitude = state.LastTelemetryFrame?.Longitude;
 
         _phaseEngine.Restore(
             state.CurrentPhase,
@@ -80,6 +92,7 @@ public sealed class RuntimeCoordinator
         _scoringTracker.Ingest(labelledFrame);
         _lastTelemetryFrame = labelledFrame;
         CaptureBlockEvent(enrichedPhaseFrame.BlockEvent);
+        TryDispatchLivePosition(labelledFrame, cancellationToken);
 
         var scoreInput = _scoringTracker.BuildScoreInput();
         var scoreResult = _scoringEngine.Calculate(scoreInput);
@@ -144,6 +157,69 @@ public sealed class RuntimeCoordinator
             _ => _blockTimes,
         };
     }
+
+    private void TryDispatchLivePosition(TelemetryFrame telemetryFrame, CancellationToken cancellationToken)
+    {
+        if (_livePositionUploader is null || !IsActiveFlight())
+        {
+            return;
+        }
+
+        var hasMovedEnough = _lastLivePositionLatitude is null ||
+            _lastLivePositionLongitude is null ||
+            Math.Abs(telemetryFrame.Latitude - _lastLivePositionLatitude.Value) > 0.0001 ||
+            Math.Abs(telemetryFrame.Longitude - _lastLivePositionLongitude.Value) > 0.0001;
+
+        var elapsed = _lastLivePositionSentUtc is null
+            ? TimeSpan.MaxValue
+            : telemetryFrame.TimestampUtc - _lastLivePositionSentUtc.Value;
+
+        if (!hasMovedEnough && elapsed < TimeSpan.FromSeconds(4))
+        {
+            return;
+        }
+
+        _lastLivePositionSentUtc = telemetryFrame.TimestampUtc;
+        _lastLivePositionLatitude = telemetryFrame.Latitude;
+        _lastLivePositionLongitude = telemetryFrame.Longitude;
+
+        var payload = new LivePositionPayload
+        {
+            Latitude = telemetryFrame.Latitude,
+            Longitude = telemetryFrame.Longitude,
+            HeadingMagnetic = telemetryFrame.HeadingMagneticDegrees,
+            AltitudeFt = telemetryFrame.AltitudeFeet,
+            AltitudeAglFt = telemetryFrame.AltitudeAglFeet,
+            IndicatedAirspeedKts = telemetryFrame.IndicatedAirspeedKnots,
+            GroundSpeedKts = telemetryFrame.GroundSpeedKnots,
+            VerticalSpeedFpm = telemetryFrame.VerticalSpeedFpm,
+            Phase = telemetryFrame.Phase.ToString(),
+            FlightMode = _context.FlightMode,
+            BidId = string.IsNullOrWhiteSpace(_context.BidId) ? null : _context.BidId,
+        };
+
+        _ = SendLivePositionAsync(payload, cancellationToken);
+    }
+
+    private async Task SendLivePositionAsync(LivePositionPayload payload, CancellationToken cancellationToken)
+    {
+        if (_livePositionUploader is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _livePositionUploader.SendPositionAsync(payload, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Trace.TraceWarning("Tracker live position dispatch failed: {0}", ex.Message);
+        }
+    }
+
+    private bool IsActiveFlight() =>
+        _blockTimes.BlocksOffUtc is not null && _blockTimes.BlocksOnUtc is null;
 
     private static IReadOnlyList<BlockEvent> BuildRestoredBlockEvents(FlightSessionRuntimeState state)
     {

@@ -17,6 +17,7 @@ public sealed class SimConnectTelemetryMapperTests
             Latitude = 25.79,
             Longitude = -80.29,
             AltitudeAglFeet = 1200,
+            AltitudeFeet = 4700,
             IndicatedAltitudeFeet = 3500,
             IndicatedAirspeedKnots = 145,
             TrueAirspeedKnots = 153,
@@ -25,6 +26,7 @@ public sealed class SimConnectTelemetryMapperTests
             VerticalSpeedFpm = -720,
             BankAngleDegrees = 3.2,
             PitchAngleDegrees = 1.1,
+            HeadingMagneticDegrees = 219,
             HeadingTrueDegrees = 222,
             GForce = 1.18,
             ParkingBrakePosition = 1,
@@ -46,7 +48,9 @@ public sealed class SimConnectTelemetryMapperTests
         });
 
         Assert.Equal(25.79, frame.Latitude);
+        Assert.Equal(4700, frame.AltitudeFeet);
         Assert.Equal(145, frame.IndicatedAirspeedKnots);
+        Assert.Equal(219, frame.HeadingMagneticDegrees);
         Assert.Equal(2, frame.FlapsHandleIndex);
         Assert.True(frame.ParkingBrakeSet);
         Assert.True(frame.GearDown);

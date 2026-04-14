@@ -30,6 +30,7 @@ public sealed class MsfsSimConnectHostTests
                 Latitude = 40.64,
                 Longitude = -73.78,
                 AltitudeAglFeet = 35,
+                AltitudeFeet = 48,
                 IndicatedAltitudeFeet = 48,
                 IndicatedAirspeedKnots = 132,
                 TrueAirspeedKnots = 138,
@@ -38,6 +39,7 @@ public sealed class MsfsSimConnectHostTests
                 VerticalSpeedFpm = -180,
                 BankAngleDegrees = 1.2,
                 PitchAngleDegrees = 2.3,
+                HeadingMagneticDegrees = 41,
                 HeadingTrueDegrees = 44,
                 GForce = 1.22,
                 OnGround = 1,
@@ -95,6 +97,8 @@ public sealed class MsfsSimConnectHostTests
         Assert.Contains("FlightSimulator2024.exe", SimConnectDefinitionCatalog.DefaultSimulatorProcessNames);
         Assert.Contains(SimConnectDefinitionCatalog.FlightCriticalVariables, variable => variable.SimVarName == "PLANE LATITUDE");
         Assert.Contains(SimConnectDefinitionCatalog.FlightCriticalVariables, variable => variable.SimVarName == "PLANE ALT ABOVE GROUND");
+        Assert.Contains(SimConnectDefinitionCatalog.FlightCriticalVariables, variable => variable.SimVarName == "PLANE ALTITUDE");
+        Assert.Contains(SimConnectDefinitionCatalog.ScoringAndOperationalVariables, variable => variable.SimVarName == "PLANE HEADING DEGREES MAGNETIC");
         Assert.Contains(SimConnectDefinitionCatalog.ScoringAndOperationalVariables, variable => variable.SimVarName == "LIGHT BEACON");
         Assert.Contains(SimConnectDefinitionCatalog.ScoringAndOperationalVariables, variable => variable.SimVarName == "ENG COMBUSTION:1");
     }

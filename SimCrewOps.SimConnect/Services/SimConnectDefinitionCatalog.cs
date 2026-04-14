@@ -16,6 +16,7 @@ public static class SimConnectDefinitionCatalog
         Define("latitude", "PLANE LATITUDE", "degrees", SimConnectUpdateRate.SimFrame),
         Define("longitude", "PLANE LONGITUDE", "degrees", SimConnectUpdateRate.SimFrame),
         Define("agl", "PLANE ALT ABOVE GROUND", "feet", SimConnectUpdateRate.SimFrame),
+        Define("altitude", "PLANE ALTITUDE", "feet", SimConnectUpdateRate.SimFrame),
         Define("indicated_altitude", "INDICATED ALTITUDE", "feet", SimConnectUpdateRate.SimFrame),
         Define("ias", "AIRSPEED INDICATED", "knots", SimConnectUpdateRate.SimFrame),
         Define("ground_speed", "GROUND VELOCITY", "knots", SimConnectUpdateRate.SimFrame),
@@ -29,6 +30,7 @@ public static class SimConnectDefinitionCatalog
 
     public static readonly IReadOnlyList<SimConnectVariableDefinition> ScoringAndOperationalVariables =
     [
+        Define("heading_magnetic", "PLANE HEADING DEGREES MAGNETIC", "degrees", SimConnectUpdateRate.Second),
         Define("heading_true", "PLANE HEADING DEGREES TRUE", "degrees", SimConnectUpdateRate.Second),
         Define("tas", "AIRSPEED TRUE", "knots", SimConnectUpdateRate.Second),
         Define("mach", "AIRSPEED MACH", "mach", SimConnectUpdateRate.Second),

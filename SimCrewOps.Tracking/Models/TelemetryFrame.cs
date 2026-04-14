@@ -9,6 +9,7 @@ public sealed record TelemetryFrame
 
     public double Latitude { get; init; }
     public double Longitude { get; init; }
+    public double AltitudeFeet { get; init; }
     public double IndicatedAltitudeFeet { get; init; }
     public double AltitudeAglFeet { get; init; }
     public double IndicatedAirspeedKnots { get; init; }
@@ -18,6 +19,7 @@ public sealed record TelemetryFrame
     public double VerticalSpeedFpm { get; init; }
     public double BankAngleDegrees { get; init; }
     public double PitchAngleDegrees { get; init; }
+    public double HeadingMagneticDegrees { get; init; }
     public double HeadingTrueDegrees { get; init; }
     public double GForce { get; init; }
 

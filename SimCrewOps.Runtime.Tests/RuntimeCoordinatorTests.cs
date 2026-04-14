@@ -5,6 +5,8 @@ using SimCrewOps.Runways.Services;
 using SimCrewOps.Runtime.Models;
 using SimCrewOps.Runtime.Runtime;
 using SimCrewOps.Scoring.Models;
+using SimCrewOps.Sync.Models;
+using SimCrewOps.Sync.Sync;
 using SimCrewOps.Tracking.Models;
 using Xunit;
 
@@ -181,6 +183,50 @@ public sealed class RuntimeCoordinatorTests
         Assert.Equal("KARR", arrival.State.Context.ArrivalAirportIcao);
     }
 
+    [Fact]
+    public async Task RuntimeCoordinator_SendsLivePositionDuringActiveFlight()
+    {
+        var uploader = new SpyLivePositionUploader();
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext
+            {
+                FlightMode = "career",
+                BidId = "48291",
+            },
+            new RunwayResolver(new StubRunwayDataProvider(null)),
+            livePositionUploader: uploader);
+
+        var t0 = new DateTimeOffset(2026, 4, 13, 16, 0, 0, TimeSpan.Zero);
+
+        await coordinator.ProcessFrameAsync(Frame(t0, onGround: true, parkingBrake: true));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(1), onGround: true, parkingBrake: false, groundSpeed: 2));
+
+        Assert.Single(uploader.Payloads);
+        Assert.Equal("TaxiOut", uploader.Payloads[0].Phase);
+        Assert.Equal("career", uploader.Payloads[0].FlightMode);
+        Assert.Equal("48291", uploader.Payloads[0].BidId);
+    }
+
+    [Fact]
+    public async Task RuntimeCoordinator_ThrottlesLivePositionUploads()
+    {
+        var uploader = new SpyLivePositionUploader();
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext(),
+            new RunwayResolver(new StubRunwayDataProvider(null)),
+            livePositionUploader: uploader);
+
+        var t0 = new DateTimeOffset(2026, 4, 13, 17, 0, 0, TimeSpan.Zero);
+
+        await coordinator.ProcessFrameAsync(Frame(t0, onGround: true, parkingBrake: true, latitude: 40.0, longitude: -75.0));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(1), onGround: true, parkingBrake: false, groundSpeed: 2, latitude: 40.0, longitude: -75.0));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(2), onGround: true, groundSpeed: 4, latitude: 40.00001, longitude: -75.00001));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(3), onGround: true, groundSpeed: 5, latitude: 40.00002, longitude: -75.00002));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(5), onGround: true, groundSpeed: 6, latitude: 40.00003, longitude: -75.00003));
+
+        Assert.Equal(2, uploader.Payloads.Count);
+    }
+
     private static TelemetryFrame Frame(
         DateTimeOffset timestampUtc,
         bool onGround,
@@ -204,9 +250,11 @@ public sealed class RuntimeCoordinatorTests
             Latitude = latitude,
             Longitude = longitude,
             IndicatedAirspeedKnots = indicatedAirspeed,
+            AltitudeFeet = altitudeAgl + 1000,
             AltitudeAglFeet = altitudeAgl,
             GroundSpeedKnots = groundSpeed,
             VerticalSpeedFpm = verticalSpeed,
+            HeadingMagneticDegrees = heading,
             HeadingTrueDegrees = heading,
         };
     }
@@ -238,5 +286,16 @@ public sealed class RuntimeCoordinatorTests
     {
         public Task<AirportRunwayCatalog?> GetRunwaysAsync(string airportIcao, CancellationToken cancellationToken = default) =>
             Task.FromResult(catalog);
+    }
+
+    private sealed class SpyLivePositionUploader : ILivePositionUploader
+    {
+        public List<LivePositionPayload> Payloads { get; } = [];
+
+        public Task<bool> SendPositionAsync(LivePositionPayload payload, CancellationToken cancellationToken = default)
+        {
+            Payloads.Add(payload);
+            return Task.FromResult(true);
+        }
     }
 }
