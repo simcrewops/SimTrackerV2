@@ -15,6 +15,29 @@ public sealed class TrackerServiceFactory
     }
 
     /// <summary>
+    /// Creates just the active flight fetcher from the given settings.
+    /// Returns null if no API token is configured.
+    /// Used for hot-reloading after settings change without restarting the app.
+    /// </summary>
+    public IActiveFlightFetcher? CreateActiveFlightFetcher(TrackerApiSettings apiSettings)
+    {
+        ArgumentNullException.ThrowIfNull(apiSettings);
+
+        if (string.IsNullOrWhiteSpace(apiSettings.PilotApiToken))
+            return null;
+
+        return new HttpActiveFlightFetcher(
+            _httpClientFactory(),
+            new SimCrewOpsApiUploaderOptions
+            {
+                BaseUri = apiSettings.BaseUri,
+                SimSessionsPath = apiSettings.SimSessionsPath,
+                PilotApiToken = apiSettings.PilotApiToken!,
+                TrackerVersion = apiSettings.TrackerVersion,
+            });
+    }
+
+    /// <summary>
     /// Creates just the live position uploader from the given settings.
     /// Returns null if no API token is configured.
     /// Used for hot-reloading after settings change without restarting the app.

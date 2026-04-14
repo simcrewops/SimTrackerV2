@@ -31,6 +31,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
     private FlightSessionRuntimeState? _runtimeState;
     private ActiveFlightResponse? _activeFlight;
     private DateTimeOffset _activeFlightFetchedUtc = DateTimeOffset.MinValue;
+    private IActiveFlightFetcher? _activeFlightFetcher;
 
     // Refresh the active flight from the API every 5 minutes while the app is running.
     private static readonly TimeSpan ActiveFlightRefreshInterval = TimeSpan.FromMinutes(5);
@@ -49,6 +50,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
         _serviceStack = serviceStack;
         _serviceFactory = new TrackerServiceFactory();
         _settings = serviceStack.Settings;
+        _activeFlightFetcher = serviceStack.ActiveFlightFetcher;
         _simConnectHost = new MsfsSimConnectHost(
             new SimulatorProcessDetector(new SystemProcessListProvider()),
             new AdaptiveSimConnectClient());
@@ -125,12 +127,12 @@ public sealed class TrackerShellHost : IAsyncDisposable
     /// </summary>
     private async Task RefreshActiveFlightAsync(CancellationToken cancellationToken = default)
     {
-        if (_serviceStack.ActiveFlightFetcher is null)
+        if (_activeFlightFetcher is null)
             return;
 
         try
         {
-            var flight = await _serviceStack.ActiveFlightFetcher
+            var flight = await _activeFlightFetcher
                 .FetchAsync(cancellationToken)
                 .ConfigureAwait(false);
 
@@ -166,6 +168,13 @@ public sealed class TrackerShellHost : IAsyncDisposable
         // immediately without requiring an app restart.
         var newUploader = _serviceFactory.CreateLivePositionUploader(settings.Api);
         _persistentRuntimeCoordinator.UpdateLivePositionUploader(newUploader);
+
+        // Hot-reload the active flight fetcher and immediately pull the latest flight info.
+        // This means a user who just pasted their API token sees their flight assignment
+        // right away without having to restart the app.
+        _activeFlightFetcher = _serviceFactory.CreateActiveFlightFetcher(settings.Api);
+        _activeFlightFetchedUtc = DateTimeOffset.MinValue; // force refresh on next poll
+        await RefreshActiveFlightAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DiscardRecoveryAsync(CancellationToken cancellationToken = default)
