@@ -10,7 +10,6 @@
     <ProjectReference Include="..\SimCrewOps.PhaseEngine\SimCrewOps.PhaseEngine.csproj" />
     <ProjectReference Include="..\SimCrewOps.Runways\SimCrewOps.Runways.csproj" />
     <ProjectReference Include="..\SimCrewOps.Scoring\SimCrewOps.Scoring.csproj" />
-    <ProjectReference Include="..\SimCrewOps.Sync\SimCrewOps.Sync.csproj" />
     <ProjectReference Include="..\SimCrewOps.Tracking\SimCrewOps.Tracking.csproj" />
   </ItemGroup>
 </Project>

@@ -5,8 +5,6 @@ using SimCrewOps.Runways.Services;
 using SimCrewOps.Runtime.Models;
 using SimCrewOps.Runtime.Runtime;
 using SimCrewOps.Scoring.Models;
-using SimCrewOps.Sync.Models;
-using SimCrewOps.Sync.Sync;
 using SimCrewOps.Tracking.Models;
 using Xunit;
 

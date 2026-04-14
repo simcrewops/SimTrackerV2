@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SimCrewOps.Persistence\SimCrewOps.Persistence.csproj" />
+    <ProjectReference Include="..\SimCrewOps.Runtime\SimCrewOps.Runtime.csproj" />
     <ProjectReference Include="..\SimCrewOps.Sync\SimCrewOps.Sync.csproj" />
   </ItemGroup>
 </Project>
