@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -233,9 +234,20 @@ public sealed class SimConnectFacilityRunwayProvider : IRunwayDataProvider
                 return null;
             }
 
-            var managedAssembly = _assemblyLocator.LoadManagedAssembly(_options);
-            using var requestSession = new ReflectionFacilityRequestSession(managedAssembly, _options);
-            return await requestSession.GetRunwaysAsync(airportIcao, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var managedAssembly = _assemblyLocator.LoadManagedAssembly(_options);
+                using var requestSession = new ReflectionFacilityRequestSession(managedAssembly, _options);
+                return await requestSession.GetRunwaysAsync(airportIcao, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Trace.TraceWarning(
+                    "SimConnect facility runway lookup failed for {0}: {1}",
+                    airportIcao,
+                    ex.Message);
+                return null;
+            }
         }
     }
 

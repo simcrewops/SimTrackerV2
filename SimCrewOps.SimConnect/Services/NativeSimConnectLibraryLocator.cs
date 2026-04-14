@@ -1,35 +1,32 @@
-using System.Reflection;
-using System.Runtime.Loader;
+using System.Runtime.InteropServices;
 using SimCrewOps.SimConnect.Models;
 
 namespace SimCrewOps.SimConnect.Services;
 
-public class SimConnectAssemblyLocator
+public class NativeSimConnectLibraryLocator
 {
-    internal const string ManagedAssemblyName = "Microsoft.FlightSimulator.SimConnect";
-    internal const string ManagedAssemblyFileName = ManagedAssemblyName + ".dll";
-    private const string ManagedAssemblyEnvironmentVariable = "SIMCONNECT_MANAGED_ASSEMBLY_PATH";
+    internal const string NativeLibraryName = "SimConnect";
+    internal const string NativeLibraryFileName = NativeLibraryName + ".dll";
+    private const string NativeLibraryEnvironmentVariable = "SIMCONNECT_NATIVE_DLL_PATH";
 
-    public virtual Assembly LoadManagedAssembly(SimConnectHostOptions options)
+    public virtual nint LoadNativeLibrary(SimConnectHostOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        try
+        if (NativeLibrary.TryLoad(NativeLibraryName, out var handle) ||
+            NativeLibrary.TryLoad(NativeLibraryFileName, out handle))
         {
-            return Assembly.Load(new AssemblyName(ManagedAssemblyName));
-        }
-        catch (FileNotFoundException)
-        {
+            return handle;
         }
 
-        var assemblyPath = LocateManagedAssemblyPath(options)
-            ?? throw new FileNotFoundException(
-                $"Unable to locate {ManagedAssemblyFileName}. Set {ManagedAssemblyEnvironmentVariable}, provide SimConnectHostOptions.ManagedAssemblyPath, or bundle the managed wrapper only if you intentionally want the managed fallback path.");
+        var libraryPath = LocateNativeLibraryPath(options)
+            ?? throw new DllNotFoundException(
+                $"Unable to locate {NativeLibraryFileName}. Set {NativeLibraryEnvironmentVariable}, provide SimConnectHostOptions.NativeLibraryPath, or bundle the native SimConnect client library next to the app.");
 
-        return AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
+        return NativeLibrary.Load(libraryPath);
     }
 
-    internal virtual string? LocateManagedAssemblyPath(SimConnectHostOptions options)
+    internal virtual string? LocateNativeLibraryPath(SimConnectHostOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -47,7 +44,7 @@ public class SimConnectAssemblyLocator
                     return Path.GetFullPath(candidate);
                 }
 
-                var rootedCandidate = Path.Combine(candidate, ManagedAssemblyFileName);
+                var rootedCandidate = Path.Combine(candidate, NativeLibraryFileName);
                 if (File.Exists(rootedCandidate))
                 {
                     return Path.GetFullPath(rootedCandidate);
@@ -61,7 +58,7 @@ public class SimConnectAssemblyLocator
                     return relativePath;
                 }
 
-                var relativeDirectoryCandidate = Path.Combine(relativePath, ManagedAssemblyFileName);
+                var relativeDirectoryCandidate = Path.Combine(relativePath, NativeLibraryFileName);
                 if (File.Exists(relativeDirectoryCandidate))
                 {
                     return relativeDirectoryCandidate;
@@ -74,9 +71,9 @@ public class SimConnectAssemblyLocator
 
     private static IEnumerable<string?> GetSearchCandidates(SimConnectHostOptions options)
     {
-        yield return options.ManagedAssemblyPath;
+        yield return options.NativeLibraryPath;
 
-        var environmentPath = Environment.GetEnvironmentVariable(ManagedAssemblyEnvironmentVariable);
+        var environmentPath = Environment.GetEnvironmentVariable(NativeLibraryEnvironmentVariable);
         if (!string.IsNullOrWhiteSpace(environmentPath))
         {
             yield return environmentPath;
@@ -84,7 +81,7 @@ public class SimConnectAssemblyLocator
 
         yield return AppContext.BaseDirectory;
 
-        foreach (var searchPath in options.ManagedAssemblySearchPaths)
+        foreach (var searchPath in options.NativeLibrarySearchPaths)
         {
             yield return searchPath;
         }

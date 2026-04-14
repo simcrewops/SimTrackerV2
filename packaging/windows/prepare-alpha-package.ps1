@@ -39,9 +39,9 @@ Ensure-Directory -Path $dataRoot
 
 Copy-Item -Path (Join-Path $publishRoot '*') -Destination $appRoot -Recurse -Force
 
-$optionalManagedWrapper = Join-Path $repoRoot "packaging/windows/runtime/Microsoft.FlightSimulator.SimConnect.dll"
-if (Test-Path -LiteralPath $optionalManagedWrapper) {
-    Copy-Item -LiteralPath $optionalManagedWrapper -Destination (Join-Path $appRoot "Microsoft.FlightSimulator.SimConnect.dll") -Force
+$optionalNativeSimConnect = Join-Path $repoRoot "packaging/windows/runtime/SimConnect.dll"
+if (Test-Path -LiteralPath $optionalNativeSimConnect) {
+    Copy-Item -LiteralPath $optionalNativeSimConnect -Destination (Join-Path $appRoot "SimConnect.dll") -Force
 }
 
 $optionalRunwaysCsv = Join-Path $repoRoot "packaging/windows/data/ourairports-runways.csv"
@@ -58,7 +58,7 @@ $versionFile = Join-Path $appRoot "BUILD_INFO.txt"
     ""
     "Notes:"
     "- settings.json will be created under %LOCALAPPDATA%\SimCrewOps\SimTrackerV2 on first launch."
-    "- Place Microsoft.FlightSimulator.SimConnect.dll next to the app or in packaging/windows/runtime before packaging if you want it bundled."
+    "- Place SimConnect.dll in packaging/windows/runtime before packaging if you want the native client library bundled."
     "- Place ourairports-runways.csv in packaging/windows/data before packaging if you want a bundled fallback runway dataset."
 )
 | Set-Content -LiteralPath $versionFile -Encoding UTF8
@@ -77,7 +77,7 @@ $readmePath = Join-Path $packageRoot "README.txt"
     "3. Configure your API token in Settings."
     ""
     "Optional runtime assets:"
-    "- Microsoft.FlightSimulator.SimConnect.dll can be bundled next to the executable."
+    "- SimConnect.dll can be bundled next to the executable."
     "- data\\ourairports-runways.csv can be bundled for fallback runway resolution."
 )
 | Set-Content -LiteralPath $readmePath -Encoding UTF8

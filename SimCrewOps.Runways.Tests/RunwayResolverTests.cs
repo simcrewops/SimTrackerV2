@@ -105,6 +105,26 @@ public sealed class RunwayResolverTests
     }
 
     [Fact]
+    public async Task FallbackRunwayDataProvider_UsesFallbackWhenPrimaryThrows()
+    {
+        var fallbackCatalog = new AirportRunwayCatalog
+        {
+            AirportIcao = "KTEST",
+            DataSource = RunwayDataSource.OurAirportsFallback,
+            Runways = new[] { BuildRunway(identifier: "18", headingDegrees: 180) },
+        };
+
+        var provider = new FallbackRunwayDataProvider(
+            new ThrowingRunwayDataProvider(),
+            new StubRunwayDataProvider(fallbackCatalog));
+
+        var result = await provider.GetRunwaysAsync("KTEST");
+
+        Assert.NotNull(result);
+        Assert.Equal(RunwayDataSource.OurAirportsFallback, result!.DataSource);
+    }
+
+    [Fact]
     public async Task OurAirportsCsvRunwayDataProvider_ComputesThresholdFromDisplacement()
     {
         const string csv = """
@@ -169,5 +189,11 @@ id,airport_ref,airport_ident,length_ft,width_ft,surface,lighted,closed,le_ident,
     {
         public Task<AirportRunwayCatalog?> GetRunwaysAsync(string airportIcao, CancellationToken cancellationToken = default) =>
             Task.FromResult(catalog);
+    }
+
+    private sealed class ThrowingRunwayDataProvider : IRunwayDataProvider
+    {
+        public Task<AirportRunwayCatalog?> GetRunwaysAsync(string airportIcao, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("primary failed");
     }
 }

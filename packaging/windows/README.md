@@ -16,12 +16,12 @@ That staged package is zipped and uploaded as a workflow artifact.
 
 The package-prep script will include these files automatically if they exist:
 
-- `packaging/windows/runtime/Microsoft.FlightSimulator.SimConnect.dll`
+- `packaging/windows/runtime/SimConnect.dll`
 - `packaging/windows/data/ourairports-runways.csv`
 
 These are optional:
 
-- the managed SimConnect wrapper can also be discovered from the machine at runtime
+- the native SimConnect client library can also be discovered from the machine at runtime if it is already installed or app-local
 - runway resolution will still prefer the live SimConnect Facility API and only use OurAirports as fallback
 
 ## Local Windows Publish

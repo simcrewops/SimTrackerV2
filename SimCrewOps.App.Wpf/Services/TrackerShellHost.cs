@@ -41,7 +41,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
         _settings = serviceStack.Settings;
         _simConnectHost = new MsfsSimConnectHost(
             new SimulatorProcessDetector(new SystemProcessListProvider()),
-            new ManagedSimConnectClient());
+            new AdaptiveSimConnectClient());
         var runwayDataProvider = CreateRunwayDataProvider(settingsFilePath);
         var runtimeCoordinator = new RuntimeCoordinator(
             new FlightSessionContext(),

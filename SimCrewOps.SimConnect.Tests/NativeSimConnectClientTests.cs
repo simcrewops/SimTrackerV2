@@ -1,0 +1,107 @@
+using SimCrewOps.SimConnect.Models;
+using SimCrewOps.SimConnect.Services;
+using Xunit;
+
+namespace SimCrewOps.SimConnect.Tests;
+
+public sealed class NativeSimConnectClientTests
+{
+    [Fact]
+    public async Task OpenAsync_UsesBridgeFactoryAndReadsFrames()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var expectedFrame = new SimConnectRawTelemetryFrame
+        {
+            TimestampUtc = new DateTimeOffset(2026, 4, 13, 20, 0, 0, TimeSpan.Zero),
+            Latitude = 25.79,
+            Longitude = -80.29,
+            IndicatedAirspeedKnots = 148,
+        };
+
+        var bridge = new StubBridge(expectedFrame);
+        var locator = new StubNativeLibraryLocator(1234);
+        var factory = new StubBridgeFactory(bridge);
+        var client = new NativeSimConnectClient(locator, factory);
+
+        await client.OpenAsync(new SimConnectHostOptions());
+        var frame = await client.ReadNextFrameAsync();
+
+        Assert.True(client.IsConnected);
+        Assert.Equal((nint)1234, factory.ReceivedLibraryHandle);
+        Assert.Equal(148, frame!.IndicatedAirspeedKnots);
+    }
+
+    [Fact]
+    public async Task OpenAsync_ThrowsPlatformNotSupportedOnNonWindows()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var client = new NativeSimConnectClient(
+            new StubNativeLibraryLocator(1234),
+            new StubBridgeFactory(new StubBridge(null)));
+
+        await Assert.ThrowsAsync<PlatformNotSupportedException>(() => client.OpenAsync(new SimConnectHostOptions()));
+    }
+
+    [Fact]
+    public async Task CloseAsync_ClosesBridgeAndResetsConnection()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var bridge = new StubBridge(null);
+        var client = new NativeSimConnectClient(
+            new StubNativeLibraryLocator(1234),
+            new StubBridgeFactory(bridge));
+
+        await client.OpenAsync(new SimConnectHostOptions());
+        await client.CloseAsync();
+
+        Assert.False(client.IsConnected);
+        Assert.True(bridge.CloseCalled);
+    }
+
+    private sealed class StubNativeLibraryLocator(nint libraryHandle) : NativeSimConnectLibraryLocator
+    {
+        public override nint LoadNativeLibrary(SimConnectHostOptions options) => libraryHandle;
+    }
+
+    private sealed class StubBridgeFactory(StubBridge bridge) : INativeSimConnectBridgeFactory
+    {
+        public nint ReceivedLibraryHandle { get; private set; }
+
+        public Task<INativeSimConnectBridge> CreateAsync(
+            nint nativeLibraryHandle,
+            SimConnectHostOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            ReceivedLibraryHandle = nativeLibraryHandle;
+            return Task.FromResult<INativeSimConnectBridge>(bridge);
+        }
+    }
+
+    private sealed class StubBridge(SimConnectRawTelemetryFrame? nextFrame) : INativeSimConnectBridge
+    {
+        public bool CloseCalled { get; private set; }
+        public bool IsConnected { get; private set; } = true;
+
+        public Task<SimConnectRawTelemetryFrame?> ReadNextFrameAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(nextFrame);
+
+        public Task CloseAsync(CancellationToken cancellationToken = default)
+        {
+            CloseCalled = true;
+            IsConnected = false;
+            return Task.CompletedTask;
+        }
+    }
+}
