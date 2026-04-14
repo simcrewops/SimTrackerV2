@@ -403,12 +403,18 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
     private void UpdateFlightCritical(FlightCriticalSnapshot snapshot)
     {
-        // OnGround is computed from AGL rather than read from a SimVar.
+        // OnGround is computed from AGL + VS rather than read from a SimVar.
         // "SIM ON GROUND" returns 0 on MSFS 2024 Xbox Game Pass; indexed gear SimVars
-        // ("GEAR IS ON GROUND:1") cause exceptions that can stop the entire group.
-        // PLANE ALT ABOVE GROUND typically reads ~3-15 ft with the aircraft on the runway
-        // (varies by aircraft reference-point height). 30 ft gives a reliable threshold.
-        var onGround = snapshot.AltitudeAglFeet < 30.0 ? 1 : 0;
+        // ("GEAR IS ON GROUND:1") cause exceptions that stop the entire data group.
+        //
+        // AGL alone is not enough — on a normal ILS approach the aircraft passes through
+        // 30 ft at ~600-900 fpm descent, which would falsely trigger OnGround mid-flare.
+        // Combining AGL < 30 ft WITH VS > -500 fpm correctly distinguishes:
+        //   • On the ground (taxiing / landing roll): AGL 3-15 ft, VS ≈ 0         → true
+        //   • Final approach through 30 ft: AGL < 30, but VS ≈ -700 fpm           → false
+        //   • After touchdown flare: AGL → 0, VS quickly rises above -500 fpm     → true
+        //   • Cruise / climb / descent: AGL is thousands of feet                  → false
+        var onGround = snapshot.AltitudeAglFeet < 30.0 && snapshot.VerticalSpeedFpm > -500.0 ? 1 : 0;
 
         _latestState = _latestState with
         {
