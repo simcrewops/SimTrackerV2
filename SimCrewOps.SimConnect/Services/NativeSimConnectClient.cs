@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using SimCrewOps.SimConnect.Models;
+using SimCrewOps.SimConnect.Services.Aircraft;
 
 namespace SimCrewOps.SimConnect.Services;
 
@@ -190,9 +191,10 @@ internal sealed class NativeSimConnectBridgeFactory : INativeSimConnectBridgeFac
 internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 {
     private const uint FlightCriticalRequestId = 1;
-    private const uint OperationalRequestId = 2;
+    private const uint OperationalRequestId    = 2;
+    private const uint AircraftStateRequestId  = 3;    // for RequestSystemState("AircraftLoaded")
     private const uint FlightCriticalDefinitionId = 11;
-    private const uint OperationalDefinitionId = 12;
+    private const uint OperationalDefinitionId    = 12;
     private const uint UserObjectId = 0;
 
     private readonly nint _nativeLibraryHandle;
@@ -202,6 +204,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
     private nint _simConnectHandle;
     private LatestSimConnectState _latestState = new();
+    private AircraftProfile _activeProfile = AircraftProfile.Default;
     private bool _disposed;
 
     public NativeSimConnectBridge(nint nativeLibraryHandle, SimConnectHostOptions options)
@@ -214,6 +217,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
         OpenConnection();
         RegisterDefinitions();
+        RequestAircraftState();
     }
 
     public bool IsConnected => !_disposed && _simConnectHandle != nint.Zero;
@@ -290,6 +294,9 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
                 case SimConnectRecvId.SimObjectData:
                     HandleSimObjectData(dispatchPointer);
                     break;
+                case SimConnectRecvId.SystemState:
+                    HandleSystemState(dispatchPointer);
+                    break;
             }
         }
     }
@@ -350,6 +357,22 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             SimConnectPeriod.Second);
     }
 
+    private void RequestAircraftState()
+    {
+        // Ask SimConnect which aircraft is currently loaded.
+        // The response arrives as SIMCONNECT_RECV_SYSTEM_STATE (RecvId 15) with
+        // szString = path to the aircraft .air / .cfg file, e.g.:
+        //   "Community\fenix-a319\SimObjects\Airplanes\fenix_a319\fenix_a319.air"
+        // We match this path against AircraftProfileCatalog to select the right
+        // variable-mapping profile for lights etc.
+        var result = _exports.RequestSystemState(_simConnectHandle, AircraftStateRequestId, "AircraftLoaded");
+        if (result < 0)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[SimConnect] RequestSystemState(AircraftLoaded) failed: 0x{result:X8} — defaulting to standard SimVar profile.");
+        }
+    }
+
     private void RegisterDefinition(
         uint definitionId,
         uint requestId,
@@ -399,6 +422,23 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
                 UpdateOperational(Marshal.PtrToStructure<OperationalSnapshot>(payloadPointer));
                 break;
         }
+    }
+
+    private void HandleSystemState(nint dispatchPointer)
+    {
+        var state = Marshal.PtrToStructure<SimConnectRecvSystemState>(dispatchPointer);
+
+        if (state.RequestId != AircraftStateRequestId)
+        {
+            return;
+        }
+
+        var aircraftPath = state.StringValue ?? string.Empty;
+        _activeProfile = AircraftProfileCatalog.MatchOrDefault(aircraftPath);
+
+        System.Diagnostics.Debug.WriteLine($"[SimConnect] Aircraft loaded: {aircraftPath}");
+        System.Diagnostics.Debug.WriteLine($"[SimConnect] Active profile : {_activeProfile.Name}" +
+            (_activeProfile.RequiresLvarBridge ? " (LVAR bridge required)" : string.Empty));
     }
 
     private void UpdateFlightCritical(FlightCriticalSnapshot snapshot)
@@ -548,6 +588,9 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             Engine2Running = _latestState.Engine2Running,
             Engine3Running = _latestState.Engine3Running,
             Engine4Running = _latestState.Engine4Running,
+            ActiveProfileName   = _activeProfile.Name,
+            LvarBridgeRequired  = _activeProfile.RequiresLvarBridge,
+            LvarBridgeConnected = false,  // Phase 2: MobiFlight bridge
         });
     }
 
@@ -653,6 +696,22 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly uint Index;
     }
 
+    // SIMCONNECT_RECV_SYSTEM_STATE — returned by SimConnect_RequestSystemState.
+    // szString is MAX_PATH (260) chars; contains the aircraft .air file path when
+    // state = "AircraftLoaded", e.g. "Community\fenix-a319\...\fenix_a319.air".
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    private readonly struct SimConnectRecvSystemState
+    {
+        public readonly uint Size;
+        public readonly uint Version;
+        public readonly uint RecvId;
+        public readonly uint RequestId;
+        public readonly int  IValue;
+        public readonly float FValue;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public readonly string StringValue;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private readonly struct SimConnectRecvSimObjectData
     {
@@ -719,12 +778,14 @@ internal sealed class NativeSimConnectExports
         CloseDelegate close,
         AddToDataDefinitionDelegate addToDataDefinition,
         RequestDataOnSimObjectDelegate requestDataOnSimObject,
+        RequestSystemStateDelegate requestSystemState,
         GetNextDispatchDelegate getNextDispatch)
     {
         Open = open;
         Close = close;
         AddToDataDefinition = addToDataDefinition;
         RequestDataOnSimObject = requestDataOnSimObject;
+        RequestSystemState = requestSystemState;
         GetNextDispatch = getNextDispatch;
     }
 
@@ -732,6 +793,7 @@ internal sealed class NativeSimConnectExports
     public CloseDelegate Close { get; }
     public AddToDataDefinitionDelegate AddToDataDefinition { get; }
     public RequestDataOnSimObjectDelegate RequestDataOnSimObject { get; }
+    public RequestSystemStateDelegate RequestSystemState { get; }
     public GetNextDispatchDelegate GetNextDispatch { get; }
 
     public static NativeSimConnectExports Load(nint libraryHandle) =>
@@ -740,6 +802,7 @@ internal sealed class NativeSimConnectExports
             GetExport<CloseDelegate>(libraryHandle, "SimConnect_Close"),
             GetExport<AddToDataDefinitionDelegate>(libraryHandle, "SimConnect_AddToDataDefinition"),
             GetExport<RequestDataOnSimObjectDelegate>(libraryHandle, "SimConnect_RequestDataOnSimObject"),
+            GetExport<RequestSystemStateDelegate>(libraryHandle, "SimConnect_RequestSystemState"),
             GetExport<GetNextDispatchDelegate>(libraryHandle, "SimConnect_GetNextDispatch"));
 
     private static TDelegate GetExport<TDelegate>(nint libraryHandle, string exportName)
@@ -782,6 +845,12 @@ internal sealed class NativeSimConnectExports
         uint origin,
         uint interval,
         uint limit);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Ansi)]
+    public delegate int RequestSystemStateDelegate(
+        nint simConnectHandle,
+        uint requestId,
+        string stateName);
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     public delegate int GetNextDispatchDelegate(
@@ -832,4 +901,5 @@ internal enum SimConnectRecvId : uint
     EventFilename = 6,
     EventFrame = 7,
     SimObjectData = 8,
+    SystemState   = 15,
 }

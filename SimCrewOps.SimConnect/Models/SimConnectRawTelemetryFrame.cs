@@ -50,4 +50,11 @@ public sealed record SimConnectRawTelemetryFrame
     public double Engine2Running { get; init; }
     public double Engine3Running { get; init; }
     public double Engine4Running { get; init; }
+
+    // Aircraft profile — set on connect when SimConnect returns the loaded aircraft path.
+    public string ActiveProfileName   { get; init; } = "Default (Standard SimVars)";
+    /// <summary>True when the matched profile needs LVARs that require a MobiFlight WASM bridge.</summary>
+    public bool LvarBridgeRequired  { get; init; }
+    /// <summary>True when the MobiFlight WASM bridge is connected and serving LVAR values.</summary>
+    public bool LvarBridgeConnected { get; init; }
 }

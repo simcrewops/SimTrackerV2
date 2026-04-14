@@ -959,7 +959,11 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         var lightSource = rawFrame.LightSourceIsIndividual ? "individual SimVars" : "LIGHT STATES bitmask fallback";
+        var bridgeStatus = rawFrame.LvarBridgeRequired
+            ? rawFrame.LvarBridgeConnected ? "LVAR bridge: connected ✓" : "LVAR bridge: NOT connected — install MobiFlight WASM"
+            : "LVAR bridge: not needed";
         return
+            $"Aircraft profile: {rawFrame.ActiveProfileName}  •  {bridgeStatus}\n" +
             $"HDG MAG {rawFrame.HeadingMagneticDegrees:0.##} • HDG TRUE {rawFrame.HeadingTrueDegrees:0.##} • AGL {rawFrame.AltitudeAglFeet:0.##} • ALT {rawFrame.AltitudeFeet:0.##} • ON GND {rawFrame.OnGround:0} • PB {rawFrame.ParkingBrakePosition:0}\n" +
             $"GEAR HANDLE raw={rawFrame.GearPosition:0.000}  (0.000=up  1.000=down)  FLAPS idx={rawFrame.FlapsHandleIndex:0}\n" +
             $"LIGHT source: {lightSource}\n" +
