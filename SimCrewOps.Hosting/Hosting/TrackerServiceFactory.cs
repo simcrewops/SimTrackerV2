@@ -24,16 +24,16 @@ public sealed class TrackerServiceFactory
             CompletedSessionsDirectoryName = settings.Storage.CompletedSessionsDirectoryName,
         });
 
-        var livePositionUploader = string.IsNullOrWhiteSpace(settings.Api.PilotApiToken)
+        WebSyncService? livePositionUploader = string.IsNullOrWhiteSpace(settings.Api.PilotApiToken) || !settings.Api.LiveSyncEnabled
             ? null
-            : new HttpLivePositionUploader(
-                _httpClientFactory(),
+            : new WebSyncService(
                 new SimCrewOpsApiUploaderOptions
                 {
                     BaseUri = settings.Api.BaseUri,
                     SimSessionsPath = settings.Api.SimSessionsPath,
                     PilotApiToken = settings.Api.PilotApiToken!,
                     TrackerVersion = settings.Api.TrackerVersion,
+                    LiveSyncEnabled = settings.Api.LiveSyncEnabled,
                 });
 
         if (!settings.BackgroundSync.Enabled || string.IsNullOrWhiteSpace(settings.Api.PilotApiToken))

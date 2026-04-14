@@ -6,4 +6,5 @@ public sealed record SimCrewOpsApiUploaderOptions
     public string SimSessionsPath { get; init; } = "/api/sim-sessions";
     public required string PilotApiToken { get; init; }
     public string TrackerVersion { get; init; } = "dev";
+    public bool LiveSyncEnabled { get; init; } = true;
 }
