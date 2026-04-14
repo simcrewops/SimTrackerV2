@@ -422,19 +422,31 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         // individual SimVars are a simple 0/1 and work reliably on MSFS 2024 Game Pass.
         // Fall back to bitmask decode only if all four individual values are still zero
         // (i.e. the SimVars failed to register and returned nothing useful).
-        var beacon  = snapshot.BeaconLightOn;
-        var taxi    = snapshot.TaxiLightsOn;
-        var landing = snapshot.LandingLightsOn;
-        var strobe  = snapshot.StrobesOn;
+        var rawBeacon  = snapshot.BeaconLightOn;
+        var rawTaxi    = snapshot.TaxiLightsOn;
+        var rawLanding = snapshot.LandingLightsOn;
+        var rawStrobe  = snapshot.StrobesOn;
+        var lightStates = snapshot.LightStates;
+        bool usedIndividual;
 
-        if (beacon == 0 && taxi == 0 && landing == 0 && strobe == 0)
+        int beacon, taxi, landing, strobe;
+        if (rawBeacon != 0 || rawTaxi != 0 || rawLanding != 0 || rawStrobe != 0)
+        {
+            // At least one individual SimVar is live — use them.
+            beacon  = rawBeacon;
+            taxi    = rawTaxi;
+            landing = rawLanding;
+            strobe  = rawStrobe;
+            usedIndividual = true;
+        }
+        else
         {
             // Individual SimVars all zero — try decoding the LIGHT STATES bitmask as fallback.
-            var lightStates = snapshot.LightStates;
             beacon  = SimConnectLightStateDecoder.IsBeaconOn(lightStates)  ? 1 : 0;
             taxi    = SimConnectLightStateDecoder.IsTaxiOn(lightStates)    ? 1 : 0;
             landing = SimConnectLightStateDecoder.IsLandingOn(lightStates) ? 1 : 0;
             strobe  = SimConnectLightStateDecoder.IsStrobeOn(lightStates)  ? 1 : 0;
+            usedIndividual = false;
         }
 
         _latestState = _latestState with
@@ -455,6 +467,12 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             TaxiLightsOn   = taxi,
             LandingLightsOn = landing,
             StrobesOn      = strobe,
+            LightStatesRaw = lightStates,
+            LightBeaconRaw = rawBeacon,
+            LightTaxiRaw   = rawTaxi,
+            LightLandingRaw = rawLanding,
+            LightStrobeRaw = rawStrobe,
+            LightSourceIsIndividual = usedIndividual,
             StallWarning = snapshot.StallWarning,
             GpwsAlert = snapshot.GpwsAlert,
             OverspeedWarning = snapshot.OverspeedWarning,
@@ -499,6 +517,12 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             TaxiLightsOn = _latestState.TaxiLightsOn,
             LandingLightsOn = _latestState.LandingLightsOn,
             StrobesOn = _latestState.StrobesOn,
+            LightStatesRaw = _latestState.LightStatesRaw,
+            LightBeaconRaw = _latestState.LightBeaconRaw,
+            LightTaxiRaw = _latestState.LightTaxiRaw,
+            LightLandingRaw = _latestState.LightLandingRaw,
+            LightStrobeRaw = _latestState.LightStrobeRaw,
+            LightSourceIsIndividual = _latestState.LightSourceIsIndividual,
             StallWarning = _latestState.StallWarning,
             GpwsAlert = _latestState.GpwsAlert,
             OverspeedWarning = _latestState.OverspeedWarning,
@@ -651,6 +675,12 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public double TaxiLightsOn { get; init; }
         public double LandingLightsOn { get; init; }
         public double StrobesOn { get; init; }
+        public int LightStatesRaw { get; init; }
+        public int LightBeaconRaw { get; init; }
+        public int LightTaxiRaw { get; init; }
+        public int LightLandingRaw { get; init; }
+        public int LightStrobeRaw { get; init; }
+        public bool LightSourceIsIndividual { get; init; }
         public double StallWarning { get; init; }
         public double GpwsAlert { get; init; }
         public double OverspeedWarning { get; init; }

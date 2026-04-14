@@ -928,9 +928,13 @@ public sealed class MainWindowViewModel : ObservableObject
             return "No raw SimConnect frame received yet.";
         }
 
+        var lightSource = rawFrame.LightSourceIsIndividual ? "individual SimVars" : "LIGHT STATES bitmask fallback";
         return
             $"HDG MAG {rawFrame.HeadingMagneticDegrees:0.##} • HDG TRUE {rawFrame.HeadingTrueDegrees:0.##} • AGL {rawFrame.AltitudeAglFeet:0.##} • ALT {rawFrame.AltitudeFeet:0.##} • ON GND {rawFrame.OnGround:0} • PB {rawFrame.ParkingBrakePosition:0}\n" +
-            $"LIGHT STATES decoded => Beacon {rawFrame.BeaconLightOn:0} • Taxi {rawFrame.TaxiLightsOn:0} • Landing {rawFrame.LandingLightsOn:0} • Strobe {rawFrame.StrobesOn:0}\n" +
+            $"LIGHT source: {lightSource}\n" +
+            $"  individual  => BCN {rawFrame.LightBeaconRaw} • TAXI {rawFrame.LightTaxiRaw} • LDG {rawFrame.LightLandingRaw} • STB {rawFrame.LightStrobeRaw}\n" +
+            $"  bitmask raw => 0x{rawFrame.LightStatesRaw:X4}  (BCN=0x0002 LAND=0x0004 TAXI=0x0008 STB=0x0010)\n" +
+            $"  final used  => BCN {rawFrame.BeaconLightOn:0} • TAXI {rawFrame.TaxiLightsOn:0} • LDG {rawFrame.LandingLightsOn:0} • STB {rawFrame.StrobesOn:0}\n" +
             $"IAS {rawFrame.IndicatedAirspeedKnots:0.##} • GS {rawFrame.GroundSpeedKnots:0.##} • VS {rawFrame.VerticalSpeedFpm:0.##}";
     }
 

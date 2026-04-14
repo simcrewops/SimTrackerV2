@@ -28,10 +28,19 @@ public sealed record SimConnectRawTelemetryFrame
     public double FlapsHandleIndex { get; init; }
     public double GearPosition { get; init; }
 
+    // Final decoded light values (individual SimVar preferred; bitmask fallback)
     public double BeaconLightOn { get; init; }
     public double TaxiLightsOn { get; init; }
     public double LandingLightsOn { get; init; }
     public double StrobesOn { get; init; }
+
+    // Raw values before fallback logic — for diagnostics
+    public int LightStatesRaw { get; init; }          // LIGHT STATES bitmask integer
+    public int LightBeaconRaw { get; init; }          // LIGHT BEACON individual SimVar
+    public int LightTaxiRaw { get; init; }            // LIGHT TAXI individual SimVar
+    public int LightLandingRaw { get; init; }         // LIGHT LANDING individual SimVar
+    public int LightStrobeRaw { get; init; }          // LIGHT STROBE individual SimVar
+    public bool LightSourceIsIndividual { get; init; } // true = used individual vars, false = used bitmask
 
     public double StallWarning { get; init; }
     public double GpwsAlert { get; init; }
