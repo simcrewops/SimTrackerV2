@@ -8,6 +8,7 @@ using SimCrewOps.Hosting.Models;
 using Brush = System.Windows.Media.Brush;
 using Pen   = System.Windows.Media.Pen;
 using Color = System.Windows.Media.Color;
+using Point = System.Windows.Point;
 
 namespace SimCrewOps.App.Wpf.Views;
 
@@ -62,11 +63,7 @@ public sealed class LiveMapCanvas : FrameworkElement
     private static Geometry BuildPlaneGeometry()
     {
         // Target icon: 20 wide, 24 tall; origin at center.
-        const double srcX = 577.125, srcY = 545.0, srcW = 344.875, srcH = 410.0;
         const double iconW = 20.0, iconH = 24.0;
-
-        double sx = iconW / srcW;
-        double sy = iconH / srcH;
 
         // Use the shorter SVG path data (simplified airplane shape).
         // We'll build a simple arrow/chevron shape to avoid embedding 10 KB of path data.
