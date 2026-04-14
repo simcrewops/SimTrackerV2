@@ -222,26 +222,76 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     {
         ThrowIfDisposed();
 
-        if (_frames.TryDequeue(out var bufferedFrame))
-        {
-            return bufferedFrame;
-        }
-
         var started = DateTimeOffset.UtcNow;
-        while (DateTimeOffset.UtcNow - started < _options.FrameReadTimeout)
+        do
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var frame = TryDispatchNextMessage();
-            if (frame is not null)
+            // Drain ALL available SimConnect messages in one pass.
+            // SIMCONNECT_PERIOD_SIM_FRAME queues 30–60 messages per second; if we only
+            // dequeue one message per poll the queue grows without bound and the data
+            // shown becomes increasingly stale (effectively "frozen" after ~30 seconds).
+            DrainAllAvailableMessages();
+
+            // Discard intermediate frames — keep only the most recent snapshot so the
+            // UI always reflects the current sim state, not data from seconds ago.
+            SimConnectRawTelemetryFrame? latest = null;
+            while (_frames.TryDequeue(out var f))
             {
-                return frame;
+                latest = f;
+            }
+
+            if (latest is not null)
+            {
+                return latest;
             }
 
             await Task.Delay(15, cancellationToken).ConfigureAwait(false);
         }
+        while (DateTimeOffset.UtcNow - started < _options.FrameReadTimeout);
 
         return null;
+    }
+
+    private void DrainAllAvailableMessages()
+    {
+        while (true)
+        {
+            var result = _exports.GetNextDispatch(_simConnectHandle, out var dispatchPointer, out _);
+            if (IsNoDispatchAvailable(result))
+            {
+                return;
+            }
+
+            ThrowIfFailed(result, "SimConnect_GetNextDispatch");
+
+            if (dispatchPointer == nint.Zero)
+            {
+                return;
+            }
+
+            var header = Marshal.PtrToStructure<SimConnectRecv>(dispatchPointer);
+            switch ((SimConnectRecvId)header.RecvId)
+            {
+                case SimConnectRecvId.Null:
+                    break;
+                case SimConnectRecvId.Open:
+                    System.Diagnostics.Debug.WriteLine("[SimConnect] SIMCONNECT_RECV_OPEN received — handshake complete, SimVars registered.");
+                    break;
+                case SimConnectRecvId.Exception:
+                    var exception = Marshal.PtrToStructure<SimConnectRecvException>(dispatchPointer);
+                    // Non-fatal: log and continue. A single bad SimVar name causes
+                    // SIMCONNECT_EXCEPTION_UNIMPLEMENTED (13) or DATA_ERROR (7).
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[SimConnect] SIMCONNECT_RECV_EXCEPTION code={exception.ExceptionCode} sendId={exception.SendId} index={exception.Index}");
+                    break;
+                case SimConnectRecvId.Quit:
+                    throw new InvalidOperationException("Microsoft Flight Simulator closed the SimConnect session.");
+                case SimConnectRecvId.SimObjectData:
+                    HandleSimObjectData(dispatchPointer);
+                    break;
+            }
+        }
     }
 
     public Task CloseAsync(CancellationToken cancellationToken = default)
@@ -335,47 +385,6 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             $"SimConnect_RequestDataOnSimObject({requestId})");
     }
 
-    private SimConnectRawTelemetryFrame? TryDispatchNextMessage()
-    {
-        var result = _exports.GetNextDispatch(_simConnectHandle, out var dispatchPointer, out _);
-        if (IsNoDispatchAvailable(result))
-        {
-            return _frames.TryDequeue(out var emptyFrame) ? emptyFrame : null;
-        }
-
-        ThrowIfFailed(result, "SimConnect_GetNextDispatch");
-
-        if (dispatchPointer == nint.Zero)
-        {
-            return _frames.TryDequeue(out var emptyFrame) ? emptyFrame : null;
-        }
-
-        var header = Marshal.PtrToStructure<SimConnectRecv>(dispatchPointer);
-        switch ((SimConnectRecvId)header.RecvId)
-        {
-            case SimConnectRecvId.Null:
-                break;
-            case SimConnectRecvId.Open:
-                System.Diagnostics.Debug.WriteLine("[SimConnect] SIMCONNECT_RECV_OPEN received — handshake complete, SimVars registered.");
-                break;
-            case SimConnectRecvId.Exception:
-                var exception = Marshal.PtrToStructure<SimConnectRecvException>(dispatchPointer);
-                // Non-fatal: log the exception and continue. A single bad SimVar name causes
-                // SIMCONNECT_EXCEPTION_UNIMPLEMENTED (13) or DATA_ERROR (7); throwing here would
-                // kill the entire session and suppress all data from the remaining valid vars.
-                System.Diagnostics.Debug.WriteLine(
-                    $"[SimConnect] SIMCONNECT_RECV_EXCEPTION code={exception.ExceptionCode} sendId={exception.SendId} index={exception.Index}");
-                break;
-            case SimConnectRecvId.Quit:
-                throw new InvalidOperationException("Microsoft Flight Simulator closed the SimConnect session.");
-            case SimConnectRecvId.SimObjectData:
-                HandleSimObjectData(dispatchPointer);
-                break;
-        }
-
-        return _frames.TryDequeue(out var frame) ? frame : null;
-    }
-
     private void HandleSimObjectData(nint dispatchPointer)
     {
         var data = Marshal.PtrToStructure<SimConnectRecvSimObjectData>(dispatchPointer);
@@ -394,6 +403,13 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
     private void UpdateFlightCritical(FlightCriticalSnapshot snapshot)
     {
+        // OnGround is computed from AGL rather than read from a SimVar.
+        // "SIM ON GROUND" returns 0 on MSFS 2024 Xbox Game Pass; indexed gear SimVars
+        // ("GEAR IS ON GROUND:1") cause exceptions that can stop the entire group.
+        // PLANE ALT ABOVE GROUND typically reads ~3-15 ft with the aircraft on the runway
+        // (varies by aircraft reference-point height). 30 ft gives a reliable threshold.
+        var onGround = snapshot.AltitudeAglFeet < 30.0 ? 1 : 0;
+
         _latestState = _latestState with
         {
             HasFlightCritical = true,
@@ -408,7 +424,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             BankAngleDegrees = snapshot.BankAngleDegrees,
             PitchAngleDegrees = snapshot.PitchAngleDegrees,
             ParkingBrakePosition = snapshot.ParkingBrakePosition,
-            OnGround = snapshot.OnGround,
+            OnGround = onGround,
             CrashFlag = snapshot.CrashFlag,
         };
 
@@ -570,7 +586,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly double BankAngleDegrees;
         public readonly double PitchAngleDegrees;
         public readonly int ParkingBrakePosition;
-        public readonly int OnGround;
+        // OnGround is computed from AltitudeAglFeet in EnqueueFrame — no SimVar field here.
         public readonly int CrashFlag;
     }
 

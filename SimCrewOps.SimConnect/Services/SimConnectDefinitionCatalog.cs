@@ -24,7 +24,11 @@ public static class SimConnectDefinitionCatalog
         Define("bank", "PLANE BANK DEGREES", "degrees", SimConnectUpdateRate.SimFrame),
         Define("pitch", "PLANE PITCH DEGREES", "degrees", SimConnectUpdateRate.SimFrame),
         Define("parking_brake", "PARKING BRAKE INDICATOR", "bool", SimConnectUpdateRate.SimFrame),
-        Define("on_ground", "GEAR IS ON GROUND:1", "bool", SimConnectUpdateRate.SimFrame),
+        // NOTE: on_ground is intentionally NOT read from a SimVar — "SIM ON GROUND" returns 0
+        // on MSFS 2024 Xbox Game Pass, and indexed SimVars like "GEAR IS ON GROUND:1" cause
+        // SIMCONNECT_EXCEPTION_UNIMPLEMENTED on some builds which can silently stop the entire
+        // definition group from delivering further data.  OnGround is instead computed in the
+        // telemetry mapper from PLANE ALT ABOVE GROUND, which is already present in this group.
         Define("crash_flag", "CRASH FLAG", "bool", SimConnectUpdateRate.SimFrame),
     ];
 
