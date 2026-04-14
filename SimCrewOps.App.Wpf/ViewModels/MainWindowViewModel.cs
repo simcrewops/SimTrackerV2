@@ -29,30 +29,30 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _syncStatusText = "SYNC READY";
     private Brush _syncStatusBrush = new SolidColorBrush(MediaColor.FromRgb(56, 91, 105));
     private string _headerFlightText = "Waiting for flight context • MSFS telemetry will populate here";
-    private string _phaseTitle = "APPROACH";
-    private string _phaseSubtitle = "Fast, readable, and phase-specific. Diagram moved to post-flight web debrief.";
-    private string _phaseStatusLine = "Stable descent • runway assigned • landing metrics armed";
+    private string _phaseTitle = "PREFLIGHT";
+    private string _phaseSubtitle = "The live ops board stays blank until the tracker receives real telemetry.";
+    private string _phaseStatusLine = "Waiting for telemetry";
     private string _careerTier = "Standard Profile";
     private string _bidDisplay = "Free Flight";
     private string _reputationDisplay = "Free Flight";
-    private string _outTime = "19:45";
-    private string _offTime = "19:58";
+    private string _outTime = "--:--";
+    private string _offTime = "--:--";
     private string _onTime = "--:--";
     private string _inTime = "--:--";
-    private string _scoreText = "88";
-    private string _gradeText = "Grade B";
-    private string _scoreSummary = "Approach performance is good. Landing card unlocks after touchdown.";
-    private string _alertPrimaryTitle = "Stable by 500 AGL";
-    private string _alertPrimaryBody = "VS, gear, and flap state actively monitored.";
-    private string _alertSecondaryTitle = "Overspeed x1";
-    private string _alertSecondaryBody = "Captured in descent below FL100.";
-    private string _dispatchTitle = "Expect ILS 27R";
-    private string _dispatchBody = "22:43 Dispatch updated winds to 270/18G24.";
+    private string _scoreText = "--";
+    private string _gradeText = "Grade --";
+    private string _scoreSummary = "No score available until a live session is in progress.";
+    private string _alertPrimaryTitle = "Waiting for telemetry";
+    private string _alertPrimaryBody = "The tracker will populate live alerts once SimConnect data is flowing.";
+    private string _alertSecondaryTitle = "No events yet";
+    private string _alertSecondaryBody = "Overspeed, stall, and GPWS events will appear during flight.";
+    private string _dispatchTitle = "Dispatch channel ready";
+    private string _dispatchBody = "Live dispatch and ACARS items will appear here when messaging is wired.";
     private string _sessionHealthTitle = "Autosave OK";
     private string _sessionHealthLine1 = "API Queue 0";
-    private string _sessionHealthLine2 = "Last sync 22:41";
+    private string _sessionHealthLine2 = "Last sync --:--";
     private string _sessionHealthLine3 = "Runtime healthy";
-    private string _reviewSummary = "Landing metrics will populate after touchdown.";
+    private string _reviewSummary = "Landing metrics will populate once a real touchdown is captured.";
     private string _reviewLandingMetrics = "VS --   G --   Bank --   Pitch --   TZ Excess --";
     private string _diagnosticsSimState = "Waiting for simulator process";
     private string _diagnosticsSyncState = "Background sync not yet initialized";
@@ -451,7 +451,7 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         var activeState = snapshot.RuntimeState;
         var telemetry = activeState?.LastTelemetryFrame;
-        var phase = activeState?.CurrentPhase ?? FlightPhase.Approach;
+        var phase = activeState?.CurrentPhase ?? FlightPhase.Preflight;
 
         MsfsStatusText = snapshot.SimConnectStatus.ConnectionState switch
         {
@@ -495,25 +495,33 @@ public sealed class MainWindowViewModel : ObservableObject
         PopulateStatusChips(phase, telemetry);
         PopulateScoreRows(activeState?.ScoreResult);
 
-        ScoreText = activeState?.ScoreResult.FinalScore.ToString("0", CultureInfo.InvariantCulture) ?? "88";
-        GradeText = activeState?.ScoreResult.Grade is { Length: > 0 } grade ? $"Grade {grade}" : "Grade B";
+        ScoreText = activeState?.ScoreResult.FinalScore.ToString("0", CultureInfo.InvariantCulture) ?? "--";
+        GradeText = activeState?.ScoreResult.Grade is { Length: > 0 } grade ? $"Grade {grade}" : "Grade --";
         ScoreSummary = activeState is null
-            ? "Approach performance is good. Landing card unlocks after touchdown."
+            ? "No score available until a live session is in progress."
             : $"Phase subtotal {activeState.ScoreResult.PhaseSubtotal:0.#} with global deductions {activeState.ScoreResult.GlobalDeductions:0.#}.";
 
-        AlertPrimaryTitle = phase == FlightPhase.Approach ? "Stable by 500 AGL" : "Live phase monitoring";
-        AlertPrimaryBody = phase == FlightPhase.Approach
+        AlertPrimaryTitle = activeState is null
+            ? "Waiting for telemetry"
+            : phase == FlightPhase.Approach ? "Stable by 500 AGL" : "Live phase monitoring";
+        AlertPrimaryBody = activeState is null
+            ? "The tracker will populate live alerts once SimConnect data is flowing."
+            : phase == FlightPhase.Approach
             ? "VS, gear, and flap state actively monitored."
             : "The shell switches the board content by phase as live data updates.";
 
         var overspeedFindings = activeState?.ScoreResult.GlobalFindings.Count(f => f.Code.Contains("overspeed", StringComparison.OrdinalIgnoreCase)) ?? 0;
-        AlertSecondaryTitle = overspeedFindings > 0 ? $"Overspeed x{overspeedFindings}" : "No overspeed events";
+        AlertSecondaryTitle = activeState is null ? "No events yet" : overspeedFindings > 0 ? $"Overspeed x{overspeedFindings}" : "No overspeed events";
         AlertSecondaryBody = overspeedFindings > 0
             ? "Captured in descent below FL100."
+            : activeState is null
+            ? "Overspeed, stall, and GPWS events will appear during flight."
             : "No overspeed deductions are active in the current session.";
 
-        DispatchTitle = phase == FlightPhase.Approach ? "Expect ILS 27R" : "Dispatch channel ready";
-        DispatchBody = phase == FlightPhase.Approach
+        DispatchTitle = activeState is null ? "Dispatch channel ready" : phase == FlightPhase.Approach ? "Expect ILS 27R" : "Dispatch channel ready";
+        DispatchBody = activeState is null
+            ? "Live dispatch and ACARS items will appear here when messaging is wired."
+            : phase == FlightPhase.Approach
             ? "22:43 Dispatch updated winds to 270/18G24."
             : "ACARS and dispatch threads will surface here when messaging is wired.";
 
@@ -547,9 +555,9 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void ApplySampleState()
     {
-        PopulatePhasePills(FlightPhase.Approach);
-        PopulateMetricTiles(FlightPhase.Approach, null);
-        PopulateStatusChips(FlightPhase.Approach, null);
+        PopulatePhasePills(FlightPhase.Preflight);
+        PopulateMetricTiles(FlightPhase.Preflight, null);
+        PopulateStatusChips(FlightPhase.Preflight, null);
         PopulateScoreRows(null);
     }
 
@@ -567,48 +575,48 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         FlightPhase.Preflight or FlightPhase.TaxiOut or FlightPhase.TaxiIn => new[]
         {
-            new MetricTileModel("GS", $"{telemetry?.GroundSpeedKnots ?? 12:0} kt"),
-            new MetricTileModel("HDG", $"{telemetry?.HeadingTrueDegrees ?? 224:0}°"),
-            new MetricTileModel("TAXI LT", telemetry?.TaxiLightsOn == false ? "OFF" : "ON"),
-            new MetricTileModel("PB", telemetry?.ParkingBrakeSet == true ? "SET" : "OFF"),
+            new MetricTileModel("GS", telemetry is null ? "-- kt" : $"{telemetry.GroundSpeedKnots:0} kt"),
+            new MetricTileModel("HDG", telemetry is null ? "--°" : $"{telemetry.HeadingTrueDegrees:0}°"),
+            new MetricTileModel("TAXI LT", telemetry is null ? "--" : telemetry.TaxiLightsOn ? "ON" : "OFF"),
+            new MetricTileModel("PB", telemetry is null ? "--" : telemetry.ParkingBrakeSet ? "SET" : "OFF"),
         },
         FlightPhase.Takeoff => new[]
         {
-            new MetricTileModel("IAS", $"{telemetry?.IndicatedAirspeedKnots ?? 142:0} kt"),
-            new MetricTileModel("VS", $"{telemetry?.VerticalSpeedFpm ?? 1650:0} fpm"),
-            new MetricTileModel("PITCH", $"{telemetry?.PitchAngleDegrees ?? 11:0.#}°"),
-            new MetricTileModel("BANK", $"{telemetry?.BankAngleDegrees ?? 2.1:0.#}°"),
-            new MetricTileModel("G", $"{telemetry?.GForce ?? 1.2:0.00}"),
+            new MetricTileModel("IAS", telemetry is null ? "-- kt" : $"{telemetry.IndicatedAirspeedKnots:0} kt"),
+            new MetricTileModel("VS", telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm"),
+            new MetricTileModel("PITCH", telemetry is null ? "--°" : $"{telemetry.PitchAngleDegrees:0.#}°"),
+            new MetricTileModel("BANK", telemetry is null ? "--°" : $"{telemetry.BankAngleDegrees:0.#}°"),
+            new MetricTileModel("G", telemetry is null ? "--" : $"{telemetry.GForce:0.00}"),
         },
         FlightPhase.Climb or FlightPhase.Cruise or FlightPhase.Descent => new[]
         {
-            new MetricTileModel("IAS", $"{telemetry?.IndicatedAirspeedKnots ?? 278:0} kt"),
-            new MetricTileModel("ALT", $"{telemetry?.IndicatedAltitudeFeet ?? 24000:0} ft"),
-            new MetricTileModel("VS", $"{telemetry?.VerticalSpeedFpm ?? -680:0} fpm", telemetry is { VerticalSpeedFpm: < -1000 or > 1000 }),
-            new MetricTileModel("HDG", $"{telemetry?.HeadingTrueDegrees ?? 222:0}°"),
+            new MetricTileModel("IAS", telemetry is null ? "-- kt" : $"{telemetry.IndicatedAirspeedKnots:0} kt"),
+            new MetricTileModel("ALT", telemetry is null ? "-- ft" : $"{telemetry.IndicatedAltitudeFeet:0} ft"),
+            new MetricTileModel("VS", telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm", telemetry is { VerticalSpeedFpm: < -1000 or > 1000 }),
+            new MetricTileModel("HDG", telemetry is null ? "--°" : $"{telemetry.HeadingTrueDegrees:0}°"),
         },
         FlightPhase.Landing => new[]
         {
-            new MetricTileModel("TD VS", $"{telemetry?.VerticalSpeedFpm ?? -412:0} fpm", telemetry is { VerticalSpeedFpm: < -600 }),
-            new MetricTileModel("G", $"{telemetry?.GForce ?? 1.31:0.00}", telemetry is { GForce: > 1.5 }),
-            new MetricTileModel("BANK", $"{telemetry?.BankAngleDegrees ?? 1.5:0.#}°"),
-            new MetricTileModel("PITCH", $"{telemetry?.PitchAngleDegrees ?? 2.0:0.#}°"),
+            new MetricTileModel("TD VS", telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm", telemetry is { VerticalSpeedFpm: < -600 }),
+            new MetricTileModel("G", telemetry is null ? "--" : $"{telemetry.GForce:0.00}", telemetry is { GForce: > 1.5 }),
+            new MetricTileModel("BANK", telemetry is null ? "--°" : $"{telemetry.BankAngleDegrees:0.#}°"),
+            new MetricTileModel("PITCH", telemetry is null ? "--°" : $"{telemetry.PitchAngleDegrees:0.#}°"),
         },
         FlightPhase.Arrival => new[]
         {
-            new MetricTileModel("PB", telemetry?.ParkingBrakeSet == true ? "SET" : "OFF"),
-            new MetricTileModel("ENG 1", telemetry?.Engine1Running == false ? "OFF" : "ON"),
-            new MetricTileModel("ENG 2", telemetry?.Engine2Running == false ? "OFF" : "ON"),
-            new MetricTileModel("TAXI LT", telemetry?.TaxiLightsOn == false ? "OFF" : "ON"),
+            new MetricTileModel("PB", telemetry is null ? "--" : telemetry.ParkingBrakeSet ? "SET" : "OFF"),
+            new MetricTileModel("ENG 1", telemetry is null ? "--" : telemetry.Engine1Running ? "ON" : "OFF"),
+            new MetricTileModel("ENG 2", telemetry is null ? "--" : telemetry.Engine2Running ? "ON" : "OFF"),
+            new MetricTileModel("TAXI LT", telemetry is null ? "--" : telemetry.TaxiLightsOn ? "ON" : "OFF"),
         },
         _ => new[]
         {
-            new MetricTileModel("IAS", $"{telemetry?.IndicatedAirspeedKnots ?? 142:0} kt"),
-            new MetricTileModel("VS", $"{telemetry?.VerticalSpeedFpm ?? -680:0} fpm", telemetry is { VerticalSpeedFpm: < -1000 }),
-            new MetricTileModel("ALT AGL", $"{telemetry?.AltitudeAglFeet ?? 1900:0} ft"),
-            new MetricTileModel("G/S", "-0.2 dot"),
-            new MetricTileModel("DIST THR", "4.2 nm"),
-            new MetricTileModel("LOC", "+0.1 dot"),
+            new MetricTileModel("IAS", telemetry is null ? "-- kt" : $"{telemetry.IndicatedAirspeedKnots:0} kt"),
+            new MetricTileModel("VS", telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm", telemetry is { VerticalSpeedFpm: < -1000 }),
+            new MetricTileModel("ALT AGL", telemetry is null ? "-- ft" : $"{telemetry.AltitudeAglFeet:0} ft"),
+            new MetricTileModel("G/S", "-- dot"),
+            new MetricTileModel("DIST THR", "-- nm"),
+            new MetricTileModel("LOC", "-- dot"),
         },
     };
 
@@ -625,28 +633,28 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         FlightPhase.Approach => new[]
         {
-            "RUNWAY 27R",
-            telemetry?.GearDown == false ? "GEAR UP" : "GEAR DOWN",
-            $"FLAPS {telemetry?.FlapsHandleIndex ?? 2}",
-            "500 OK",
+            "RUNWAY --",
+            telemetry is null ? "GEAR --" : telemetry.GearDown ? "GEAR DOWN" : "GEAR UP",
+            telemetry is null ? "FLAPS --" : $"FLAPS {telemetry.FlapsHandleIndex}",
+            telemetry is null ? "500 --" : "500 OK",
         },
         FlightPhase.Landing => new[]
         {
-            "TOUCHDOWN",
-            telemetry?.GearDown == false ? "GEAR UP" : "GEAR DOWN",
-            "ROLL OUT",
+            telemetry is null ? "LANDING --" : "TOUCHDOWN",
+            telemetry is null ? "GEAR --" : telemetry.GearDown ? "GEAR DOWN" : "GEAR UP",
+            telemetry is null ? "ROLLOUT --" : "ROLL OUT",
         },
         FlightPhase.Arrival => new[]
         {
-            telemetry?.ParkingBrakeSet == true ? "PB SET" : "PB OFF",
-            telemetry?.TaxiLightsOn == false ? "TAXI LT OFF" : "TAXI LT ON",
-            telemetry?.Engine1Running == false && telemetry?.Engine2Running == false ? "ENG OFF" : "ENG RUN",
+            telemetry is null ? "PB --" : telemetry.ParkingBrakeSet ? "PB SET" : "PB OFF",
+            telemetry is null ? "TAXI LT --" : telemetry.TaxiLightsOn ? "TAXI LT ON" : "TAXI LT OFF",
+            telemetry is null ? "ENG --" : !telemetry.Engine1Running && !telemetry.Engine2Running ? "ENG OFF" : "ENG RUN",
         },
         _ => new[]
         {
             $"PHASE {phase.ToString().ToUpperInvariant()}",
-            telemetry?.LandingLightsOn == true ? "LDG LT ON" : "LDG LT OFF",
-            telemetry?.StrobesOn == true ? "STROBES ON" : "STROBES OFF",
+            telemetry is null ? "LDG LT --" : telemetry.LandingLightsOn ? "LDG LT ON" : "LDG LT OFF",
+            telemetry is null ? "STROBES --" : telemetry.StrobesOn ? "STROBES ON" : "STROBES OFF",
         },
     };
 
@@ -698,9 +706,9 @@ public sealed class MainWindowViewModel : ObservableObject
     private static List<ScoreRowModel> CreateSampleScoreRows() =>
         new()
         {
-            new ScoreRowModel("Preflight", "5/5", 112, new SolidColorBrush(MediaColor.FromRgb(54, 130, 139))),
-            new ScoreRowModel("Taxi Out", "8/8", 112, new SolidColorBrush(MediaColor.FromRgb(54, 130, 139))),
-            new ScoreRowModel("Approach", "10/12", 96, new SolidColorBrush(MediaColor.FromRgb(243, 169, 106))),
+            new ScoreRowModel("Preflight", "--", 0, new SolidColorBrush(MediaColor.FromRgb(54, 130, 139))),
+            new ScoreRowModel("Taxi Out", "--", 0, new SolidColorBrush(MediaColor.FromRgb(54, 130, 139))),
+            new ScoreRowModel("Approach", "--", 0, new SolidColorBrush(MediaColor.FromRgb(243, 169, 106))),
             new ScoreRowModel("Landing", "--", 0, new SolidColorBrush(MediaColor.FromRgb(217, 223, 214))),
         };
 
