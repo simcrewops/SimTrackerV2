@@ -22,7 +22,7 @@ public sealed record SimConnectRawTelemetryFrame
     public double HeadingTrueDegrees { get; init; }
     public double GForce { get; init; }
 
-    public double ParkingBrakePosition { get; init; }
+    public double ParkingBrakePosition { get; init; }  // BRAKE PARKING POSITION: 0–100 (0=released, 100=fully set)
     public double OnGround { get; init; }
     public double CrashFlag { get; init; }
     public double FlapsHandleIndex { get; init; }

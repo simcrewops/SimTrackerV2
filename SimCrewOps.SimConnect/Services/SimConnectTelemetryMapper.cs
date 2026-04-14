@@ -30,7 +30,9 @@ public sealed class SimConnectTelemetryMapper
             HeadingTrueDegrees = rawFrame.HeadingTrueDegrees,
             GForce = rawFrame.GForce,
             OnGround = ToBool(rawFrame.OnGround),
-            ParkingBrakeSet = ToBool(rawFrame.ParkingBrakePosition),
+            // BRAKE PARKING POSITION returns 0–100. Treat > 50 as set so partial
+            // application on some aircraft doesn't falsely trigger blocks-off/on.
+            ParkingBrakeSet = rawFrame.ParkingBrakePosition > 50.0,
             GearDown = rawFrame.GearPosition >= 0.5,
             GearPosition = rawFrame.GearPosition,
             FlapsHandleIndex = (int)Math.Round(rawFrame.FlapsHandleIndex, MidpointRounding.AwayFromZero),

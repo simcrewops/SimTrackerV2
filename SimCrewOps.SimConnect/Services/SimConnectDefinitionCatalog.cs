@@ -23,7 +23,11 @@ public static class SimConnectDefinitionCatalog
         Define("vertical_speed", "VERTICAL SPEED", "feet per minute", SimConnectUpdateRate.SimFrame),
         Define("bank", "PLANE BANK DEGREES", "degrees", SimConnectUpdateRate.SimFrame),
         Define("pitch", "PLANE PITCH DEGREES", "degrees", SimConnectUpdateRate.SimFrame),
-        Define("parking_brake", "PARKING BRAKE INDICATOR", "bool", SimConnectUpdateRate.SimFrame),
+        // PARKING BRAKE INDICATOR reflects the cockpit indicator light — on many aircraft (Fenix,
+        // PMDG, etc.) it stays lit even when the brake is released, so it always reads 1.
+        // BRAKE PARKING POSITION returns 0–100 (0 = fully released, 100 = fully set) and is
+        // universally reliable. We treat any value > 50 as "set".
+        Define("parking_brake", "BRAKE PARKING POSITION", "percent", SimConnectUpdateRate.SimFrame),
         // SIM ON GROUND is requested as Float64 (all SimVars use uniform Float64 now).
         // The earlier mixed Int32/Float64 struct had alignment issues that caused it to
         // always read 0. If the SimVar is still broken on a given MSFS build, the
