@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:model="clr-namespace:SimCrewOps.App.Wpf.Models"
         xmlns:local="clr-namespace:SimCrewOps.App.Wpf.Views"
+        xmlns:vm="clr-namespace:SimCrewOps.App.Wpf.ViewModels"
         mc:Ignorable="d"
         Title="SimCrewOps Tracker"
         Width="1440"
@@ -254,6 +255,13 @@
                 <Border Background="{Binding LiveSyncStatusBrush}" CornerRadius="6" Padding="10,5">
                     <TextBlock Text="{Binding LiveSyncStatusText}" Foreground="White" FontSize="11" FontWeight="Bold" />
                 </Border>
+
+                <!-- App version -->
+                <TextBlock Text="{x:Static vm:MainWindowViewModel.AppVersion}"
+                           Foreground="{StaticResource TextSubtleBrush}"
+                           FontSize="10"
+                           FontFamily="Consolas"
+                           Margin="2,10,0,0" />
             </StackPanel>
         </Grid>
 
@@ -784,8 +792,11 @@
                                             <Run Text=" → Connect Tracker." />
                                         </TextBlock>
                                         <TextBox Text="{Binding SettingsEditor.PilotApiToken, UpdateSourceTrigger=PropertyChanged}" />
-                                        <TextBlock Text="Tracker Version" Margin="0,14,0,5" Foreground="{StaticResource NavTextBrush}" FontSize="13" />
-                                        <TextBox Text="{Binding SettingsEditor.TrackerVersion, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock Text="App Version" Margin="0,14,0,4" Foreground="{StaticResource NavTextBrush}" FontSize="13" />
+                                        <TextBlock Text="{x:Static vm:MainWindowViewModel.AppVersion}"
+                                                   Foreground="{StaticResource TextMutedBrush}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="12" />
                                     </StackPanel>
                                 </ScrollViewer>
                             </Border>

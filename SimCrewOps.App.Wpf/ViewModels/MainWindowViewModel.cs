@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -19,6 +20,23 @@ namespace SimCrewOps.App.Wpf.ViewModels;
 
 public sealed class MainWindowViewModel : ObservableObject
 {
+    /// <summary>
+    /// Assembly InformationalVersion baked in at build time (e.g. "2.0.0-alpha.42+abc1234").
+    /// Falls back to AssemblyVersion if the attribute is absent (local/dev builds).
+    /// </summary>
+    public static string AppVersion { get; } = ResolveAppVersion();
+
+    private static string ResolveAppVersion()
+    {
+        var assembly = Assembly.GetEntryAssembly() ?? typeof(MainWindowViewModel).Assembly;
+        var informational = assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informational))
+            return informational;
+        return assembly.GetName().Version?.ToString(3) ?? "2.0.0-dev";
+    }
+
     private readonly TrackerShellHost _shellHost;
     private readonly DispatcherTimer _pollingTimer;
     private readonly SimCrewOps.Hosting.Hosting.LiveMapService? _liveMapService;
