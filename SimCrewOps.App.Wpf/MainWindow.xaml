@@ -498,7 +498,6 @@
 
                             <!-- Map canvas — code-behind renders plane icons via MapProjection -->
                             <local:LiveMapCanvas x:Name="LiveMapCanvas" Grid.Row="1"
-                                                 Background="#0D1520"
                                                  LiveFlights="{Binding LiveFlights}" />
                         </Grid>
                     </Border>
