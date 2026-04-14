@@ -120,6 +120,20 @@ public sealed class MainWindowViewModel : ObservableObject
         };
         _pollingTimer.Tick += async (_, _) => await RefreshAsync();
 
+        // TODO: wire live map — subscribe to bootstrap.ShellHost.LiveMap.PositionsUpdated here.
+        // The event fires from a background thread, so marshal to the UI thread:
+        //
+        //   bootstrap.ShellHost.LiveMap.PositionsUpdated += (_, flights) =>
+        //       Application.Current.Dispatcher.InvokeAsync(() => OnLiveMapPositionsUpdated(flights));
+        //
+        // In OnLiveMapPositionsUpdated: clear existing plane markers on the map Canvas, then for
+        // each LiveFlight call MapProjection.LatLonToCanvas(lat, lon, canvas.ActualWidth,
+        // canvas.ActualHeight) to get the pixel position, create a Polygon with
+        // points="0,-12 6,9 0,5 -6,9" rotated to flight.Heading, and colour by phase:
+        //   Approach → amber (#F5A623), Cruise/Descent → green (#4CAF50),
+        //   Climb → purple (#9C27B0), Ground → gray (#9E9E9E).
+        //   IsMyFlight → blue (#2196F3) (takes priority over phase colour).
+
         ApplySampleState();
     }
 

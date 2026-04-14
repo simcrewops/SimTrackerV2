@@ -21,6 +21,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
     private readonly TrackerServiceStack _serviceStack;
     private readonly MsfsSimConnectHost _simConnectHost;
     private readonly PersistentRuntimeCoordinator _persistentRuntimeCoordinator;
+    private readonly LiveMapService _liveMapService;
 
     private TrackerAppSettings _settings;
     private SessionRecoverySnapshot _recoverySnapshot = new();
@@ -43,6 +44,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
         _simConnectHost = new MsfsSimConnectHost(
             new SimulatorProcessDetector(new SystemProcessListProvider()),
             new AdaptiveSimConnectClient());
+        _liveMapService = new LiveMapService(new HttpClient(), serviceStack.Settings.Api);
         var runwayDataProvider = CreateRunwayDataProvider(settingsFilePath);
         var runtimeCoordinator = new RuntimeCoordinator(
             new FlightSessionContext(),
@@ -55,11 +57,19 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
     public TrackerAppSettings Settings => _settings;
 
+    /// <summary>
+    /// Polls GET /api/flights/live every 5 seconds for all active company positions.
+    /// Subscribe to <see cref="LiveMapService.PositionsUpdated"/> to render plane icons.
+    /// </summary>
+    public LiveMapService LiveMap => _liveMapService;
+
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         _recoverySnapshot = await _persistentRuntimeCoordinator
             .GetRecoverySnapshotAsync(cancellationToken)
             .ConfigureAwait(false);
+
+        _liveMapService.Start();
 
         if (_serviceStack.BackgroundSyncCoordinator is not null)
         {
@@ -147,6 +157,8 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await _liveMapService.DisposeAsync().ConfigureAwait(false);
+
         if (_serviceStack.BackgroundSyncCoordinator is not null)
         {
             await _serviceStack.BackgroundSyncCoordinator.DisposeAsync().ConfigureAwait(false);
