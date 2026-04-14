@@ -29,7 +29,7 @@ public sealed class SimConnectTelemetryMapperTests
             HeadingMagneticDegrees = 219,
             HeadingTrueDegrees = 222,
             GForce = 1.18,
-            ParkingBrakePosition = 1,
+            ParkingBrakePosition = 100,  // BRAKE PARKING POSITION is 0–100; use 100 (fully set) to assert ParkingBrakeSet=true
             OnGround = 0,
             CrashFlag = 0,
             FlapsHandleIndex = 2,

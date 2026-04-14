@@ -51,7 +51,7 @@ public sealed class PlaneMarkerModel
             Label      = $"{flight.Callsign}  {flight.PilotName}",
             Altitude   = flight.Altitude,
             GroundSpeed = flight.GroundSpeed,
-            Phase      = flight.Phase,
+            Phase      = flight.Phase ?? string.Empty,
         };
     }
 }
