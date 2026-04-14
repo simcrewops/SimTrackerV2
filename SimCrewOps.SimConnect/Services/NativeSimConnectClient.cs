@@ -404,6 +404,8 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
     private void UpdateOperational(OperationalSnapshot snapshot)
     {
+        var lightStates = snapshot.LightStates;
+
         _latestState = _latestState with
         {
             HeadingMagneticDegrees = snapshot.HeadingMagneticDegrees,
@@ -417,10 +419,10 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             Engine2Running = snapshot.Engine2Running,
             Engine3Running = snapshot.Engine3Running,
             Engine4Running = snapshot.Engine4Running,
-            BeaconLightOn = snapshot.BeaconLightOn,
-            TaxiLightsOn = snapshot.TaxiLightsOn,
-            LandingLightsOn = snapshot.LandingLightsOn,
-            StrobesOn = snapshot.StrobesOn,
+            BeaconLightOn = SimConnectLightStateDecoder.IsBeaconOn(lightStates) ? 1 : 0,
+            TaxiLightsOn = SimConnectLightStateDecoder.IsTaxiOn(lightStates) ? 1 : 0,
+            LandingLightsOn = SimConnectLightStateDecoder.IsLandingOn(lightStates) ? 1 : 0,
+            StrobesOn = SimConnectLightStateDecoder.IsStrobeOn(lightStates) ? 1 : 0,
             StallWarning = snapshot.StallWarning,
             GpwsAlert = snapshot.GpwsAlert,
             OverspeedWarning = snapshot.OverspeedWarning,
@@ -545,6 +547,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly int TaxiLightsOn;
         public readonly int LandingLightsOn;
         public readonly int StrobesOn;
+        public readonly int LightStates;
         public readonly int StallWarning;
         public readonly int GpwsAlert;
         public readonly int OverspeedWarning;

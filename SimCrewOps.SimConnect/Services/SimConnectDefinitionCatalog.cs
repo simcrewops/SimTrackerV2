@@ -45,6 +45,7 @@ public static class SimConnectDefinitionCatalog
         Define("taxi_light", "LIGHT TAXI", "bool", SimConnectUpdateRate.Second),
         Define("landing_light", "LIGHT LANDING", "bool", SimConnectUpdateRate.Second),
         Define("strobe_light", "LIGHT STROBE", "bool", SimConnectUpdateRate.Second),
+        Define("light_states", "LIGHT STATES", "Mask", SimConnectUpdateRate.Second, SimConnectValueType.Int32),
         Define("stall_warning", "STALL WARNING", "bool", SimConnectUpdateRate.Second),
         Define("gpws_warning", "GPWS SYSTEM ACTIVE", "bool", SimConnectUpdateRate.Second, requiredForScoring: false),
         Define("overspeed_warning", "OVERSPEED WARNING", "bool", SimConnectUpdateRate.Second, requiredForScoring: false),

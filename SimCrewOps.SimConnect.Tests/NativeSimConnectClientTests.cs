@@ -14,6 +14,17 @@ public sealed class NativeSimConnectClientTests
     }
 
     [Fact]
+    public void LightStateDecoder_DecodesOperationalBitMask()
+    {
+        const int lightStates = 0x0002 | 0x0004 | 0x0010;
+
+        Assert.True(SimConnectLightStateDecoder.IsBeaconOn(lightStates));
+        Assert.False(SimConnectLightStateDecoder.IsTaxiOn(lightStates));
+        Assert.True(SimConnectLightStateDecoder.IsLandingOn(lightStates));
+        Assert.True(SimConnectLightStateDecoder.IsStrobeOn(lightStates));
+    }
+
+    [Fact]
     public async Task OpenAsync_UsesBridgeFactoryAndReadsFrames()
     {
         if (!OperatingSystem.IsWindows())
