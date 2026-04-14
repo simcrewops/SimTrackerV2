@@ -64,6 +64,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _diagnosticsTelemetryClient = "Telemetry debug disabled in Settings.";
     private string _diagnosticsTelemetryFlow = "Enable telemetry diagnostics to inspect raw SimConnect frame flow.";
     private string _diagnosticsTelemetryCounters = "Poll, null-frame, and mapping counters will appear here.";
+    private string _diagnosticsRawTelemetry = "Raw SimConnect values will appear here when telemetry diagnostics are enabled.";
     private string _settingsSaveStatus = "Changes are saved for the next launch.";
 
     public MainWindowViewModel(TrackerShellBootstrapResult bootstrap)
@@ -354,6 +355,12 @@ public sealed class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _diagnosticsTelemetryCounters, value);
     }
 
+    public string DiagnosticsRawTelemetry
+    {
+        get => _diagnosticsRawTelemetry;
+        private set => SetProperty(ref _diagnosticsRawTelemetry, value);
+    }
+
     public string SettingsSaveStatus
     {
         get => _settingsSaveStatus;
@@ -589,12 +596,14 @@ public sealed class MainWindowViewModel : ObservableObject
                 $"Flight-critical: {ToYesNo(snapshot.SimConnectStatus.HasReceivedFlightCriticalData)} • Operational: {ToYesNo(snapshot.SimConnectStatus.HasReceivedOperationalData)}";
             DiagnosticsTelemetryCounters =
                 $"Polls {snapshot.SimConnectStatus.PollCount} • Null polls {snapshot.SimConnectStatus.NullPollCount} • Raw frames {snapshot.SimConnectStatus.RawFrameCount} • Mapped frames {snapshot.SimConnectStatus.TelemetryFrameCount}";
+            DiagnosticsRawTelemetry = BuildRawTelemetryDebug(snapshot.LastRawTelemetryFrame);
         }
         else
         {
             DiagnosticsTelemetryClient = "Telemetry debug disabled in Settings.";
             DiagnosticsTelemetryFlow = "Enable telemetry diagnostics to inspect raw SimConnect frame flow.";
             DiagnosticsTelemetryCounters = "Poll, null-frame, and mapping counters will appear here.";
+            DiagnosticsRawTelemetry = "Raw SimConnect values will appear here when telemetry diagnostics are enabled.";
         }
     }
 
@@ -862,4 +871,17 @@ public sealed class MainWindowViewModel : ObservableObject
         value is null
             ? "never"
             : $"{Math.Max(0, (DateTimeOffset.UtcNow - value.Value).TotalSeconds):0.#}s ago";
+
+    private static string BuildRawTelemetryDebug(SimConnectRawTelemetryFrame? rawFrame)
+    {
+        if (rawFrame is null)
+        {
+            return "No raw SimConnect frame received yet.";
+        }
+
+        return
+            $"HDG MAG {rawFrame.HeadingMagneticDegrees:0.##} • HDG TRUE {rawFrame.HeadingTrueDegrees:0.##} • AGL {rawFrame.AltitudeAglFeet:0.##} • ALT {rawFrame.AltitudeFeet:0.##} • ON GND {rawFrame.OnGround:0} • PB {rawFrame.ParkingBrakePosition:0}\n" +
+            $"LIGHT STATES decoded => Beacon {rawFrame.BeaconLightOn:0} • Taxi {rawFrame.TaxiLightsOn:0} • Landing {rawFrame.LandingLightsOn:0} • Strobe {rawFrame.StrobesOn:0}\n" +
+            $"IAS {rawFrame.IndicatedAirspeedKnots:0.##} • GS {rawFrame.GroundSpeedKnots:0.##} • VS {rawFrame.VerticalSpeedFpm:0.##}";
+    }
 }

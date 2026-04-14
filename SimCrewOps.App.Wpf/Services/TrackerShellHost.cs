@@ -24,6 +24,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
     private TrackerAppSettings _settings;
     private SessionRecoverySnapshot _recoverySnapshot = new();
+    private SimConnectRawTelemetryFrame? _lastRawTelemetryFrame;
     private FlightSessionRuntimeState? _runtimeState;
 
     public TrackerShellHost(
@@ -86,6 +87,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
         var simConnectPoll = await _simConnectHost.PollAsync(cancellationToken).ConfigureAwait(false);
         if (simConnectPoll.HasTelemetry)
         {
+            _lastRawTelemetryFrame = simConnectPoll.RawFrame;
             var runtimeFrame = await _persistentRuntimeCoordinator
                 .ProcessFrameAsync(simConnectPoll.TelemetryFrame!, cancellationToken)
                 .ConfigureAwait(false);
@@ -195,6 +197,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
             SettingsFilePath = _settingsFilePath,
             RecoverySnapshot = _recoverySnapshot,
             SimConnectStatus = simConnectStatus ?? _simConnectHost.Status,
+            LastRawTelemetryFrame = _lastRawTelemetryFrame,
             RuntimeState = _runtimeState,
             BackgroundSyncStatus = _serviceStack.BackgroundSyncCoordinator?.Status,
         };

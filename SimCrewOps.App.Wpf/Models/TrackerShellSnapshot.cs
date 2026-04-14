@@ -11,6 +11,7 @@ public sealed record TrackerShellSnapshot
     public required string SettingsFilePath { get; init; }
     public required SessionRecoverySnapshot RecoverySnapshot { get; init; }
     public required SimConnectHostStatus SimConnectStatus { get; init; }
+    public SimConnectRawTelemetryFrame? LastRawTelemetryFrame { get; init; }
     public FlightSessionRuntimeState? RuntimeState { get; init; }
     public BackgroundSyncStatus? BackgroundSyncStatus { get; init; }
 }
