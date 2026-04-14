@@ -12,175 +12,411 @@
         MinWidth="1200"
         MinHeight="800"
         Background="{StaticResource ShellBackgroundBrush}">
+
     <Window.Resources>
+        <!-- Section label used inside content panels -->
         <Style x:Key="SectionLabelStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize"   Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 
-        <Style x:Key="MetricCardStyle" TargetType="Border">
-            <Setter Property="CornerRadius" Value="18" />
-            <Setter Property="Background" Value="{StaticResource HeroCardBrush}" />
-            <Setter Property="Padding" Value="18,12" />
-            <Setter Property="Margin" Value="0,0,18,16" />
+        <!-- Dark card border -->
+        <Style x:Key="DarkCardStyle" TargetType="Border">
+            <Setter Property="Background"      Value="{StaticResource PanelBrush}" />
+            <Setter Property="BorderBrush"     Value="{StaticResource DividerBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius"    Value="8" />
+            <Setter Property="Padding"         Value="16" />
         </Style>
     </Window.Resources>
 
-    <Border Margin="24" Padding="22" Background="{StaticResource ShellSurfaceBrush}" CornerRadius="28">
-        <Grid>
+    <!-- ══ Root: sidebar | content ══════════════════════════════════════ -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="240" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ══ SIDEBAR ═══════════════════════════════════════════════════ -->
+        <Grid Grid.Column="0" Background="{StaticResource SidebarBrush}">
             <Grid.RowDefinitions>
-                <RowDefinition Height="118" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="34" />
+                <RowDefinition Height="Auto" />  <!-- logo -->
+                <RowDefinition Height="*"    />  <!-- nav items -->
+                <RowDefinition Height="Auto" />  <!-- bottom status -->
             </Grid.RowDefinitions>
 
-            <Border Background="{StaticResource HeaderBrush}" CornerRadius="24" Padding="36,18">
-                <Grid>
+            <!-- Logo header -->
+            <StackPanel Grid.Row="0" Margin="20,20,20,28">
+                <TextBlock Text="SIMCREWOPS"
+                           Foreground="#c9d1d9"
+                           FontSize="13"
+                           FontWeight="Bold"
+                           LetterSpacing="0.5" />
+                <TextBlock Text="TrackerV2"
+                           Foreground="{StaticResource TextSubtleBrush}"
+                           FontSize="11"
+                           Margin="0,3,0,0" />
+            </StackPanel>
+
+            <!-- Nav items -->
+            <StackPanel Grid.Row="1">
+
+                <!-- FLIGHT OPS section -->
+                <TextBlock Text="FLIGHT OPS"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           FontSize="11" FontWeight="SemiBold"
+                           Margin="20,0,0,6" />
+
+                <!-- Dispatch -->
+                <Button Command="{Binding ShowDashboardCommand}" Style="{StaticResource NavButtonStyle}" Margin="8,1">
+                    <Border Padding="12,9" CornerRadius="6">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDashboardVisible}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource NavActiveBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="◈" FontSize="13" Margin="0,0,9,0" VerticalAlignment="Center">
+                                <TextBlock.Style><Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#7d8590"/>
+                                    <Style.Triggers><DataTrigger Binding="{Binding IsDashboardVisible}" Value="True"><Setter Property="Foreground" Value="White"/></DataTrigger></Style.Triggers>
+                                </Style></TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="Dispatch" FontSize="13">
+                                <TextBlock.Style><Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#c9d1d9"/>
+                                    <Style.Triggers><DataTrigger Binding="{Binding IsDashboardVisible}" Value="True"><Setter Property="Foreground" Value="White"/></DataTrigger></Style.Triggers>
+                                </Style></TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </Button>
+
+                <!-- Live Map -->
+                <Button Command="{Binding ShowLiveMapCommand}" Style="{StaticResource NavButtonStyle}" Margin="8,1">
+                    <Border Padding="12,9" CornerRadius="6">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsLiveMapVisible}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource NavActiveBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="↗" FontSize="13" Margin="0,0,9,0" VerticalAlignment="Center">
+                                <TextBlock.Style><Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#7d8590"/>
+                                    <Style.Triggers><DataTrigger Binding="{Binding IsLiveMapVisible}" Value="True"><Setter Property="Foreground" Value="White"/></DataTrigger></Style.Triggers>
+                                </Style></TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="Live Map" FontSize="13">
+                                <TextBlock.Style><Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#c9d1d9"/>
+                                    <Style.Triggers><DataTrigger Binding="{Binding IsLiveMapVisible}" Value="True"><Setter Property="Foreground" Value="White"/></DataTrigger></Style.Triggers>
+                                </Style></TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </Button>
+
+                <Border Height="1" Background="{StaticResource DividerBrush}" Margin="20,14,20,14" />
+
+                <!-- SESSIONS section -->
+                <TextBlock Text="SESSIONS"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           FontSize="11" FontWeight="SemiBold"
+                           Margin="20,0,0,6" />
+
+                <!-- PIREP Draft -->
+                <Button Command="{Binding ShowReviewCommand}" Style="{StaticResource NavButtonStyle}" Margin="8,1">
+                    <Border Padding="12,9" CornerRadius="6">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsReviewVisible}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource NavActiveBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="▤" FontSize="13" Margin="0,0,9,0" VerticalAlignment="Center">
+                                <TextBlock.Style><Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#7d8590"/>
+                                    <Style.Triggers><DataTrigger Binding="{Binding IsReviewVisible}" Value="True"><Setter Property="Foreground" Value="White"/></DataTrigger></Style.Triggers>
+                                </Style></TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="PIREP Draft" FontSize="13">
+                                <TextBlock.Style><Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#c9d1d9"/>
+                                    <Style.Triggers><DataTrigger Binding="{Binding IsReviewVisible}" Value="True"><Setter Property="Foreground" Value="White"/></DataTrigger></Style.Triggers>
+                                </Style></TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </Button>
+
+                <Border Height="1" Background="{StaticResource DividerBrush}" Margin="20,14,20,14" />
+
+                <!-- SYSTEM section -->
+                <TextBlock Text="SYSTEM"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           FontSize="11" FontWeight="SemiBold"
+                           Margin="20,0,0,6" />
+
+                <!-- Diagnostics -->
+                <Button Command="{Binding ShowDiagnosticsCommand}" Style="{StaticResource NavButtonStyle}" Margin="8,1">
+                    <Border Padding="12,9" CornerRadius="6">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDiagnosticsVisible}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource NavActiveBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="◎" FontSize="13" Margin="0,0,9,0" VerticalAlignment="Center">
+                                <TextBlock.Style><Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#7d8590"/>
+                                    <Style.Triggers><DataTrigger Binding="{Binding IsDiagnosticsVisible}" Value="True"><Setter Property="Foreground" Value="White"/></DataTrigger></Style.Triggers>
+                                </Style></TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="Diagnostics" FontSize="13">
+                                <TextBlock.Style><Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#c9d1d9"/>
+                                    <Style.Triggers><DataTrigger Binding="{Binding IsDiagnosticsVisible}" Value="True"><Setter Property="Foreground" Value="White"/></DataTrigger></Style.Triggers>
+                                </Style></TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </Button>
+
+                <!-- Settings -->
+                <Button Command="{Binding ShowSettingsCommand}" Style="{StaticResource NavButtonStyle}" Margin="8,1">
+                    <Border Padding="12,9" CornerRadius="6">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSettingsVisible}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource NavActiveBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="≡" FontSize="13" Margin="0,0,9,0" VerticalAlignment="Center">
+                                <TextBlock.Style><Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#7d8590"/>
+                                    <Style.Triggers><DataTrigger Binding="{Binding IsSettingsVisible}" Value="True"><Setter Property="Foreground" Value="White"/></DataTrigger></Style.Triggers>
+                                </Style></TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="Settings" FontSize="13">
+                                <TextBlock.Style><Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#c9d1d9"/>
+                                    <Style.Triggers><DataTrigger Binding="{Binding IsSettingsVisible}" Value="True"><Setter Property="Foreground" Value="White"/></DataTrigger></Style.Triggers>
+                                </Style></TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </Button>
+
+            </StackPanel>
+
+            <!-- Bottom: status badges -->
+            <StackPanel Grid.Row="2" Margin="20,0,20,20">
+                <Border Height="1" Background="{StaticResource DividerBrush}" Margin="0,0,0,14" />
+
+                <Border Background="{Binding MsfsStatusBrush}" CornerRadius="6" Padding="10,5" Margin="0,0,0,6">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="7" Height="7" Fill="#C4F5EE" Margin="0,1,7,0" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding MsfsStatusText}" Foreground="#EEF9F8" FontSize="11" FontWeight="Bold" />
+                    </StackPanel>
+                </Border>
+
+                <Border Background="{Binding SyncStatusBrush}" CornerRadius="6" Padding="10,5" Margin="0,0,0,6">
+                    <TextBlock Text="{Binding SyncStatusText}" Foreground="#EEF2F4" FontSize="11" FontWeight="Bold" />
+                </Border>
+
+                <Border Background="{Binding LiveSyncStatusBrush}" CornerRadius="6" Padding="10,5">
+                    <TextBlock Text="{Binding LiveSyncStatusText}" Foreground="White" FontSize="11" FontWeight="Bold" />
+                </Border>
+            </StackPanel>
+        </Grid>
+
+        <!-- Sidebar right border -->
+        <Border Grid.Column="0" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0" />
+
+        <!-- ══ MAIN CONTENT ═══════════════════════════════════════════════ -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="56" />   <!-- top bar -->
+                <RowDefinition Height="*"   />   <!-- content -->
+            </Grid.RowDefinitions>
+
+            <!-- Top bar -->
+            <Border Grid.Row="0" Background="{StaticResource TopBarBrush}"
+                    BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                <Grid Margin="24,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="SimCrewOps Tracker"
-                                   Foreground="#F2F6F2"
-                                   FontSize="34"
-                                   FontWeight="Bold" />
+                    <!-- Flight context line -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="{Binding HeaderFlightText}"
-                                   Foreground="#AABCC5"
-                                   Margin="0,8,0,8"
-                                   FontSize="18" />
-                        <StackPanel Orientation="Horizontal">
-                            <Border Background="#2A4B5A" CornerRadius="12" Padding="18,4" Margin="0,0,10,0">
-                                <TextBlock Text="{Binding CareerTier}" Foreground="#D9E9EE" FontSize="12" FontWeight="Bold" />
-                            </Border>
-                            <Border Background="#2A4B5A" CornerRadius="12" Padding="18,4" Margin="0,0,10,0">
-                                <TextBlock Text="{Binding BidDisplay}" Foreground="#D9E9EE" FontSize="12" FontWeight="Bold" />
-                            </Border>
-                            <Border Background="#2A4B5A" CornerRadius="12" Padding="18,4">
-                                <TextBlock Text="{Binding ReputationDisplay}" Foreground="#D9E9EE" FontSize="12" FontWeight="Bold" />
-                            </Border>
-                        </StackPanel>
+                                   Foreground="#8b949e"
+                                   FontSize="13"
+                                   VerticalAlignment="Center" />
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Right">
-                        <Border Background="{Binding MsfsStatusBrush}" CornerRadius="18" Padding="18,8" Margin="0,0,12,0">
+                    <!-- Phase pill + career chips -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Background="#1c2333" CornerRadius="6" Padding="10,4" Margin="0,0,8,0">
+                            <TextBlock Text="{Binding CareerTier}" Foreground="#8b949e" FontSize="11" FontWeight="SemiBold" />
+                        </Border>
+                        <Border Background="#1c2333" CornerRadius="6" Padding="10,4" Margin="0,0,8,0">
+                            <TextBlock Text="{Binding BidDisplay}" Foreground="#8b949e" FontSize="11" FontWeight="SemiBold" />
+                        </Border>
+                        <Border Background="{StaticResource AmberBrush}" CornerRadius="6" Padding="14,5">
                             <StackPanel Orientation="Horizontal">
-                                <Ellipse Width="10" Height="10" Fill="#C4F5EE" Margin="0,4,10,0" />
-                                <TextBlock Text="{Binding MsfsStatusText}" Foreground="#EEF9F8" FontSize="15" FontWeight="Bold" />
-                            </StackPanel>
-                        </Border>
-                        <Border Background="{Binding SyncStatusBrush}" CornerRadius="18" Padding="18,8" Margin="0,0,16,0">
-                            <TextBlock Text="{Binding SyncStatusText}" Foreground="#EEF2F4" FontSize="15" FontWeight="Bold" />
-                        </Border>
-                        <Border Background="{StaticResource AmberBrush}" CornerRadius="22" Padding="24,14" Width="270">
-                            <StackPanel>
-                                <TextBlock Text="CURRENT PHASE" Foreground="#1C3139" FontSize="14" FontWeight="Bold" />
-                                <TextBlock Text="{Binding PhaseTitle}" Foreground="#1C3139" FontSize="32" FontWeight="Bold" />
+                                <TextBlock Text="PHASE  " Foreground="#0d1117" FontSize="11" FontWeight="Bold" />
+                                <TextBlock Text="{Binding PhaseTitle}" Foreground="#0d1117" FontSize="13" FontWeight="Bold" />
                             </StackPanel>
                         </Border>
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <Grid Grid.Row="1" Margin="6,22,6,18">
+            <!-- ══ Content area ══════════════════════════════════════════ -->
+            <Grid Grid.Row="1" Margin="16">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="282" />
-                    <ColumnDefinition Width="24" />
-                    <ColumnDefinition Width="710" />
-                    <ColumnDefinition Width="24" />
-                    <ColumnDefinition Width="298" />
+                    <ColumnDefinition Width="240" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="260" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Background="{StaticResource PanelBrush}" CornerRadius="26" Padding="24">
-                    <StackPanel>
-                        <TextBlock Text="Flight Stack"
-                                   Foreground="{StaticResource TextPrimaryBrush}"
-                                   FontSize="22"
-                                   FontWeight="Bold" />
+                <!-- ── Left panel: always-visible flight stack ─────────── -->
+                <Border Grid.Column="0" Style="{StaticResource DarkCardStyle}" Padding="18">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel>
+                            <TextBlock Text="Flight Stack"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontSize="16"
+                                       FontWeight="SemiBold" />
 
-                        <TextBlock Text="SESSION CONTEXT" Margin="0,28,0,10" Style="{StaticResource SectionLabelStyle}" />
-                        <TextBlock Text="{Binding CareerTier}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="28" FontWeight="Bold" />
-                        <TextBlock Text="{Binding BidDisplay}" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,0" FontSize="17" />
-                        <TextBlock Text="{Binding ReputationDisplay}" Foreground="{StaticResource TextMutedBrush}" Margin="0,6,0,0" FontSize="17" />
+                            <TextBlock Text="SESSION" Margin="0,22,0,8" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Text="{Binding CareerTier}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="20" FontWeight="Bold" />
+                            <TextBlock Text="{Binding BidDisplay}" Foreground="{StaticResource TextMutedBrush}" Margin="0,6,0,0" FontSize="13" />
+                            <TextBlock Text="{Binding ReputationDisplay}" Foreground="{StaticResource TextMutedBrush}" Margin="0,4,0,0" FontSize="13" />
 
-                        <Border Height="1" Background="{StaticResource DividerBrush}" Margin="0,22,0,22" />
+                            <Border Height="1" Background="{StaticResource DividerBrush}" Margin="0,18,0,18" />
 
-                        <TextBlock Text="FLIGHT TIMES" Style="{StaticResource SectionLabelStyle}" />
-                        <Grid Margin="0,18,0,0">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="OUT" Foreground="{StaticResource TextPrimaryBrush}" FontSize="17" FontWeight="Bold" />
-                            <TextBlock Grid.Column="1" Text="{Binding OutTime}" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Consolas" FontSize="18" />
-                            <TextBlock Grid.Row="1" Text="OFF" Margin="0,14,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="17" FontWeight="Bold" />
-                            <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,14,0,0" Text="{Binding OffTime}" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Consolas" FontSize="18" />
-                            <TextBlock Grid.Row="2" Text="ON" Margin="0,14,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="17" FontWeight="Bold" />
-                            <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,14,0,0" Text="{Binding OnTime}" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Consolas" FontSize="18" />
-                            <TextBlock Grid.Row="3" Text="IN" Margin="0,14,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="17" FontWeight="Bold" />
-                            <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,14,0,0" Text="{Binding InTime}" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Consolas" FontSize="18" />
-                        </Grid>
+                            <TextBlock Text="FLIGHT TIMES" Style="{StaticResource SectionLabelStyle}" />
+                            <Grid Margin="0,12,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="OUT" Foreground="{StaticResource NavTextBrush}" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="1" Text="{Binding OutTime}" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Consolas" FontSize="14" />
+                                <TextBlock Grid.Row="1" Text="OFF" Margin="0,10,0,0" Foreground="{StaticResource NavTextBrush}" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,10,0,0" Text="{Binding OffTime}" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Consolas" FontSize="14" />
+                                <TextBlock Grid.Row="2" Text="ON"  Margin="0,10,0,0" Foreground="{StaticResource NavTextBrush}" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,10,0,0" Text="{Binding OnTime}" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Consolas" FontSize="14" />
+                                <TextBlock Grid.Row="3" Text="IN"  Margin="0,10,0,0" Foreground="{StaticResource NavTextBrush}" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,10,0,0" Text="{Binding InTime}" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Consolas" FontSize="14" />
+                            </Grid>
 
-                        <Border Height="1" Background="{StaticResource DividerBrush}" Margin="0,28,0,22" />
+                            <Border Height="1" Background="{StaticResource DividerBrush}" Margin="0,18,0,18" />
 
-                        <TextBlock Text="PHASE RAIL" Style="{StaticResource SectionLabelStyle}" />
-                        <ItemsControl ItemsSource="{Binding PhasePills}" Margin="0,18,0,0">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <WrapPanel ItemWidth="74" ItemHeight="36" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type model:PhasePillModel}">
-                                    <Border Width="64"
-                                            Height="30"
-                                            Margin="0,0,8,10"
-                                            CornerRadius="15">
-                                        <Border.Style>
-                                            <Style TargetType="Border">
-                                                <Setter Property="Background" Value="#D7DED5" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                        <Setter Property="Background" Value="{StaticResource AmberBrush}" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
-                                        <TextBlock Text="{Binding Label}"
-                                                   VerticalAlignment="Center"
-                                                   HorizontalAlignment="Center"
-                                                   Foreground="#3C525D"
-                                                   FontSize="13"
-                                                   FontWeight="Bold" />
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
+                            <TextBlock Text="PHASE RAIL" Style="{StaticResource SectionLabelStyle}" />
+                            <ItemsControl ItemsSource="{Binding PhasePills}" Margin="0,12,0,0">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel ItemWidth="62" ItemHeight="32" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type model:PhasePillModel}">
+                                        <Border Width="54" Height="26" Margin="0,0,6,8" CornerRadius="5">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="#21262d" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                            <Setter Property="Background" Value="{StaticResource AmberBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding Label}"
+                                                       VerticalAlignment="Center"
+                                                       HorizontalAlignment="Center"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="#7d8590"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                <Setter Property="Foreground" Value="#0d1117"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Border>
 
+                <!-- ── Center + right: switching pages ─────────────────── -->
                 <Grid Grid.Column="2" Grid.ColumnSpan="3">
+
+                    <!-- ── DASHBOARD ───────────────────────────────────── -->
                     <Grid Visibility="{Binding IsDashboardVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="710" />
-                            <ColumnDefinition Width="24" />
-                            <ColumnDefinition Width="298" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="260" />
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="490" />
-                            <RowDefinition Height="24" />
-                            <RowDefinition Height="180" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="16" />
+                            <RowDefinition Height="170" />
                         </Grid.RowDefinitions>
 
-                        <Border Grid.Column="0" Background="{StaticResource HeroBrush}" CornerRadius="28" Padding="28" Grid.RowSpan="1">
+                        <!-- Live Ops Board (instruments) -->
+                        <Border Grid.Column="0" Grid.Row="0"
+                                Background="{StaticResource InstrumentPanelBrush}"
+                                BorderBrush="#2E4C59" BorderThickness="1"
+                                CornerRadius="8" Padding="22">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
@@ -190,163 +426,164 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
-                                <TextBlock Text="LIVE OPS BOARD" Foreground="#9CC7CF" FontSize="13" FontWeight="Bold" />
-                                <TextBlock Grid.Row="1" Text="{Binding PhaseTitle}" Foreground="#F1F6F4" FontSize="34" FontWeight="Bold" Margin="0,14,0,0" />
-                                <TextBlock Grid.Row="2" Text="{Binding PhaseSubtitle}" Foreground="#83A4AE" FontSize="16" Margin="0,10,0,0" TextWrapping="Wrap" />
-                                <TextBlock Grid.Row="2" Text="{Binding PhaseStatusLine}" Foreground="#83A4AE" FontSize="15" Margin="0,34,0,0" TextWrapping="Wrap" />
+                                <TextBlock Text="LIVE OPS BOARD" Foreground="#9CC7CF" FontSize="11" FontWeight="SemiBold" />
+                                <TextBlock Grid.Row="1" Text="{Binding PhaseTitle}" Foreground="#F1F6F4" FontSize="28" FontWeight="Bold" Margin="0,10,0,0" />
+                                <TextBlock Grid.Row="2" Text="{Binding PhaseSubtitle}" Foreground="#83A4AE" FontSize="14" Margin="0,8,0,0" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="2" Text="{Binding PhaseStatusLine}" Foreground="#83A4AE" FontSize="13" Margin="0,28,0,0" TextWrapping="Wrap" />
 
-                                <Border Grid.Row="3" Margin="0,18,0,0" Background="#0C1D25" BorderBrush="#2E4C59" BorderThickness="2" CornerRadius="26">
-                                    <StackPanel Margin="22,18,22,14">
-                                        <TextBlock Text="INSTRUMENTS" Foreground="#8FB3BE" FontSize="13" FontWeight="Bold" />
+                                <!-- Instruments -->
+                                <Border Grid.Row="3" Margin="0,14,0,0"
+                                        Background="#0C1D25"
+                                        BorderBrush="#2E4C59" BorderThickness="1"
+                                        CornerRadius="8">
+                                    <StackPanel Margin="18,14,18,12">
+                                        <TextBlock Text="INSTRUMENTS" Foreground="#8FB3BE" FontSize="11" FontWeight="SemiBold" />
 
-                                        <!-- Speed row: IAS · GS · MACH · G -->
-                                        <UniformGrid Columns="4" Margin="0,12,0,0">
-                                            <Border Margin="0,0,8,0" Background="#16303D" CornerRadius="12" Padding="12,8">
+                                        <UniformGrid Columns="4" Margin="0,10,0,0">
+                                            <Border Margin="0,0,6,0" Background="{StaticResource InstrumentTileBrush}" CornerRadius="6" Padding="10,7">
                                                 <StackPanel>
-                                                    <TextBlock Text="IAS  kt" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
-                                                    <TextBlock Text="{Binding LiveIas}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                    <TextBlock Text="IAS  kt" Foreground="#7EA4AF" FontSize="10" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding LiveIas}" Foreground="#F0F6F3" FontSize="20" FontWeight="Bold" FontFamily="Consolas" />
                                                 </StackPanel>
                                             </Border>
-                                            <Border Margin="4,0,4,0" Background="#16303D" CornerRadius="12" Padding="12,8">
+                                            <Border Margin="3,0,3,0" Background="{StaticResource InstrumentTileBrush}" CornerRadius="6" Padding="10,7">
                                                 <StackPanel>
-                                                    <TextBlock Text="GS  kt" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
-                                                    <TextBlock Text="{Binding LiveGs}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                    <TextBlock Text="GS  kt" Foreground="#7EA4AF" FontSize="10" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding LiveGs}" Foreground="#F0F6F3" FontSize="20" FontWeight="Bold" FontFamily="Consolas" />
                                                 </StackPanel>
                                             </Border>
-                                            <Border Margin="4,0,4,0" Background="#16303D" CornerRadius="12" Padding="12,8">
+                                            <Border Margin="3,0,3,0" Background="{StaticResource InstrumentTileBrush}" CornerRadius="6" Padding="10,7">
                                                 <StackPanel>
-                                                    <TextBlock Text="MACH" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
-                                                    <TextBlock Text="{Binding LiveMach}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                    <TextBlock Text="MACH" Foreground="#7EA4AF" FontSize="10" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding LiveMach}" Foreground="#F0F6F3" FontSize="20" FontWeight="Bold" FontFamily="Consolas" />
                                                 </StackPanel>
                                             </Border>
-                                            <Border Margin="8,0,0,0" CornerRadius="12" Padding="12,8">
+                                            <Border Margin="6,0,0,0" CornerRadius="6" Padding="10,7">
                                                 <Border.Style>
                                                     <Style TargetType="Border">
-                                                        <Setter Property="Background" Value="#16303D" />
+                                                        <Setter Property="Background" Value="{StaticResource InstrumentTileBrush}" />
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding LiveGForceAlert}" Value="True">
                                                                 <Setter Property="Background" Value="#1E2E36" />
-                                                                <Setter Property="BorderBrush" Value="#D4625A" />
-                                                                <Setter Property="BorderThickness" Value="2" />
+                                                                <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
+                                                                <Setter Property="BorderThickness" Value="1" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
                                                 </Border.Style>
                                                 <StackPanel>
-                                                    <TextBlock Text="G-FORCE" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
-                                                    <TextBlock Text="{Binding LiveGForce}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                    <TextBlock Text="G-FORCE" Foreground="#7EA4AF" FontSize="10" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding LiveGForce}" Foreground="#F0F6F3" FontSize="20" FontWeight="Bold" FontFamily="Consolas" />
                                                 </StackPanel>
                                             </Border>
                                         </UniformGrid>
 
-                                        <!-- Position row: ALT · AGL · VS · HDG -->
-                                        <UniformGrid Columns="4" Margin="0,8,0,0">
-                                            <Border Margin="0,0,8,0" Background="#16303D" CornerRadius="12" Padding="12,8">
+                                        <UniformGrid Columns="4" Margin="0,6,0,0">
+                                            <Border Margin="0,0,6,0" Background="{StaticResource InstrumentTileBrush}" CornerRadius="6" Padding="10,7">
                                                 <StackPanel>
-                                                    <TextBlock Text="ALT  ft" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
-                                                    <TextBlock Text="{Binding LiveAlt}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                    <TextBlock Text="ALT  ft" Foreground="#7EA4AF" FontSize="10" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding LiveAlt}" Foreground="#F0F6F3" FontSize="20" FontWeight="Bold" FontFamily="Consolas" />
                                                 </StackPanel>
                                             </Border>
-                                            <Border Margin="4,0,4,0" CornerRadius="12" Padding="12,8">
+                                            <Border Margin="3,0,3,0" CornerRadius="6" Padding="10,7">
                                                 <Border.Style>
                                                     <Style TargetType="Border">
-                                                        <Setter Property="Background" Value="#16303D" />
+                                                        <Setter Property="Background" Value="{StaticResource InstrumentTileBrush}" />
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding LiveAglAlert}" Value="True">
                                                                 <Setter Property="Background" Value="#1E2E36" />
-                                                                <Setter Property="BorderBrush" Value="#D4625A" />
-                                                                <Setter Property="BorderThickness" Value="2" />
+                                                                <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
+                                                                <Setter Property="BorderThickness" Value="1" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
                                                 </Border.Style>
                                                 <StackPanel>
-                                                    <TextBlock Text="AGL  ft" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
-                                                    <TextBlock Text="{Binding LiveAgl}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                    <TextBlock Text="AGL  ft" Foreground="#7EA4AF" FontSize="10" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding LiveAgl}" Foreground="#F0F6F3" FontSize="20" FontWeight="Bold" FontFamily="Consolas" />
                                                 </StackPanel>
                                             </Border>
-                                            <Border Margin="4,0,4,0" CornerRadius="12" Padding="12,8">
+                                            <Border Margin="3,0,3,0" CornerRadius="6" Padding="10,7">
                                                 <Border.Style>
                                                     <Style TargetType="Border">
-                                                        <Setter Property="Background" Value="#16303D" />
+                                                        <Setter Property="Background" Value="{StaticResource InstrumentTileBrush}" />
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding LiveVsAlert}" Value="True">
                                                                 <Setter Property="Background" Value="#1E2E36" />
-                                                                <Setter Property="BorderBrush" Value="#D4625A" />
-                                                                <Setter Property="BorderThickness" Value="2" />
+                                                                <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
+                                                                <Setter Property="BorderThickness" Value="1" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
                                                 </Border.Style>
                                                 <StackPanel>
-                                                    <TextBlock Text="VS  fpm" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
-                                                    <TextBlock Text="{Binding LiveVs}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                    <TextBlock Text="VS  fpm" Foreground="#7EA4AF" FontSize="10" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding LiveVs}" Foreground="#F0F6F3" FontSize="20" FontWeight="Bold" FontFamily="Consolas" />
                                                 </StackPanel>
                                             </Border>
-                                            <Border Margin="8,0,0,0" Background="#16303D" CornerRadius="12" Padding="12,8">
+                                            <Border Margin="6,0,0,0" Background="{StaticResource InstrumentTileBrush}" CornerRadius="6" Padding="10,7">
                                                 <StackPanel>
-                                                    <TextBlock Text="HDG MAG" Foreground="#7EA4AF" FontSize="11" FontWeight="Bold" />
-                                                    <TextBlock Text="{Binding LiveHdg}" Foreground="#F0F6F3" FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                    <TextBlock Text="HDG MAG" Foreground="#7EA4AF" FontSize="10" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding LiveHdg}" Foreground="#F0F6F3" FontSize="20" FontWeight="Bold" FontFamily="Consolas" />
                                                 </StackPanel>
                                             </Border>
                                         </UniformGrid>
 
                                         <!-- Systems LED strip -->
-                                        <Border Margin="0,12,0,0" Background="#101D25" CornerRadius="12" Padding="14,10">
+                                        <Border Margin="0,10,0,0" Background="#101D25" CornerRadius="6" Padding="12,8">
                                             <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
-                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedBeaconBrush}" Margin="0,2,5,0" />
-                                                    <TextBlock Text="BCN" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                                                    <Ellipse Width="8" Height="8" Fill="{Binding LedBeaconBrush}" Margin="0,1,5,0" VerticalAlignment="Center" />
+                                                    <TextBlock Text="BCN" Foreground="#8FB3BE" FontSize="11" FontWeight="SemiBold" />
                                                 </StackPanel>
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
-                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedStrobeBrush}" Margin="0,2,5,0" />
-                                                    <TextBlock Text="STB" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                                                    <Ellipse Width="8" Height="8" Fill="{Binding LedStrobeBrush}" Margin="0,1,5,0" VerticalAlignment="Center" />
+                                                    <TextBlock Text="STB" Foreground="#8FB3BE" FontSize="11" FontWeight="SemiBold" />
                                                 </StackPanel>
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
-                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedLandingBrush}" Margin="0,2,5,0" />
-                                                    <TextBlock Text="LDG" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                                                    <Ellipse Width="8" Height="8" Fill="{Binding LedLandingBrush}" Margin="0,1,5,0" VerticalAlignment="Center" />
+                                                    <TextBlock Text="LDG" Foreground="#8FB3BE" FontSize="11" FontWeight="SemiBold" />
                                                 </StackPanel>
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,24,0">
-                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedTaxiBrush}" Margin="0,2,5,0" />
-                                                    <TextBlock Text="TAXI" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                                                    <Ellipse Width="8" Height="8" Fill="{Binding LedTaxiBrush}" Margin="0,1,5,0" VerticalAlignment="Center" />
+                                                    <TextBlock Text="TAXI" Foreground="#8FB3BE" FontSize="11" FontWeight="SemiBold" />
                                                 </StackPanel>
-                                                <Border Width="1" Height="13" Background="#2E4C59" Margin="0,1,24,0" />
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
-                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedGearBrush}" Margin="0,2,5,0" />
-                                                    <TextBlock Text="GEAR" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                <Border Width="1" Height="11" Background="#2E4C59" Margin="0,1,20,0" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                                                    <Ellipse Width="8" Height="8" Fill="{Binding LedGearBrush}" Margin="0,1,5,0" VerticalAlignment="Center" />
+                                                    <TextBlock Text="GEAR" Foreground="#8FB3BE" FontSize="11" FontWeight="SemiBold" />
                                                 </StackPanel>
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,24,0">
-                                                    <TextBlock Text="{Binding FlapsLabel}" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                                                    <TextBlock Text="{Binding FlapsLabel}" Foreground="#8FB3BE" FontSize="11" FontWeight="SemiBold" />
                                                 </StackPanel>
-                                                <Border Width="1" Height="13" Background="#2E4C59" Margin="0,1,24,0" />
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
-                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedEng1Brush}" Margin="0,2,5,0" />
-                                                    <TextBlock Text="ENG1" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                <Border Width="1" Height="11" Background="#2E4C59" Margin="0,1,20,0" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                                                    <Ellipse Width="8" Height="8" Fill="{Binding LedEng1Brush}" Margin="0,1,5,0" VerticalAlignment="Center" />
+                                                    <TextBlock Text="ENG1" Foreground="#8FB3BE" FontSize="11" FontWeight="SemiBold" />
                                                 </StackPanel>
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,24,0">
-                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedEng2Brush}" Margin="0,2,5,0" />
-                                                    <TextBlock Text="ENG2" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                                                    <Ellipse Width="8" Height="8" Fill="{Binding LedEng2Brush}" Margin="0,1,5,0" VerticalAlignment="Center" />
+                                                    <TextBlock Text="ENG2" Foreground="#8FB3BE" FontSize="11" FontWeight="SemiBold" />
                                                 </StackPanel>
-                                                <Border Width="1" Height="13" Background="#2E4C59" Margin="0,1,24,0" />
+                                                <Border Width="1" Height="11" Background="#2E4C59" Margin="0,1,20,0" />
                                                 <StackPanel Orientation="Horizontal">
-                                                    <Ellipse Width="9" Height="9" Fill="{Binding LedParkingBrakeBrush}" Margin="0,2,5,0" />
-                                                    <TextBlock Text="P-BRK" Foreground="#8FB3BE" FontSize="12" FontWeight="Bold" />
+                                                    <Ellipse Width="8" Height="8" Fill="{Binding LedParkingBrakeBrush}" Margin="0,1,5,0" VerticalAlignment="Center" />
+                                                    <TextBlock Text="P-BRK" Foreground="#8FB3BE" FontSize="11" FontWeight="SemiBold" />
                                                 </StackPanel>
                                             </WrapPanel>
                                         </Border>
                                     </StackPanel>
                                 </Border>
 
-                                <ItemsControl Grid.Row="4" ItemsSource="{Binding StatusChips}" Margin="0,16,0,0">
+                                <!-- Status chips -->
+                                <ItemsControl Grid.Row="4" ItemsSource="{Binding StatusChips}" Margin="0,12,0,0">
                                     <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel />
-                                        </ItemsPanelTemplate>
+                                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <Border Background="#213B49" CornerRadius="17" Padding="22,8" Margin="0,0,12,0">
-                                                <TextBlock Text="{Binding}" Foreground="#E3F3F3" FontSize="14" FontWeight="Bold" />
+                                            <Border Background="#21262d" CornerRadius="5" Padding="12,5" Margin="0,0,8,0">
+                                                <TextBlock Text="{Binding}" Foreground="#c9d1d9" FontSize="12" FontWeight="SemiBold" />
                                             </Border>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
@@ -354,180 +591,126 @@
                             </Grid>
                         </Border>
 
-                        <Border Grid.Row="2" Grid.Column="0" Background="#F4F6F0" CornerRadius="28" Padding="28">
+                        <!-- Scoreboard (bottom row) -->
+                        <Border Grid.Row="2" Grid.Column="0"
+                                Style="{StaticResource DarkCardStyle}" Padding="18">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
                                 </Grid.RowDefinitions>
-                                <TextBlock Text="SCOREBOARD" Foreground="{StaticResource TextMutedBrush}" FontSize="13" FontWeight="Bold" />
-                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,14,0,0">
-                                    <TextBlock Text="{Binding ScoreText}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="48" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding GradeText}" Foreground="#37515C" FontSize="28" FontWeight="Bold" Margin="14,14,0,0" />
+                                <TextBlock Text="SCOREBOARD" Style="{StaticResource SectionLabelStyle}" />
+                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
+                                    <TextBlock Text="{Binding ScoreText}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="42" FontWeight="Bold" FontFamily="Consolas" />
+                                    <TextBlock Text="{Binding GradeText}" Foreground="{StaticResource TextMutedBrush}" FontSize="22" FontWeight="Bold" Margin="12,10,0,0" />
                                 </StackPanel>
-                                <TextBlock Grid.Row="1" Text="{Binding ScoreSummary}" Margin="0,70,0,0" Foreground="#56686E" FontSize="16" TextWrapping="Wrap" />
-
-                                <Grid Grid.Row="2" Margin="0,18,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="306" />
-                                        <ColumnDefinition Width="24" />
-                                        <ColumnDefinition Width="330" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <Border Background="#FFFFFF" CornerRadius="20" Padding="22">
-                                        <StackPanel>
-                                            <TextBlock Text="SECTION SCORES" Style="{StaticResource SectionLabelStyle}" />
-                                            <ItemsControl ItemsSource="{Binding PrimaryScoreRows}" Margin="0,16,0,0">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate DataType="{x:Type model:ScoreRowModel}">
-                                                        <Grid Margin="0,0,0,14">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="70" />
-                                                                <ColumnDefinition Width="112" />
-                                                                <ColumnDefinition Width="*" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding Label}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="16" FontWeight="Bold" />
-                                                            <Grid Grid.Column="1" Margin="10,8,0,0" Height="8" Width="112" HorizontalAlignment="Left">
-                                                                <Border Background="#D9DFD6" CornerRadius="4" />
-                                                                <Border Background="{Binding FillBrush}" CornerRadius="4" Width="{Binding FillWidth}" HorizontalAlignment="Left" />
-                                                            </Grid>
-                                                            <TextBlock Grid.Column="2" Text="{Binding ScoreText}" HorizontalAlignment="Right" Foreground="{StaticResource TextPrimaryBrush}" FontSize="15" FontWeight="Bold" />
-                                                        </Grid>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <Border Grid.Column="2" Background="#FFFFFF" CornerRadius="20" Padding="22">
-                                        <StackPanel>
-                                            <TextBlock Text="APPROACH AND LANDING" Style="{StaticResource SectionLabelStyle}" />
-                                            <ItemsControl ItemsSource="{Binding SecondaryScoreRows}" Margin="0,16,0,0">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate DataType="{x:Type model:ScoreRowModel}">
-                                                        <Grid Margin="0,0,0,14">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="86" />
-                                                                <ColumnDefinition Width="116" />
-                                                                <ColumnDefinition Width="*" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding Label}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="16" FontWeight="Bold" />
-                                                            <Grid Grid.Column="1" Margin="10,8,0,0" Height="8" Width="116" HorizontalAlignment="Left">
-                                                                <Border Background="#D9DFD6" CornerRadius="4" />
-                                                                <Border Background="{Binding FillBrush}" CornerRadius="4" Width="{Binding FillWidth}" HorizontalAlignment="Left" />
-                                                            </Grid>
-                                                            <TextBlock Grid.Column="2" Text="{Binding ScoreText}" HorizontalAlignment="Right" Foreground="{StaticResource TextPrimaryBrush}" FontSize="15" FontWeight="Bold" />
-                                                        </Grid>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </Border>
-                                </Grid>
+                                <TextBlock Grid.Row="1" Text="{Binding ScoreSummary}" Margin="0,62,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="13" TextWrapping="Wrap" />
                             </Grid>
                         </Border>
 
+                        <!-- Right column cards -->
                         <Grid Grid.Column="2" Grid.RowSpan="3">
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="116" />
-                                <RowDefinition Height="18" />
-                                <RowDefinition Height="116" />
-                                <RowDefinition Height="18" />
-                                <RowDefinition Height="156" />
-                                <RowDefinition Height="18" />
-                                <RowDefinition Height="160" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="16" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="16" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="16" />
+                                <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
 
-                            <Border Background="#FFF2DF" BorderBrush="#F1A45E" BorderThickness="1" CornerRadius="20" Padding="22">
+                            <!-- Approach check -->
+                            <Border Background="#1c1a0f" BorderBrush="#a16207" BorderThickness="1" CornerRadius="8" Padding="16">
                                 <StackPanel>
-                                    <TextBlock Text="APPROACH CHECK" Foreground="#A36122" FontSize="13" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding AlertPrimaryTitle}" Margin="0,14,0,0" Foreground="#182D37" FontSize="24" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding AlertPrimaryBody}" Margin="0,12,0,0" Foreground="#6C5B48" FontSize="15" TextWrapping="Wrap" />
+                                    <TextBlock Text="APPROACH CHECK" Foreground="#ca8a04" FontSize="11" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding AlertPrimaryTitle}" Margin="0,10,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding AlertPrimaryBody}" Margin="0,8,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="13" TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
 
-                            <Border Grid.Row="2" Background="#FFE7E3" BorderBrush="#D4625A" BorderThickness="1" CornerRadius="20" Padding="22">
+                            <!-- Speed event -->
+                            <Border Grid.Row="2" Background="{StaticResource DangerSoftBrush}" BorderBrush="{StaticResource DangerBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
                                 <StackPanel>
-                                    <TextBlock Text="SPEED EVENT" Foreground="#B3473E" FontSize="13" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding AlertSecondaryTitle}" Margin="0,14,0,0" Foreground="#182D37" FontSize="24" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding AlertSecondaryBody}" Margin="0,12,0,0" Foreground="#715350" FontSize="15" TextWrapping="Wrap" />
+                                    <TextBlock Text="SPEED EVENT" Foreground="{StaticResource DangerBrush}" FontSize="11" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding AlertSecondaryTitle}" Margin="0,10,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding AlertSecondaryBody}" Margin="0,8,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="13" TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
 
-                            <Border Grid.Row="4" Background="#EAF7F4" BorderBrush="#57D0C0" BorderThickness="1" CornerRadius="20" Padding="22">
+                            <!-- Dispatch -->
+                            <Border Grid.Row="4" Style="{StaticResource DarkCardStyle}" Padding="16">
                                 <StackPanel>
-                                    <TextBlock Text="DISPATCH" Foreground="#2B7D6D" FontSize="13" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding DispatchTitle}" Margin="0,14,0,0" Foreground="#182D37" FontSize="22" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding DispatchBody}" Margin="0,12,0,16" Foreground="#4A6B71" FontSize="15" TextWrapping="Wrap" />
-                                    <Button Content="Open ACARS" Width="130" HorizontalAlignment="Left" Style="{StaticResource ShellActionButtonStyle}" />
+                                    <TextBlock Text="DISPATCH" Foreground="{StaticResource AccentSoftBrush}" FontSize="11" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding DispatchTitle}" Margin="0,10,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="15" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding DispatchBody}" Margin="0,6,0,10" Foreground="{StaticResource TextMutedBrush}" FontSize="12" TextWrapping="Wrap" />
+                                    <Button Content="Open ACARS" HorizontalAlignment="Left" Style="{StaticResource ShellActionButtonStyle}" />
                                 </StackPanel>
                             </Border>
 
-                            <Border Grid.Row="6" Background="#FBFCF8" CornerRadius="20" Padding="22">
+                            <!-- Session health -->
+                            <Border Grid.Row="6" Style="{StaticResource DarkCardStyle}" Padding="16">
                                 <StackPanel>
                                     <TextBlock Text="SESSION HEALTH" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding SessionHealthTitle}" Margin="0,14,0,0" Foreground="#182D37" FontSize="20" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding SessionHealthLine1}" Margin="0,12,0,0" Foreground="#55676D" FontSize="15" />
-                                    <TextBlock Text="{Binding SessionHealthLine2}" Margin="0,8,0,0" Foreground="#55676D" FontSize="15" />
-                                    <TextBlock Text="{Binding SessionHealthLine3}" Margin="0,8,0,0" Foreground="#55676D" FontSize="15" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding SessionHealthTitle}" Margin="0,10,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="14" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SessionHealthLine1}" Margin="0,8,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="12" />
+                                    <TextBlock Text="{Binding SessionHealthLine2}" Margin="0,5,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="12" />
+                                    <TextBlock Text="{Binding SessionHealthLine3}" Margin="0,5,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="12" TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
                         </Grid>
                     </Grid>
 
-                    <!-- Live Map panel -->
-                    <Border Grid.Column="0" Grid.ColumnSpan="3" Background="#0B111A" CornerRadius="28"
-                            Visibility="{Binding IsLiveMapVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <!-- ── LIVE MAP ──────────────────────────────────────── -->
+                    <Border Visibility="{Binding IsLiveMapVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Background="#0B111A" CornerRadius="8"
+                            BorderBrush="{StaticResource DividerBrush}" BorderThickness="1">
                         <Grid>
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="46" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
-
-                            <!-- Header bar -->
-                            <Border Background="#0B111A" CornerRadius="28,28,0,0" Padding="24,16">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="LIVE MAP" Foreground="#5CA4C0" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
-                                    <Border Background="#1A2A38" CornerRadius="8" Padding="10,4" Margin="16,0,0,0" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding LiveFlights.Count, StringFormat='{}{0} aircraft online'}" Foreground="#8BB8CC" FontSize="12" />
+                            <Border Grid.Row="0" Background="#0B111A" CornerRadius="8,8,0,0"
+                                    BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                                <StackPanel Orientation="Horizontal" Margin="16,0" VerticalAlignment="Center">
+                                    <TextBlock Text="LIVE MAP" Foreground="#5CA4C0" FontSize="11" FontWeight="SemiBold" />
+                                    <Border Background="#1A2A38" CornerRadius="5" Padding="8,3" Margin="12,0,0,0">
+                                        <TextBlock Text="{Binding LiveFlights.Count, StringFormat='{}{0} aircraft online'}" Foreground="#8BB8CC" FontSize="11" />
                                     </Border>
-                                    <TextBlock Text="Updates every 5s" Foreground="#3A5060" FontSize="11" Margin="16,0,0,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="· updates every 5s" Foreground="#3A5060" FontSize="11" Margin="10,0,0,0" />
                                 </StackPanel>
                             </Border>
-
-                            <!-- Map canvas — code-behind renders plane icons via MapProjection -->
-                            <local:LiveMapCanvas x:Name="LiveMapCanvas" Grid.Row="1"
-                                                 LiveFlights="{Binding LiveFlights}" />
+                            <local:LiveMapCanvas x:Name="LiveMapCanvas" Grid.Row="1" LiveFlights="{Binding LiveFlights}" />
                         </Grid>
                     </Border>
 
-                    <Border Grid.Column="0" Grid.ColumnSpan="3" Background="#F4F6F0" CornerRadius="28" Padding="28"
-                            Visibility="{Binding IsReviewVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <!-- ── PIREP DRAFT ───────────────────────────────────── -->
+                    <Border Visibility="{Binding IsReviewVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Style="{StaticResource DarkCardStyle}" Padding="22">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
-                            <TextBlock Text="POST-FLIGHT REVIEW" Foreground="{StaticResource TextMutedBrush}" FontSize="13" FontWeight="Bold" />
-                            <TextBlock Grid.Row="1" Text="{Binding ReviewSummary}" Margin="0,14,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="18" FontWeight="SemiBold" />
-                            <TextBlock Grid.Row="1" Text="{Binding ReviewLandingMetrics}" Margin="0,46,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" />
-                            <ItemsControl Grid.Row="2" ItemsSource="{Binding ReviewScoreRows}" Margin="0,28,0,0">
+                            <TextBlock Text="POST-FLIGHT REVIEW" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Grid.Row="1" Text="{Binding ReviewSummary}" Margin="0,12,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="16" FontWeight="SemiBold" />
+                            <TextBlock Grid.Row="1" Text="{Binding ReviewLandingMetrics}" Margin="0,38,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="13" FontFamily="Consolas" />
+                            <ItemsControl Grid.Row="2" ItemsSource="{Binding ReviewScoreRows}" Margin="0,24,0,0">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate DataType="{x:Type model:ScoreRowModel}">
-                                        <Grid Margin="0,0,0,16">
+                                        <Grid Margin="0,0,0,14">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="140" />
-                                                <ColumnDefinition Width="220" />
+                                                <ColumnDefinition Width="130" />
+                                                <ColumnDefinition Width="200" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="{Binding Label}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="18" FontWeight="Bold" />
-                                            <Grid Grid.Column="1" Margin="16,10,0,0" Height="10" Width="220" HorizontalAlignment="Left">
-                                                <Border Background="#D9DFD6" CornerRadius="5" />
-                                                <Border Background="{Binding FillBrush}" CornerRadius="5" Width="{Binding FillWidth}" HorizontalAlignment="Left" />
+                                            <TextBlock Text="{Binding Label}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="15" FontWeight="SemiBold" />
+                                            <Grid Grid.Column="1" Margin="14,8,0,0" Height="8" Width="200" HorizontalAlignment="Left">
+                                                <Border Background="{StaticResource HeroCardBrush}" CornerRadius="4" />
+                                                <Border Background="{Binding FillBrush}" CornerRadius="4" Width="{Binding FillWidth}" HorizontalAlignment="Left" />
                                             </Grid>
-                                            <TextBlock Grid.Column="2" Text="{Binding ScoreText}" HorizontalAlignment="Right" Foreground="{StaticResource TextPrimaryBrush}" FontSize="16" FontWeight="Bold" />
+                                            <TextBlock Grid.Column="2" Text="{Binding ScoreText}" HorizontalAlignment="Right" Foreground="{StaticResource TextPrimaryBrush}" FontSize="14" FontWeight="SemiBold" FontFamily="Consolas" />
                                         </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -535,125 +718,111 @@
                         </Grid>
                     </Border>
 
-                    <Border Grid.Column="0" Grid.ColumnSpan="3" Background="#F4F6F0" CornerRadius="28" Padding="28"
-                            Visibility="{Binding IsDiagnosticsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <!-- ── DIAGNOSTICS ───────────────────────────────────── -->
+                    <Border Visibility="{Binding IsDiagnosticsVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Background="Transparent">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="24" />
+                                <ColumnDefinition Width="16" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Border Background="#FFFFFF" CornerRadius="20" Padding="22">
-                                <StackPanel>
-                                    <TextBlock Text="SIM STATUS" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding DiagnosticsSimState}" Margin="0,14,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                    <TextBlock Text="TELEMETRY DEBUG" Margin="0,24,0,0" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding DiagnosticsTelemetryClient}" Margin="0,14,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding DiagnosticsTelemetryFlow}" Margin="0,10,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding DiagnosticsTelemetryCounters}" Margin="0,10,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
-                                    <TextBlock Text="LAST TELEMETRY" Margin="0,24,0,0" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding DiagnosticsLastTelemetry}" Margin="0,14,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
-                                    <TextBlock Text="RAW FRAME" Margin="0,24,0,0" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding DiagnosticsRawTelemetry}" Margin="0,14,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
-                                    <TextBlock Text="RECOVERY" Margin="0,24,0,0" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding DiagnosticsRecoveryState}" Margin="0,14,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
-                                </StackPanel>
+                            <Border Style="{StaticResource DarkCardStyle}" Padding="18">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel>
+                                        <TextBlock Text="SIM STATUS" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Text="{Binding DiagnosticsSimState}" Margin="0,10,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="TELEMETRY DEBUG" Margin="0,20,0,8" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Text="{Binding DiagnosticsTelemetryClient}" Foreground="{StaticResource TextMutedBrush}" FontSize="13" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding DiagnosticsTelemetryFlow}" Margin="0,6,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="13" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding DiagnosticsTelemetryCounters}" Margin="0,6,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="13" TextWrapping="Wrap" />
+                                        <TextBlock Text="LAST TELEMETRY" Margin="0,20,0,8" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Text="{Binding DiagnosticsLastTelemetry}" Foreground="{StaticResource TextMutedBrush}" FontSize="13" TextWrapping="Wrap" />
+                                        <TextBlock Text="RAW FRAME" Margin="0,20,0,8" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Text="{Binding DiagnosticsRawTelemetry}" Foreground="{StaticResource TextMutedBrush}" FontSize="12" FontFamily="Consolas" TextWrapping="Wrap" />
+                                        <TextBlock Text="RECOVERY" Margin="0,20,0,8" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Text="{Binding DiagnosticsRecoveryState}" Foreground="{StaticResource TextMutedBrush}" FontSize="13" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </ScrollViewer>
                             </Border>
-                            <Border Grid.Column="2" Background="#FFFFFF" CornerRadius="20" Padding="22">
-                                <StackPanel>
-                                    <TextBlock Text="SYNC" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding DiagnosticsSyncState}" Margin="0,14,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                    <TextBlock Text="SETTINGS FILE" Margin="0,24,0,0" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding DiagnosticsSettingsPath}" Margin="0,14,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
-                                    <TextBlock Text="STORAGE ROOT" Margin="0,24,0,0" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding DiagnosticsStoragePath}" Margin="0,14,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
-                                </StackPanel>
+                            <Border Grid.Column="2" Style="{StaticResource DarkCardStyle}" Padding="18">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel>
+                                        <TextBlock Text="SYNC" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Text="{Binding DiagnosticsSyncState}" Margin="0,10,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="SETTINGS FILE" Margin="0,20,0,8" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Text="{Binding DiagnosticsSettingsPath}" Foreground="{StaticResource TextMutedBrush}" FontSize="12" FontFamily="Consolas" TextWrapping="Wrap" />
+                                        <TextBlock Text="STORAGE ROOT" Margin="0,20,0,8" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Text="{Binding DiagnosticsStoragePath}" Foreground="{StaticResource TextMutedBrush}" FontSize="12" FontFamily="Consolas" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </ScrollViewer>
                             </Border>
                         </Grid>
                     </Border>
 
-                    <Border Grid.Column="0" Grid.ColumnSpan="3" Background="#F4F6F0" CornerRadius="28" Padding="28"
-                            Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <!-- ── SETTINGS ──────────────────────────────────────── -->
+                    <Border Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Background="Transparent">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="24" />
+                                <ColumnDefinition Width="16" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="API &amp; SYNC" Style="{StaticResource SectionLabelStyle}" />
-                                <TextBlock Text="Base URL" Margin="0,14,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBox Text="{Binding SettingsEditor.BaseUrl, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                                <TextBlock Text="Sim Sessions Path" Margin="0,16,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBox Text="{Binding SettingsEditor.SimSessionsPath, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                                <TextBlock Text="Pilot API Token" Margin="0,16,0,4" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBlock Margin="0,0,0,6" FontSize="12" Foreground="#7EA4AF" TextWrapping="Wrap">
-                                    <Run Text="Copy your token from " />
-                                    <Hyperlink Command="{Binding OpenAccountSettingsCommand}" Foreground="#F48223">simcrewops.com/settings</Hyperlink>
-                                    <Run Text=" → Connect Tracker." />
-                                </TextBlock>
-                                <TextBox Text="{Binding SettingsEditor.PilotApiToken, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                                <TextBlock Text="Tracker Version" Margin="0,16,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBox Text="{Binding SettingsEditor.TrackerVersion, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="STORAGE" Style="{StaticResource SectionLabelStyle}" />
-                                <TextBlock Text="Storage Root Directory" Margin="0,14,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBox Text="{Binding SettingsEditor.StorageRootDirectory, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                                <TextBlock Text="Background Sync Interval (seconds)" Margin="0,16,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBox Text="{Binding SettingsEditor.BackgroundSyncIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                                <TextBlock Text="Max Sessions Per Pass" Margin="0,16,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBox Text="{Binding SettingsEditor.MaxSessionsPerPass, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                                <CheckBox Content="Enable background sync"
-                                          IsChecked="{Binding SettingsEditor.BackgroundSyncEnabled}"
-                                          Margin="0,18,0,0"
-                                          FontSize="15"
-                                          Foreground="{StaticResource TextPrimaryBrush}" />
-                                <CheckBox Content="Enable telemetry diagnostics (debug)"
-                                          IsChecked="{Binding SettingsEditor.EnableTelemetryDiagnostics}"
-                                          Margin="0,12,0,0"
-                                          FontSize="15"
-                                          Foreground="{StaticResource TextPrimaryBrush}" />
-                                <StackPanel Orientation="Horizontal" Margin="0,24,0,0">
-                                    <Button Content="Save Settings" Command="{Binding SaveSettingsCommand}" Style="{StaticResource ShellActionButtonStyle}" />
-                                    <Button Content="Retry Sync" Command="{Binding RetrySyncCommand}" Style="{StaticResource ShellActionButtonStyle}" />
-                                </StackPanel>
-                                <TextBlock Text="{Binding SettingsSaveStatus}" Margin="0,18,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="14" TextWrapping="Wrap" />
-                            </StackPanel>
+                            <Border Style="{StaticResource DarkCardStyle}" Padding="18">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel>
+                                        <TextBlock Text="API &amp; SYNC" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Text="Base URL" Margin="0,14,0,5" Foreground="{StaticResource NavTextBrush}" FontSize="13" />
+                                        <TextBox Text="{Binding SettingsEditor.BaseUrl, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock Text="Sim Sessions Path" Margin="0,14,0,5" Foreground="{StaticResource NavTextBrush}" FontSize="13" />
+                                        <TextBox Text="{Binding SettingsEditor.SimSessionsPath, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock Text="Pilot API Token" Margin="0,14,0,4" Foreground="{StaticResource NavTextBrush}" FontSize="13" />
+                                        <TextBlock Margin="0,0,0,5" FontSize="11" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap">
+                                            <Run Text="Copy from " />
+                                            <Hyperlink Command="{Binding OpenAccountSettingsCommand}" Foreground="{StaticResource AccentSoftBrush}">simcrewops.com/settings</Hyperlink>
+                                            <Run Text=" → Connect Tracker." />
+                                        </TextBlock>
+                                        <TextBox Text="{Binding SettingsEditor.PilotApiToken, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock Text="Tracker Version" Margin="0,14,0,5" Foreground="{StaticResource NavTextBrush}" FontSize="13" />
+                                        <TextBox Text="{Binding SettingsEditor.TrackerVersion, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+                            <Border Grid.Column="2" Style="{StaticResource DarkCardStyle}" Padding="18">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel>
+                                        <TextBlock Text="STORAGE" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Text="Storage Root Directory" Margin="0,14,0,5" Foreground="{StaticResource NavTextBrush}" FontSize="13" />
+                                        <TextBox Text="{Binding SettingsEditor.StorageRootDirectory, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock Text="Background Sync Interval (seconds)" Margin="0,14,0,5" Foreground="{StaticResource NavTextBrush}" FontSize="13" />
+                                        <TextBox Text="{Binding SettingsEditor.BackgroundSyncIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock Text="Max Sessions Per Pass" Margin="0,14,0,5" Foreground="{StaticResource NavTextBrush}" FontSize="13" />
+                                        <TextBox Text="{Binding SettingsEditor.MaxSessionsPerPass, UpdateSourceTrigger=PropertyChanged}" />
+                                        <CheckBox Content="Enable background sync"
+                                                  IsChecked="{Binding SettingsEditor.BackgroundSyncEnabled}"
+                                                  Margin="0,16,0,0" FontSize="13" />
+                                        <CheckBox Content="Enable telemetry diagnostics (debug)"
+                                                  IsChecked="{Binding SettingsEditor.EnableTelemetryDiagnostics}"
+                                                  Margin="0,10,0,0" FontSize="13" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
+                                            <Button Content="Save Settings" Command="{Binding SaveSettingsCommand}" Style="{StaticResource ShellActionButtonStyle}" />
+                                            <Button Content="Retry Sync"    Command="{Binding RetrySyncCommand}"    Style="{StaticResource ShellActionButtonStyle}" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding SettingsSaveStatus}" Margin="0,14,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="12" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
                         </Grid>
                     </Border>
+
                 </Grid>
-            </Grid>
+                <!-- end center+right grid -->
 
-            <Border Grid.Row="2" Background="#DEE4DB" CornerRadius="17">
-                <StackPanel Orientation="Horizontal" Margin="16,0">
-                    <StackPanel Orientation="Vertical" Margin="0,0,12,0">
-                        <Button Content="Dispatch" Command="{Binding ShowDashboardCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />
-                        <Border Height="2" Width="46" Background="{StaticResource AccentBrush}" Visibility="{Binding DashboardNavUnderlineVisibility}" HorizontalAlignment="Center" />
-                    </StackPanel>
-                    <StackPanel Orientation="Vertical" Margin="0,0,12,0">
-                        <Button Content="Live Map" Command="{Binding ShowLiveMapCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />
-                        <Border Height="2" Width="50" Background="{StaticResource AccentBrush}" Visibility="{Binding LiveMapNavUnderlineVisibility}" HorizontalAlignment="Center" />
-                    </StackPanel>
-                    <StackPanel Orientation="Vertical" Margin="0,0,12,0">
-                        <Button Content="PIREP Draft" Command="{Binding ShowReviewCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />
-                        <Border Height="2" Width="60" Background="{StaticResource AccentBrush}" Visibility="{Binding ReviewNavUnderlineVisibility}" HorizontalAlignment="Center" />
-                    </StackPanel>
-                    <StackPanel Orientation="Vertical" Margin="0,0,12,0">
-                        <Button Content="Diagnostics" Command="{Binding ShowDiagnosticsCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />
-                        <Border Height="2" Width="64" Background="{StaticResource AccentBrush}" Visibility="{Binding DiagnosticsNavUnderlineVisibility}" HorizontalAlignment="Center" />
-                    </StackPanel>
-                    <StackPanel Orientation="Vertical" Margin="0,0,12,0">
-                        <Button Content="Settings" Command="{Binding ShowSettingsCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />
-                        <Border Height="2" Width="48" Background="{StaticResource AccentBrush}" Visibility="{Binding SettingsNavUnderlineVisibility}" HorizontalAlignment="Center" />
-                    </StackPanel>
-                    <Button Content="Retry Sync" Command="{Binding RetrySyncCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />
-                    <!-- Live sync status badge -->
-                    <Border Background="{Binding LiveSyncStatusBrush}" CornerRadius="8" Padding="10,4" Margin="8,6,0,6" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding LiveSyncStatusText}" Foreground="White" FontSize="11" FontWeight="Bold" />
-                    </Border>
-                </StackPanel>
-            </Border>
+            </Grid>
+            <!-- end content area -->
         </Grid>
-    </Border>
+        <!-- end main content -->
+
+    </Grid>
 </Window>
