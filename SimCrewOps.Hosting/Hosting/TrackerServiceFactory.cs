@@ -95,6 +95,13 @@ public sealed class TrackerServiceFactory
                     TrackerVersion = settings.Api.TrackerVersion,
                 });
 
+        var liveMapService = string.IsNullOrWhiteSpace(settings.Api.PilotApiToken)
+            ? null
+            : new LiveMapService(
+                _httpClientFactory(),
+                settings.Api.BaseUri,
+                settings.Api.PilotApiToken);
+
         if (!settings.BackgroundSync.Enabled || string.IsNullOrWhiteSpace(settings.Api.PilotApiToken))
         {
             return new TrackerServiceStack
@@ -103,6 +110,7 @@ public sealed class TrackerServiceFactory
                 FlightSessionStore = flightSessionStore,
                 LivePositionUploader = livePositionUploader,
                 ActiveFlightFetcher = activeFlightFetcher,
+                LiveMapService = liveMapService,
             };
         }
 
@@ -131,6 +139,7 @@ public sealed class TrackerServiceFactory
             CompletedSessionSyncService = syncService,
             BackgroundSyncCoordinator = backgroundSyncCoordinator,
             ActiveFlightFetcher = activeFlightFetcher,
+            LiveMapService = liveMapService,
         };
     }
 }

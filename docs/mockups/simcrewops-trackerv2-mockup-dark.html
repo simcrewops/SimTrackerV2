@@ -1,0 +1,1773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimCrewOps TrackerV2</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Consolas:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            line-height: 1.5;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        /* ============ SIDEBAR ============ */
+        .sidebar {
+            width: 240px;
+            background: #0d1117;
+            color: #e6edf3;
+            display: flex;
+            flex-direction: column;
+            padding: 20px 0;
+            box-shadow: 1px 0 3px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 0 20px;
+            margin-bottom: 30px;
+        }
+
+        .sidebar-logo {
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: #c9d1d9;
+        }
+
+        .sidebar-subtitle {
+            font-size: 11px;
+            color: #484f58;
+            margin-top: 4px;
+            letter-spacing: 0.3px;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+        }
+
+        .nav-section {
+            margin-bottom: 20px;
+        }
+
+        .nav-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #7d8590;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0 20px;
+            margin-bottom: 8px;
+        }
+
+        .nav-item {
+            padding: 10px 20px;
+            margin: 0 8px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #c9d1d9;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-item:hover {
+            background: rgba(255,255,255,0.08);
+            color: #e6edf3;
+        }
+
+        .nav-item.active {
+            background: #2563eb;
+            color: white;
+        }
+
+        .nav-icon {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            display: inline-block;
+        }
+
+        .sidebar-bottom {
+            padding: 20px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            margin-top: auto;
+        }
+
+        .user-info {
+            font-size: 12px;
+            color: #484f58;
+            margin-bottom: 12px;
+        }
+
+        .user-info-label {
+            color: #7d8590;
+            font-size: 11px;
+        }
+
+        /* ============ MAIN CONTENT ============ */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #0d1117;
+            overflow: hidden;
+        }
+
+        /* ============ TOP BAR ============ */
+        .top-bar {
+            height: 56px;
+            background: #161b22;
+            border-bottom: 1px solid #21262d;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+
+        .top-bar-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #e6edf3;
+        }
+
+        .top-bar-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 6px 14px;
+            border-radius: 6px;
+            border: none;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .btn-secondary {
+            background: #21262d;
+            color: #c9d1d9;
+            border: 1px solid #21262d;
+        }
+
+        .btn-secondary:hover {
+            background: #21262d;
+            border-color: #21262d;
+        }
+
+        .btn-primary {
+            background: #2563eb;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1d4ed8;
+        }
+
+        /* ============ CONTENT AREA ============ */
+        .content {
+            flex: 1;
+            display: flex;
+            gap: 16px;
+            padding: 16px;
+            overflow: hidden;
+        }
+
+        /* ============ MAP SECTION ============ */
+        .map-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .map-container {
+            flex: 1;
+            background: #161b22;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .map-background {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #0d1117 0%, #0d1117 100%);
+            position: relative;
+        }
+
+        .map-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+        }
+
+        .plane-icon {
+            position: absolute;
+            width: 32px;
+            height: 32px;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .plane-icon:hover {
+            transform: scale(1.15);
+        }
+
+        .plane-svg {
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+        }
+
+        /* Plane positions */
+        .plane-1 {
+            top: 35%;
+            left: 25%;
+        }
+
+        .plane-2 {
+            top: 55%;
+            left: 60%;
+        }
+
+        .plane-3 {
+            top: 25%;
+            left: 70%;
+        }
+
+        .plane-4 {
+            top: 70%;
+            left: 35%;
+        }
+
+        /* ============ HUD OVERLAY ============ */
+        .hud-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .hud-card {
+            position: absolute;
+            background: #161b22;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06), 0 1px 2px rgba(0,0,0,0.06);
+            padding: 12px 16px;
+            font-size: 12px;
+            pointer-events: auto;
+            border: 1px solid #21262d;
+        }
+
+        .hud-callsign {
+            font-weight: 600;
+            color: #e6edf3;
+            margin-bottom: 6px;
+            font-size: 13px;
+            font-family: 'Consolas', monospace;
+        }
+
+        .hud-row {
+            display: flex;
+            gap: 8px;
+            margin: 4px 0;
+            color: #7d8590;
+        }
+
+        .hud-label {
+            font-weight: 500;
+            color: #484f58;
+            min-width: 45px;
+        }
+
+        .hud-value {
+            color: #e6edf3;
+            font-weight: 500;
+            font-family: 'Consolas', monospace;
+        }
+
+        .hud-1 {
+            top: 20px;
+            left: 20px;
+            max-width: 180px;
+        }
+
+        .hud-2 {
+            top: 180px;
+            right: 20px;
+            max-width: 160px;
+        }
+
+        .hud-3 {
+            bottom: 20px;
+            left: 20px;
+            max-width: 200px;
+        }
+
+        /* ============ RIGHT SIDEBAR ============ */
+        .right-sidebar {
+            width: 380px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .panel {
+            background: #161b22;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid #21262d;
+            font-weight: 600;
+            font-size: 13px;
+            color: #e6edf3;
+            background: #1f2937;
+        }
+
+        .panel-content {
+            padding: 12px 16px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        /* ============ FLIGHT BOARD ============ */
+        .flight-board {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .flight-row {
+            display: flex;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #21262d;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .flight-row:last-child {
+            border-bottom: none;
+        }
+
+        .flight-row:hover {
+            background: #1c2333;
+            border-radius: 4px;
+            padding: 10px 8px;
+            margin: 0 -8px;
+        }
+
+        .flight-row.active {
+            background: #1e3a5f;
+            border-left: 3px solid #2563eb;
+            padding-left: 5px;
+        }
+
+        .flight-callsign {
+            font-weight: 600;
+            color: #e6edf3;
+            min-width: 60px;
+            font-family: 'Consolas', monospace;
+        }
+
+        .flight-status {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin-right: 8px;
+            flex-shrink: 0;
+        }
+
+        .status-active {
+            background: #16a34a;
+            box-shadow: 0 0 4px rgba(22,163,74,0.4);
+        }
+
+        .status-warning {
+            background: #d97706;
+            box-shadow: 0 0 4px rgba(217,119,6,0.4);
+        }
+
+        .status-idle {
+            background: #30363d;
+        }
+
+        .flight-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .flight-route {
+            color: #7d8590;
+            font-size: 11px;
+        }
+
+        .flight-altitude {
+            color: #484f58;
+            font-size: 10px;
+            font-family: 'Consolas', monospace;
+        }
+
+        /* ============ STATUS INDICATORS ============ */
+        .status-panel {
+            flex-shrink: 0;
+        }
+
+        .status-row {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            font-size: 11px;
+            border-bottom: 1px solid #21262d;
+        }
+
+        .status-row:last-child {
+            border-bottom: none;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+            flex-shrink: 0;
+        }
+
+        .status-label {
+            color: #7d8590;
+            flex: 1;
+        }
+
+        .status-value {
+            color: #e6edf3;
+            font-weight: 500;
+        }
+
+        /* ============ STATUS BAR ============ */
+        .status-bar {
+            height: 32px;
+            background: #1c2333;
+            border-top: 1px solid #21262d;
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            font-size: 11px;
+            color: #7d8590;
+            gap: 16px;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #16a34a;
+        }
+
+        /* ============ MY FLIGHT VIEW ============ */
+        .mf-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        .mf-card {
+            background: #161b22;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+            padding: 16px;
+            border: 1px solid #21262d;
+        }
+
+        .mf-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #e6edf3;
+            margin-bottom: 12px;
+            border-bottom: 1px solid #21262d;
+            padding-bottom: 12px;
+        }
+
+        .mf-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .mf-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .mf-label {
+            font-size: 11px;
+            font-weight: 500;
+            color: #7d8590;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .mf-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e6edf3;
+            font-family: 'Consolas', monospace;
+        }
+
+        /* Phase badge */
+        .phase-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            width: fit-content;
+            margin-bottom: 12px;
+        }
+
+        .phase-cruise {
+            background: #1a4731;
+            color: #4ade80;
+        }
+
+        .phase-approach {
+            background: #451a03;
+            color: #fb923c;
+        }
+
+        .phase-landing {
+            background: #1e3a5f;
+            color: #60a5fa;
+        }
+
+        .phase-taxi {
+            background: #1f2937;
+            color: #9ca3af;
+        }
+
+        /* ============ ACARS VIEW ============ */
+        .acars-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        .msg-list {
+            background: #161b22;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+            overflow: hidden;
+        }
+
+        .msg-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid #21262d;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .msg-item:last-child {
+            border-bottom: none;
+        }
+
+        .msg-item:hover {
+            background: #1c2333;
+        }
+
+        .msg-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .msg-from {
+            font-weight: 600;
+            color: #e6edf3;
+            font-family: 'Consolas', monospace;
+        }
+
+        .msg-time {
+            font-size: 11px;
+            color: #484f58;
+        }
+
+        .msg-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-right: 6px;
+        }
+
+        .msg-fuel {
+            background: #451a03;
+            color: #92400e;
+        }
+
+        .msg-dispatch {
+            background: #1e3a5f;
+            color: #0c4a6e;
+        }
+
+        .msg-weather {
+            background: #e0e7ff;
+            color: #312e81;
+        }
+
+        .msg-ops {
+            background: #d1d5db;
+            color: #c9d1d9;
+        }
+
+        .msg-maintenance {
+            background: #1a4731;
+            color: #166534;
+        }
+
+        .msg-text {
+            font-size: 12px;
+            color: #7d8590;
+        }
+
+        /* ============ SCHEDULE VIEW ============ */
+        .sched-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        .sched-section {
+            background: #161b22;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+            overflow: hidden;
+        }
+
+        .sched-header {
+            padding: 12px 16px;
+            background: #1f2937;
+            border-bottom: 1px solid #21262d;
+            font-weight: 600;
+            font-size: 13px;
+            color: #e6edf3;
+        }
+
+        .sched-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid #21262d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sched-item:last-child {
+            border-bottom: none;
+        }
+
+        .sched-route {
+            font-weight: 600;
+            color: #e6edf3;
+            font-family: 'Consolas', monospace;
+        }
+
+        .sched-time {
+            font-size: 12px;
+            color: #7d8590;
+        }
+
+        /* ============ WEATHER VIEW ============ */
+        .weather-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        .weather-card {
+            background: #161b22;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+            padding: 16px;
+            border: 1px solid #21262d;
+        }
+
+        .weather-code {
+            font-family: 'Consolas', monospace;
+            font-size: 11px;
+            color: #7d8590;
+            background: #1c2333;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* ============ FEED VIEW ============ */
+        .feed-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        .feed-items {
+            background: #161b22;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+            overflow-y: auto;
+        }
+
+        .feed-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid #21262d;
+        }
+
+        .feed-item:last-child {
+            border-bottom: none;
+        }
+
+        .feed-title {
+            font-weight: 600;
+            color: #e6edf3;
+            margin-bottom: 4px;
+        }
+
+        .feed-desc {
+            font-size: 12px;
+            color: #7d8590;
+        }
+
+        .leaderboard {
+            background: #161b22;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+            overflow: hidden;
+        }
+
+        .lb-header {
+            padding: 12px 16px;
+            background: #1f2937;
+            border-bottom: 1px solid #21262d;
+            font-weight: 600;
+            color: #e6edf3;
+        }
+
+        .lb-row {
+            padding: 12px 16px;
+            border-bottom: 1px solid #21262d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .lb-row:last-child {
+            border-bottom: none;
+        }
+
+        .lb-rank {
+            font-weight: 600;
+            color: #2563eb;
+            min-width: 30px;
+        }
+
+        .lb-name {
+            flex: 1;
+            margin: 0 12px;
+            color: #e6edf3;
+        }
+
+        .lb-score {
+            color: #7d8590;
+            font-family: 'Consolas', monospace;
+        }
+
+        /* ============ SETTINGS VIEW ============ */
+        .settings-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 16px;
+            overflow-y: auto;
+            max-width: 600px;
+        }
+
+        .setting-group {
+            background: #161b22;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+            padding: 16px;
+            border: 1px solid #21262d;
+        }
+
+        .setting-title {
+            font-weight: 600;
+            color: #e6edf3;
+            margin-bottom: 12px;
+            border-bottom: 1px solid #21262d;
+            padding-bottom: 12px;
+        }
+
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .setting-item:last-child {
+            border-bottom: none;
+        }
+
+        .setting-label {
+            color: #e6edf3;
+            font-weight: 500;
+        }
+
+        .setting-desc {
+            font-size: 12px;
+            color: #7d8590;
+        }
+
+        .toggle {
+            width: 44px;
+            height: 24px;
+            background: #e5e7eb;
+            border-radius: 12px;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s;
+        }
+
+        .toggle.active {
+            background: #2563eb;
+        }
+
+        .toggle-ball {
+            width: 20px;
+            height: 20px;
+            background: #161b22;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: left 0.2s;
+        }
+
+        .toggle.active .toggle-ball {
+            left: 22px;
+        }
+
+        /* ============ SCROLLBARS ============ */
+        .panel-content::-webkit-scrollbar,
+        .flight-board::-webkit-scrollbar,
+        .mf-section::-webkit-scrollbar,
+        .acars-grid::-webkit-scrollbar,
+        .sched-grid::-webkit-scrollbar,
+        .weather-grid::-webkit-scrollbar,
+        .feed-grid::-webkit-scrollbar,
+        .settings-grid::-webkit-scrollbar,
+        .feed-items::-webkit-scrollbar,
+        .leaderboard::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .panel-content::-webkit-scrollbar-track,
+        .flight-board::-webkit-scrollbar-track,
+        .mf-section::-webkit-scrollbar-track,
+        .acars-grid::-webkit-scrollbar-track,
+        .sched-grid::-webkit-scrollbar-track,
+        .weather-grid::-webkit-scrollbar-track,
+        .feed-grid::-webkit-scrollbar-track,
+        .settings-grid::-webkit-scrollbar-track,
+        .feed-items::-webkit-scrollbar-track,
+        .leaderboard::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .panel-content::-webkit-scrollbar-thumb,
+        .flight-board::-webkit-scrollbar-thumb,
+        .mf-section::-webkit-scrollbar-thumb,
+        .acars-grid::-webkit-scrollbar-thumb,
+        .sched-grid::-webkit-scrollbar-thumb,
+        .weather-grid::-webkit-scrollbar-thumb,
+        .feed-grid::-webkit-scrollbar-thumb,
+        .settings-grid::-webkit-scrollbar-thumb,
+        .feed-items::-webkit-scrollbar-thumb,
+        .leaderboard::-webkit-scrollbar-thumb {
+            background: #21262d;
+            border-radius: 3px;
+        }
+
+        .panel-content::-webkit-scrollbar-thumb:hover,
+        .flight-board::-webkit-scrollbar-thumb:hover,
+        .mf-section::-webkit-scrollbar-thumb:hover,
+        .acars-grid::-webkit-scrollbar-thumb:hover,
+        .sched-grid::-webkit-scrollbar-thumb:hover,
+        .weather-grid::-webkit-scrollbar-thumb:hover,
+        .feed-grid::-webkit-scrollbar-thumb:hover,
+        .settings-grid::-webkit-scrollbar-thumb:hover,
+        # Fixed scrollbar colors
+        .feed-items::-webkit-scrollbar-thumb:hover,
+        .leaderboard::-webkit-scrollbar-thumb:hover {
+            background: #30363d;
+        }
+
+        /* ============ VIEW SYSTEM ============ */
+        .view {
+            display: none;
+            width: 100%;
+            height: 100%;
+        }
+
+        .view.active {
+            display: flex;
+            flex: 1;
+        }
+
+        /* ============ RESPONSIVE ============ */
+        @media (max-width: 1400px) {
+            .right-sidebar {
+                width: 320px;
+            }
+        }
+
+        /* Animations */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    
+        /* Phase badges dark mode */
+        .phase-badge {
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .phase-cruise {
+            background: #1a4731;
+            color: #4ade80;
+        }
+        
+        .phase-approach {
+            background: #451a03;
+            color: #fb923c;
+        }
+        
+        .phase-landing {
+            background: #1e3a5f;
+            color: #60a5fa;
+        }
+        
+        .phase-taxi {
+            background: #1f2937;
+            color: #9ca3af;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAbYAAABGCAYAAACg7LHdAAAAtGVYSWZJSSoACAAAAAYAEgEDAAEAAAABAAAAGgEFAAEAAABWAAAAGwEFAAEAAABeAAAAKAEDAAEAAAACAAAAEwIDAAEAAAABAAAAaYcEAAEAAABmAAAAAAAAAFQAAAABAAAAVAAAAAEAAAAGAACQBwAEAAAAMDIxMAGRBwAEAAAAAQIDAACgBwAEAAAAMDEwMAGgAwABAAAA//8AAAKgBAABAAAAtgEAAAOgBAABAAAARgAAAAAAAABi/RZoAAAACXBIWXMAAAzrAAAM6wHl1kTSAAAF1WlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSfvu78nIGlkPSdXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQnPz4KPHg6eG1wbWV0YSB4bWxuczp4PSdhZG9iZTpuczptZXRhLyc+CjxyZGY6UkRGIHhtbG5zOnJkZj0naHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyc+CgogPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9JycKICB4bWxuczpBdHRyaWI9J2h0dHA6Ly9ucy5hdHRyaWJ1dGlvbi5jb20vYWRzLzEuMC8nPgogIDxBdHRyaWI6QWRzPgogICA8cmRmOlNlcT4KICAgIDxyZGY6bGkgcmRmOnBhcnNlVHlwZT0nUmVzb3VyY2UnPgogICAgIDxBdHRyaWI6Q3JlYXRlZD4yMDI2LTA0LTA2PC9BdHRyaWI6Q3JlYXRlZD4KICAgICA8QXR0cmliOkRhdGE+eyZxdW90O2RvYyZxdW90OzomcXVvdDtEQUhHQ0tOU3RsSSZxdW90OywmcXVvdDt1c2VyJnF1b3Q7OiZxdW90O1VBSERPZ3o4bkdJJnF1b3Q7LCZxdW90O2JyYW5kJnF1b3Q7OiZxdW90O0JBSERPbjZkV0dvJnF1b3Q7LCZxdW90O3RlbXBsYXRlJnF1b3Q7OiZxdW90O2RnLTYxYTIxNGQzLTgxNjctNGZjNi04YWYwLWEwZjE0ZjMzMjE3ZiZxdW90O308L0F0dHJpYjpEYXRhPgogICAgIDxBdHRyaWI6RXh0SWQ+OWU4MjFiMmQtYTQ2Mi00Y2Q0LWIyYzMtMWEzMzg5M2EyN2ExPC9BdHRyaWI6RXh0SWQ+CiAgICAgPEF0dHJpYjpGYklkPjUyNTI2NTkxNDE3OTU4MDwvQXR0cmliOkZiSWQ+CiAgICAgPEF0dHJpYjpUb3VjaFR5cGU+MjwvQXR0cmliOlRvdWNoVHlwZT4KICAgIDwvcmRmOmxpPgogICA8L3JkZjpTZXE+CiAgPC9BdHRyaWI6QWRzPgogPC9yZGY6RGVzY3JpcHRpb24+CgogPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9JycKICB4bWxuczpkYz0naHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8nPgogIDxkYzp0aXRsZT4KICAgPHJkZjpBbHQ+CiAgICA8cmRmOmxpIHhtbDpsYW5nPSd4LWRlZmF1bHQnPkNvcHkgb2YgTW9kZXJuIEZsaWdodCBTaW11bGF0aW9uIExvZ28gRGVzaWduIC0gMTwvcmRmOmxpPgogICA8L3JkZjpBbHQ+CiAgPC9kYzp0aXRsZT4KIDwvcmRmOkRlc2NyaXB0aW9uPgoKIDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PScnCiAgeG1sbnM6cGRmPSdodHRwOi8vbnMuYWRvYmUuY29tL3BkZi8xLjMvJz4KICA8cGRmOkF1dGhvcj5EYXJ5YSBSPC9wZGY6QXV0aG9yPgogPC9yZGY6RGVzY3JpcHRpb24+CgogPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9JycKICB4bWxuczp4bXA9J2h0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8nPgogIDx4bXA6Q3JlYXRvclRvb2w+Q2FudmEgZG9jPURBSEdDS05TdGxJIHVzZXI9VUFIRE9nejhuR0kgYnJhbmQ9QkFIRE9uNmRXR28gdGVtcGxhdGU9ZGctNjFhMjE0ZDMtODE2Ny00ZmM2LThhZjAtYTBmMTRmMzMyMTdmPC94bXA6Q3JlYXRvclRvb2w+CiA8L3JkZjpEZXNjcmlwdGlvbj4KPC9yZGY6UkRGPgo8L3g6eG1wbWV0YT4KPD94cGFja2V0IGVuZD0ncic/PopO7ZEAACAASURBVHic7V0JmCRFsd6FBUVBlFMQdqarZhdFF+TwQG7B46EiPlxPvHVFFHmI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" style="height:20px;display:block;" alt="SimCrewOps"/></div>
+                <div class="sidebar-subtitle">TrackerV2</div>
+            </div>
+
+            <div class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-label">Views</div>
+                    <div class="nav-item active" onclick="switchView(event, 'map')">
+                        <span class="nav-icon">◈️</span>
+                        <span>Live Map</span>
+                    </div>
+                    <div class="nav-item" onclick="switchView(event, 'flight')">
+                        <span class="nav-icon">↗️</span>
+                        <span>My Flight</span>
+                    </div>
+                    <div class="nav-item" onclick="switchView(event, 'acars')">
+                        <span class="nav-icon">⊛</span>
+                        <span>ACARS</span>
+                    </div>
+                    <div class="nav-item" onclick="switchView(event, 'schedule')">
+                        <span class="nav-icon">▤</span>
+                        <span>Schedule</span>
+                    </div>
+                    <div class="nav-item" onclick="switchView(event, 'weather')">
+                        <span class="nav-icon">◎</span>
+                        <span>Weather</span>
+                    </div>
+                    <div class="nav-item" onclick="switchView(event, 'feed')">
+                        <span class="nav-icon">≡</span>
+                        <span>Company Feed</span>
+                    </div>
+                    <div class="nav-item" onclick="switchView(event, 'settings')">
+                        <span class="nav-icon">⊙️</span>
+                        <span>Settings</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-bottom">
+                <div class="user-info">
+                    <div class="user-info-label">Connected User</div>
+                    <div>Captain Alex J.</div>
+                </div>
+                <div class="user-info">
+                    <div class="user-info-label">Status</div>
+                    <div style="color: #16a34a;">Online</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <div class="main-content">
+            <!-- TOP BAR -->
+            <div class="top-bar">
+                <div class="top-bar-title">Live Map</div>
+                <div class="top-bar-controls">
+                    <button class="btn btn-secondary">Filters</button>
+                    <button class="btn btn-secondary">Settings</button>
+                    <button class="btn btn-primary">Record Session</button>
+                </div>
+            </div>
+
+            <!-- VIEWS CONTAINER -->
+            <div class="content">
+                <!-- LIVE MAP VIEW -->
+                <div id="mapView" class="view active" style="flex-direction: column;">
+                    <div class="map-section">
+                        <div class="map-container">
+                            <div class="map-background">
+                                <div class="map-grid"></div>
+
+                                <!-- PLANES -->
+                                <div class="plane-icon plane-1" title="UAL456">
+                                    <svg class="plane-svg" viewBox="577.125 545 344.875 410" xmlns="http://www.w3.org/2000/svg"><path d="M 919.648438 838.398438 C 919.648438 838.398438 920.148438 840.609375 920.074219 842.933594 C 920.007812 845.210938 919.351562 850.183594 919.359375 849.046875 C 919.367188 847.914062 917.335938 846.488281 917.335938 846.488281 L 917.039062 848.46875 L 915.453125 848.515625 L 915.417969 845.339844 L 867.433594 823.25 C 867.433594 823.25 867.394531 820.53125 867.167969 820.472656 C 867.097656 823.191406 867.257812 825.007812 866.914062 825.230469 C 866.460938 825.058594 813.808594 801.3125 812.660156 800.664062 C 812.152344 800.378906 812.449219 798.058594 812.449219 798.058594 L 798.859375 795.941406 L 798.792969 797.753906 C 798.792969 797.753906 770.203125 793.566406 769.40625 794.070312 C 768.609375 794.574219 769.964844 825.351562 768.484375 846.195312 C 767.003906 867.039062 764.617188 878.246094 763.574219 882.261719 C 762.601562 886.011719 763.378906 886.851562 765.179688 888.449219 C 766.984375 890.042969 803.261719 917.226562 806.308594 919.566406 C 809.300781 921.863281 809.351562 922.90625 809.34375 924.285156 C 809.332031 926.097656 809.320312 938.054688 809.320312 938.054688 L 758.679688 925.410156 C 758.679688 925.410156 758.363281 930.453125 757.625 931.183594 C 756.882812 931.917969 755.355469 931.625 755.355469 931.625 C 755.355469 931.625 754.273438 942.101562 753.707031 942.777344 C 753.132812 943.453125 752.171875 943.789062 752.171875 943.789062 C 752.171875 943.789062 749.847656 954.585938 748.804688 954.863281 L 748.804688 954.875 C 748.796875 954.875 748.789062 954.871094 748.785156 954.871094 C 748.777344 954.871094 748.769531 954.875 748.761719 954.875 L 748.761719 954.863281 C 747.726562 954.574219 745.523438 943.75 745.523438 943.75 C 745.523438 943.75 744.5625 943.40625 744 942.722656 C 743.4375 942.039062 742.480469 931.550781 742.480469 931.550781 C 742.480469 931.550781 740.949219 931.824219 740.214844 931.082031 C 739.484375 930.34375 739.230469 925.300781 739.230469 925.300781 L 688.445312 937.359375 C 688.445312 937.359375 688.570312 925.402344 688.582031 923.589844 C 688.589844 922.210938 688.652344 921.167969 691.667969 918.90625 C 694.738281 916.601562 731.328125 889.839844 733.152344 888.261719 C 734.972656 886.6875 735.757812 885.855469 734.828125 882.097656 C 733.832031 878.066406 731.574219 866.835938 730.335938 845.976562 C 729.09375 825.117188 730.800781 794.359375 730.011719 793.84375 C 729.222656 793.328125 700.585938 797.1875 700.585938 797.1875 L 700.539062 795.375 L 686.929688 797.335938 C 686.929688 797.335938 687.199219 799.660156 686.6875 799.9375 C 685.527344 800.574219 632.605469 823.710938 632.152344 823.878906 C 631.8125 823.648438 631.996094 821.835938 631.953125 819.117188 C 631.726562 819.171875 631.652344 821.894531 631.652344 821.894531 L 583.417969 843.429688 L 583.34375 846.601562 L 581.761719 846.535156 L 581.488281 844.554688 C 581.488281 844.554688 579.441406 845.957031 579.433594 847.089844 C 579.429688 848.222656 578.832031 843.246094 578.789062 840.96875 C 578.746094 838.644531 579.269531 836.4375 579.269531 836.4375 C 579.269531 836.4375 577.625 836.9375 577.804688 834.785156 C 577.921875 833.414062 582.214844 827.160156 582.214844 827.160156 C 582.214844 827.160156 582.519531 826.222656 582.472656 825.558594 C 582.417969 824.785156 583.363281 824.292969 583.863281 823.851562 C 584.152344 823.601562 583.839844 822.195312 583.839844 822.195312 C 583.839844 822.195312 599.863281 808.617188 627.605469 787.363281 C 655.304688 766.140625 688.089844 740.113281 688.089844 740.113281 C 688.089844 740.113281 688.097656 738.601562 687.808594 736.484375 C 687.519531 734.371094 687.296875 733.460938 687.296875 733.460938 C 687.296875 733.460938 685.640625 732.921875 685.195312 731.558594 C 684.863281 730.542969 684.035156 723.167969 684.222656 716.519531 C 684.414062 709.871094 684.808594 706.398438 685.269531 705.34375 C 685.730469 704.289062 687.261719 703.828125 689.207031 703.554688 C 691.25 703.265625 699.164062 703.496094 701.070312 703.773438 C 702.878906 704.035156 704.011719 704.320312 704.300781 706.890625 C 704.585938 709.460938 704.613281 718.296875 704.363281 721.921875 C 704.1875 724.503906 703.5 727.433594 703.878906 727.585938 C 704.253906 727.742188 710.863281 721.355469 714.503906 718.808594 C 718.148438 716.261719 724.371094 710.933594 725.136719 709.277344 C 725.902344 707.617188 725.980469 707.390625 726.425781 708.90625 C 726.867188 710.417969 726.785156 711.929688 726.171875 712.984375 C 725.5625 714.039062 725.253906 715.398438 725.851562 716.003906 C 726.078125 716.230469 727.898438 714.730469 728.359375 713.828125 C 728.820312 712.921875 728.375 711.183594 728.683594 710.429688 C 728.988281 709.675781 730.183594 707.488281 730.144531 705.675781 C 729.90625 694.871094 729.632812 678.703125 729.746094 643.34375 C 729.875 605.507812 730.3125 594.207031 735.207031 574.019531 C 739.652344 555.695312 742.933594 552.085938 744.617188 549.449219 C 746.175781 547.007812 749.667969 545.128906 751.125 545.105469 L 751.125 545.101562 C 751.128906 545.101562 751.136719 545.101562 751.144531 545.101562 C 751.152344 545.101562 751.160156 545.101562 751.167969 545.101562 L 751.167969 545.105469 C 752.625 545.144531 756.09375 547.066406 757.621094 549.523438 C 759.277344 552.175781 762.511719 555.828125 766.746094 574.203125 C 771.410156 594.445312 771.71875 605.75 771.410156 643.585938 C 771.121094 678.941406 770.660156 695.109375 770.292969 705.910156 C 770.234375 707.71875 771.40625 709.917969 771.703125 710.675781 C 772 711.433594 771.539062 713.167969 771.988281 714.078125 C 772.433594 714.988281 774.238281 716.507812 774.464844 716.285156 C 775.074219 715.683594 774.78125 714.320312 774.179688 713.261719 C 773.582031 712.199219 773.515625 710.6875 773.976562 709.179688 C 774.441406 707.671875 774.511719 707.898438 775.261719 709.566406 C 776.003906 711.230469 782.171875 716.632812 785.78125 719.21875 C 789.394531 721.808594 795.929688 728.269531 796.308594 728.121094 C 796.6875 727.972656 796.035156 725.035156 795.886719 722.449219 C 795.679688 718.824219 795.808594 709.984375 796.125 707.417969 C 796.441406 704.851562 797.582031 704.582031 799.390625 704.339844 C 801.300781 704.082031 809.214844 703.941406 811.253906 704.257812 C 813.195312 704.554688 814.726562 705.03125 815.171875 706.09375 C 815.621094 707.152344 815.976562 710.628906 816.089844 717.277344 C 816.203125 723.929688 815.289062 731.292969 814.945312 732.308594 C 814.484375 733.664062 812.820312 734.183594 812.820312 734.183594 C 812.820312 734.183594 812.585938 735.089844 812.273438 737.203125 C 811.957031 739.316406 811.949219 740.828125 811.949219 740.828125 C 811.949219 740.828125 844.433594 767.230469 871.886719 788.769531 C 899.382812 810.34375 915.246094 824.105469 915.246094 824.105469 C 915.246094 824.105469 914.917969 825.503906 915.207031 825.761719 C 915.703125 826.207031 916.640625 826.710938 916.574219 827.480469 C 916.519531 828.144531 916.816406 829.089844 916.816406 829.089844 C 916.816406 829.089844 921.035156 835.386719 921.136719 836.761719 C 921.289062 838.917969 919.652344 838.398438 919.652344 838.398438 Z M 589.261719 820.597656 L 586.054688 823.027344 L 586.328125 823.390625 L 589.566406 820.941406 Z M 595.699219 815.726562 L 589.625 820.324219 L 589.925781 820.664062 L 595.972656 816.085938 Z M 602.144531 810.84375 L 596.058594 815.453125 L 596.335938 815.8125 L 602.382812 811.234375 Z M 610.269531 804.691406 L 602.507812 810.570312 L 602.746094 810.960938 L 610.53125 805.0625 Z M 617.757812 799.023438 L 610.628906 804.417969 L 610.894531 804.789062 L 618.03125 799.382812 Z M 625.332031 793.289062 L 618.121094 798.746094 L 618.394531 799.109375 L 625.589844 793.660156 Z M 633.160156 787.355469 L 625.691406 793.015625 L 625.949219 793.386719 L 633.46875 787.691406 Z M 641.0625 781.375 L 633.523438 787.082031 L 633.828125 787.417969 L 641.316406 781.75 Z M 648.898438 775.441406 L 641.421875 781.097656 L 641.679688 781.472656 L 649.128906 775.832031 Z M 656.675781 769.546875 L 649.261719 775.164062 L 649.492188 775.558594 L 656.933594 769.921875 Z M 664.15625 763.886719 L 657.039062 769.273438 L 657.296875 769.648438 L 664.421875 764.25 Z M 671.625 758.230469 L 664.515625 763.613281 L 664.785156 763.976562 L 671.855469 758.621094 Z M 680.425781 751.5625 L 671.988281 757.953125 L 672.21875 758.347656 L 680.621094 751.988281 Z M 682.726562 749.820312 L 680.796875 751.28125 L 680.988281 751.707031 L 682.90625 750.253906 Z M 689.9375 744.359375 L 683.101562 749.535156 L 683.28125 749.972656 L 690.210938 744.722656 Z M 810.039062 745.054688 L 809.761719 745.410156 L 816.632812 750.742188 L 816.8125 750.308594 Z M 817.183594 750.59375 L 817.003906 751.027344 L 818.90625 752.5 L 819.101562 752.082031 Z M 819.46875 752.363281 L 819.269531 752.785156 L 827.597656 759.242188 L 827.832031 758.851562 Z M 828.191406 759.132812 L 827.957031 759.523438 L 834.964844 764.957031 L 835.238281 764.597656 Z M 835.597656 764.875 L 835.320312 765.234375 L 842.386719 770.714844 L 842.648438 770.34375 Z M 843.007812 770.621094 L 842.746094 770.992188 L 850.125 776.714844 L 850.359375 776.320312 Z M 850.71875 776.601562 L 850.484375 776.992188 L 857.867188 782.722656 L 858.128906 782.347656 Z M 858.484375 782.625 L 858.226562 782.996094 L 865.648438 788.753906 L 865.957031 788.421875 Z M 866.320312 788.699219 L 866.007812 789.03125 L 873.460938 794.808594 L 873.722656 794.441406 Z M 874.078125 794.722656 L 873.816406 795.089844 L 880.949219 800.621094 L 881.226562 800.261719 Z M 881.585938 800.542969 L 881.308594 800.898438 L 888.382812 806.386719 L 888.652344 806.019531 Z M 889.007812 806.296875 L 888.742188 806.664062 L 896.460938 812.648438 L 896.703125 812.261719 Z M 897.0625 812.542969 L 896.820312 812.929688 L 902.8125 817.578125 L 903.09375 817.21875 Z M 903.453125 817.5 L 903.171875 817.855469 L 909.164062 822.503906 L 909.472656 822.167969 Z M 909.832031 822.445312 L 909.523438 822.78125 L 912.730469 825.269531 L 913.007812 824.910156 Z M 909.832031 822.445312 " fill="#2563eb" stroke="rgba(255,255,255,0.4)" stroke-width="4"/></svg>
+                                </div>
+
+                                <div class="plane-icon plane-2" title="AAL892">
+                                    <svg class="plane-svg" viewBox="577.125 545 344.875 410" xmlns="http://www.w3.org/2000/svg"><path d="M 919.648438 838.398438 C 919.648438 838.398438 920.148438 840.609375 920.074219 842.933594 C 920.007812 845.210938 919.351562 850.183594 919.359375 849.046875 C 919.367188 847.914062 917.335938 846.488281 917.335938 846.488281 L 917.039062 848.46875 L 915.453125 848.515625 L 915.417969 845.339844 L 867.433594 823.25 C 867.433594 823.25 867.394531 820.53125 867.167969 820.472656 C 867.097656 823.191406 867.257812 825.007812 866.914062 825.230469 C 866.460938 825.058594 813.808594 801.3125 812.660156 800.664062 C 812.152344 800.378906 812.449219 798.058594 812.449219 798.058594 L 798.859375 795.941406 L 798.792969 797.753906 C 798.792969 797.753906 770.203125 793.566406 769.40625 794.070312 C 768.609375 794.574219 769.964844 825.351562 768.484375 846.195312 C 767.003906 867.039062 764.617188 878.246094 763.574219 882.261719 C 762.601562 886.011719 763.378906 886.851562 765.179688 888.449219 C 766.984375 890.042969 803.261719 917.226562 806.308594 919.566406 C 809.300781 921.863281 809.351562 922.90625 809.34375 924.285156 C 809.332031 926.097656 809.320312 938.054688 809.320312 938.054688 L 758.679688 925.410156 C 758.679688 925.410156 758.363281 930.453125 757.625 931.183594 C 756.882812 931.917969 755.355469 931.625 755.355469 931.625 C 755.355469 931.625 754.273438 942.101562 753.707031 942.777344 C 753.132812 943.453125 752.171875 943.789062 752.171875 943.789062 C 752.171875 943.789062 749.847656 954.585938 748.804688 954.863281 L 748.804688 954.875 C 748.796875 954.875 748.789062 954.871094 748.785156 954.871094 C 748.777344 954.871094 748.769531 954.875 748.761719 954.875 L 748.761719 954.863281 C 747.726562 954.574219 745.523438 943.75 745.523438 943.75 C 745.523438 943.75 744.5625 943.40625 744 942.722656 C 743.4375 942.039062 742.480469 931.550781 742.480469 931.550781 C 742.480469 931.550781 740.949219 931.824219 740.214844 931.082031 C 739.484375 930.34375 739.230469 925.300781 739.230469 925.300781 L 688.445312 937.359375 C 688.445312 937.359375 688.570312 925.402344 688.582031 923.589844 C 688.589844 922.210938 688.652344 921.167969 691.667969 918.90625 C 694.738281 916.601562 731.328125 889.839844 733.152344 888.261719 C 734.972656 886.6875 735.757812 885.855469 734.828125 882.097656 C 733.832031 878.066406 731.574219 866.835938 730.335938 845.976562 C 729.09375 825.117188 730.800781 794.359375 730.011719 793.84375 C 729.222656 793.328125 700.585938 797.1875 700.585938 797.1875 L 700.539062 795.375 L 686.929688 797.335938 C 686.929688 797.335938 687.199219 799.660156 686.6875 799.9375 C 685.527344 800.574219 632.605469 823.710938 632.152344 823.878906 C 631.8125 823.648438 631.996094 821.835938 631.953125 819.117188 C 631.726562 819.171875 631.652344 821.894531 631.652344 821.894531 L 583.417969 843.429688 L 583.34375 846.601562 L 581.761719 846.535156 L 581.488281 844.554688 C 581.488281 844.554688 579.441406 845.957031 579.433594 847.089844 C 579.429688 848.222656 578.832031 843.246094 578.789062 840.96875 C 578.746094 838.644531 579.269531 836.4375 579.269531 836.4375 C 579.269531 836.4375 577.625 836.9375 577.804688 834.785156 C 577.921875 833.414062 582.214844 827.160156 582.214844 827.160156 C 582.214844 827.160156 582.519531 826.222656 582.472656 825.558594 C 582.417969 824.785156 583.363281 824.292969 583.863281 823.851562 C 584.152344 823.601562 583.839844 822.195312 583.839844 822.195312 C 583.839844 822.195312 599.863281 808.617188 627.605469 787.363281 C 655.304688 766.140625 688.089844 740.113281 688.089844 740.113281 C 688.089844 740.113281 688.097656 738.601562 687.808594 736.484375 C 687.519531 734.371094 687.296875 733.460938 687.296875 733.460938 C 687.296875 733.460938 685.640625 732.921875 685.195312 731.558594 C 684.863281 730.542969 684.035156 723.167969 684.222656 716.519531 C 684.414062 709.871094 684.808594 706.398438 685.269531 705.34375 C 685.730469 704.289062 687.261719 703.828125 689.207031 703.554688 C 691.25 703.265625 699.164062 703.496094 701.070312 703.773438 C 702.878906 704.035156 704.011719 704.320312 704.300781 706.890625 C 704.585938 709.460938 704.613281 718.296875 704.363281 721.921875 C 704.1875 724.503906 703.5 727.433594 703.878906 727.585938 C 704.253906 727.742188 710.863281 721.355469 714.503906 718.808594 C 718.148438 716.261719 724.371094 710.933594 725.136719 709.277344 C 725.902344 707.617188 725.980469 707.390625 726.425781 708.90625 C 726.867188 710.417969 726.785156 711.929688 726.171875 712.984375 C 725.5625 714.039062 725.253906 715.398438 725.851562 716.003906 C 726.078125 716.230469 727.898438 714.730469 728.359375 713.828125 C 728.820312 712.921875 728.375 711.183594 728.683594 710.429688 C 728.988281 709.675781 730.183594 707.488281 730.144531 705.675781 C 729.90625 694.871094 729.632812 678.703125 729.746094 643.34375 C 729.875 605.507812 730.3125 594.207031 735.207031 574.019531 C 739.652344 555.695312 742.933594 552.085938 744.617188 549.449219 C 746.175781 547.007812 749.667969 545.128906 751.125 545.105469 L 751.125 545.101562 C 751.128906 545.101562 751.136719 545.101562 751.144531 545.101562 C 751.152344 545.101562 751.160156 545.101562 751.167969 545.101562 L 751.167969 545.105469 C 752.625 545.144531 756.09375 547.066406 757.621094 549.523438 C 759.277344 552.175781 762.511719 555.828125 766.746094 574.203125 C 771.410156 594.445312 771.71875 605.75 771.410156 643.585938 C 771.121094 678.941406 770.660156 695.109375 770.292969 705.910156 C 770.234375 707.71875 771.40625 709.917969 771.703125 710.675781 C 772 711.433594 771.539062 713.167969 771.988281 714.078125 C 772.433594 714.988281 774.238281 716.507812 774.464844 716.285156 C 775.074219 715.683594 774.78125 714.320312 774.179688 713.261719 C 773.582031 712.199219 773.515625 710.6875 773.976562 709.179688 C 774.441406 707.671875 774.511719 707.898438 775.261719 709.566406 C 776.003906 711.230469 782.171875 716.632812 785.78125 719.21875 C 789.394531 721.808594 795.929688 728.269531 796.308594 728.121094 C 796.6875 727.972656 796.035156 725.035156 795.886719 722.449219 C 795.679688 718.824219 795.808594 709.984375 796.125 707.417969 C 796.441406 704.851562 797.582031 704.582031 799.390625 704.339844 C 801.300781 704.082031 809.214844 703.941406 811.253906 704.257812 C 813.195312 704.554688 814.726562 705.03125 815.171875 706.09375 C 815.621094 707.152344 815.976562 710.628906 816.089844 717.277344 C 816.203125 723.929688 815.289062 731.292969 814.945312 732.308594 C 814.484375 733.664062 812.820312 734.183594 812.820312 734.183594 C 812.820312 734.183594 812.585938 735.089844 812.273438 737.203125 C 811.957031 739.316406 811.949219 740.828125 811.949219 740.828125 C 811.949219 740.828125 844.433594 767.230469 871.886719 788.769531 C 899.382812 810.34375 915.246094 824.105469 915.246094 824.105469 C 915.246094 824.105469 914.917969 825.503906 915.207031 825.761719 C 915.703125 826.207031 916.640625 826.710938 916.574219 827.480469 C 916.519531 828.144531 916.816406 829.089844 916.816406 829.089844 C 916.816406 829.089844 921.035156 835.386719 921.136719 836.761719 C 921.289062 838.917969 919.652344 838.398438 919.652344 838.398438 Z M 589.261719 820.597656 L 586.054688 823.027344 L 586.328125 823.390625 L 589.566406 820.941406 Z M 595.699219 815.726562 L 589.625 820.324219 L 589.925781 820.664062 L 595.972656 816.085938 Z M 602.144531 810.84375 L 596.058594 815.453125 L 596.335938 815.8125 L 602.382812 811.234375 Z M 610.269531 804.691406 L 602.507812 810.570312 L 602.746094 810.960938 L 610.53125 805.0625 Z M 617.757812 799.023438 L 610.628906 804.417969 L 610.894531 804.789062 L 618.03125 799.382812 Z M 625.332031 793.289062 L 618.121094 798.746094 L 618.394531 799.109375 L 625.589844 793.660156 Z M 633.160156 787.355469 L 625.691406 793.015625 L 625.949219 793.386719 L 633.46875 787.691406 Z M 641.0625 781.375 L 633.523438 787.082031 L 633.828125 787.417969 L 641.316406 781.75 Z M 648.898438 775.441406 L 641.421875 781.097656 L 641.679688 781.472656 L 649.128906 775.832031 Z M 656.675781 769.546875 L 649.261719 775.164062 L 649.492188 775.558594 L 656.933594 769.921875 Z M 664.15625 763.886719 L 657.039062 769.273438 L 657.296875 769.648438 L 664.421875 764.25 Z M 671.625 758.230469 L 664.515625 763.613281 L 664.785156 763.976562 L 671.855469 758.621094 Z M 680.425781 751.5625 L 671.988281 757.953125 L 672.21875 758.347656 L 680.621094 751.988281 Z M 682.726562 749.820312 L 680.796875 751.28125 L 680.988281 751.707031 L 682.90625 750.253906 Z M 689.9375 744.359375 L 683.101562 749.535156 L 683.28125 749.972656 L 690.210938 744.722656 Z M 810.039062 745.054688 L 809.761719 745.410156 L 816.632812 750.742188 L 816.8125 750.308594 Z M 817.183594 750.59375 L 817.003906 751.027344 L 818.90625 752.5 L 819.101562 752.082031 Z M 819.46875 752.363281 L 819.269531 752.785156 L 827.597656 759.242188 L 827.832031 758.851562 Z M 828.191406 759.132812 L 827.957031 759.523438 L 834.964844 764.957031 L 835.238281 764.597656 Z M 835.597656 764.875 L 835.320312 765.234375 L 842.386719 770.714844 L 842.648438 770.34375 Z M 843.007812 770.621094 L 842.746094 770.992188 L 850.125 776.714844 L 850.359375 776.320312 Z M 850.71875 776.601562 L 850.484375 776.992188 L 857.867188 782.722656 L 858.128906 782.347656 Z M 858.484375 782.625 L 858.226562 782.996094 L 865.648438 788.753906 L 865.957031 788.421875 Z M 866.320312 788.699219 L 866.007812 789.03125 L 873.460938 794.808594 L 873.722656 794.441406 Z M 874.078125 794.722656 L 873.816406 795.089844 L 880.949219 800.621094 L 881.226562 800.261719 Z M 881.585938 800.542969 L 881.308594 800.898438 L 888.382812 806.386719 L 888.652344 806.019531 Z M 889.007812 806.296875 L 888.742188 806.664062 L 896.460938 812.648438 L 896.703125 812.261719 Z M 897.0625 812.542969 L 896.820312 812.929688 L 902.8125 817.578125 L 903.09375 817.21875 Z M 903.453125 817.5 L 903.171875 817.855469 L 909.164062 822.503906 L 909.472656 822.167969 Z M 909.832031 822.445312 L 909.523438 822.78125 L 912.730469 825.269531 L 913.007812 824.910156 Z M 909.832031 822.445312 " fill="#16a34a" stroke="rgba(255,255,255,0.4)" stroke-width="4"/></svg>
+                                </div>
+
+                                <div class="plane-icon plane-3" title="DAL721">
+                                    <svg class="plane-svg" viewBox="577.125 545 344.875 410" xmlns="http://www.w3.org/2000/svg"><path d="M 919.648438 838.398438 C 919.648438 838.398438 920.148438 840.609375 920.074219 842.933594 C 920.007812 845.210938 919.351562 850.183594 919.359375 849.046875 C 919.367188 847.914062 917.335938 846.488281 917.335938 846.488281 L 917.039062 848.46875 L 915.453125 848.515625 L 915.417969 845.339844 L 867.433594 823.25 C 867.433594 823.25 867.394531 820.53125 867.167969 820.472656 C 867.097656 823.191406 867.257812 825.007812 866.914062 825.230469 C 866.460938 825.058594 813.808594 801.3125 812.660156 800.664062 C 812.152344 800.378906 812.449219 798.058594 812.449219 798.058594 L 798.859375 795.941406 L 798.792969 797.753906 C 798.792969 797.753906 770.203125 793.566406 769.40625 794.070312 C 768.609375 794.574219 769.964844 825.351562 768.484375 846.195312 C 767.003906 867.039062 764.617188 878.246094 763.574219 882.261719 C 762.601562 886.011719 763.378906 886.851562 765.179688 888.449219 C 766.984375 890.042969 803.261719 917.226562 806.308594 919.566406 C 809.300781 921.863281 809.351562 922.90625 809.34375 924.285156 C 809.332031 926.097656 809.320312 938.054688 809.320312 938.054688 L 758.679688 925.410156 C 758.679688 925.410156 758.363281 930.453125 757.625 931.183594 C 756.882812 931.917969 755.355469 931.625 755.355469 931.625 C 755.355469 931.625 754.273438 942.101562 753.707031 942.777344 C 753.132812 943.453125 752.171875 943.789062 752.171875 943.789062 C 752.171875 943.789062 749.847656 954.585938 748.804688 954.863281 L 748.804688 954.875 C 748.796875 954.875 748.789062 954.871094 748.785156 954.871094 C 748.777344 954.871094 748.769531 954.875 748.761719 954.875 L 748.761719 954.863281 C 747.726562 954.574219 745.523438 943.75 745.523438 943.75 C 745.523438 943.75 744.5625 943.40625 744 942.722656 C 743.4375 942.039062 742.480469 931.550781 742.480469 931.550781 C 742.480469 931.550781 740.949219 931.824219 740.214844 931.082031 C 739.484375 930.34375 739.230469 925.300781 739.230469 925.300781 L 688.445312 937.359375 C 688.445312 937.359375 688.570312 925.402344 688.582031 923.589844 C 688.589844 922.210938 688.652344 921.167969 691.667969 918.90625 C 694.738281 916.601562 731.328125 889.839844 733.152344 888.261719 C 734.972656 886.6875 735.757812 885.855469 734.828125 882.097656 C 733.832031 878.066406 731.574219 866.835938 730.335938 845.976562 C 729.09375 825.117188 730.800781 794.359375 730.011719 793.84375 C 729.222656 793.328125 700.585938 797.1875 700.585938 797.1875 L 700.539062 795.375 L 686.929688 797.335938 C 686.929688 797.335938 687.199219 799.660156 686.6875 799.9375 C 685.527344 800.574219 632.605469 823.710938 632.152344 823.878906 C 631.8125 823.648438 631.996094 821.835938 631.953125 819.117188 C 631.726562 819.171875 631.652344 821.894531 631.652344 821.894531 L 583.417969 843.429688 L 583.34375 846.601562 L 581.761719 846.535156 L 581.488281 844.554688 C 581.488281 844.554688 579.441406 845.957031 579.433594 847.089844 C 579.429688 848.222656 578.832031 843.246094 578.789062 840.96875 C 578.746094 838.644531 579.269531 836.4375 579.269531 836.4375 C 579.269531 836.4375 577.625 836.9375 577.804688 834.785156 C 577.921875 833.414062 582.214844 827.160156 582.214844 827.160156 C 582.214844 827.160156 582.519531 826.222656 582.472656 825.558594 C 582.417969 824.785156 583.363281 824.292969 583.863281 823.851562 C 584.152344 823.601562 583.839844 822.195312 583.839844 822.195312 C 583.839844 822.195312 599.863281 808.617188 627.605469 787.363281 C 655.304688 766.140625 688.089844 740.113281 688.089844 740.113281 C 688.089844 740.113281 688.097656 738.601562 687.808594 736.484375 C 687.519531 734.371094 687.296875 733.460938 687.296875 733.460938 C 687.296875 733.460938 685.640625 732.921875 685.195312 731.558594 C 684.863281 730.542969 684.035156 723.167969 684.222656 716.519531 C 684.414062 709.871094 684.808594 706.398438 685.269531 705.34375 C 685.730469 704.289062 687.261719 703.828125 689.207031 703.554688 C 691.25 703.265625 699.164062 703.496094 701.070312 703.773438 C 702.878906 704.035156 704.011719 704.320312 704.300781 706.890625 C 704.585938 709.460938 704.613281 718.296875 704.363281 721.921875 C 704.1875 724.503906 703.5 727.433594 703.878906 727.585938 C 704.253906 727.742188 710.863281 721.355469 714.503906 718.808594 C 718.148438 716.261719 724.371094 710.933594 725.136719 709.277344 C 725.902344 707.617188 725.980469 707.390625 726.425781 708.90625 C 726.867188 710.417969 726.785156 711.929688 726.171875 712.984375 C 725.5625 714.039062 725.253906 715.398438 725.851562 716.003906 C 726.078125 716.230469 727.898438 714.730469 728.359375 713.828125 C 728.820312 712.921875 728.375 711.183594 728.683594 710.429688 C 728.988281 709.675781 730.183594 707.488281 730.144531 705.675781 C 729.90625 694.871094 729.632812 678.703125 729.746094 643.34375 C 729.875 605.507812 730.3125 594.207031 735.207031 574.019531 C 739.652344 555.695312 742.933594 552.085938 744.617188 549.449219 C 746.175781 547.007812 749.667969 545.128906 751.125 545.105469 L 751.125 545.101562 C 751.128906 545.101562 751.136719 545.101562 751.144531 545.101562 C 751.152344 545.101562 751.160156 545.101562 751.167969 545.101562 L 751.167969 545.105469 C 752.625 545.144531 756.09375 547.066406 757.621094 549.523438 C 759.277344 552.175781 762.511719 555.828125 766.746094 574.203125 C 771.410156 594.445312 771.71875 605.75 771.410156 643.585938 C 771.121094 678.941406 770.660156 695.109375 770.292969 705.910156 C 770.234375 707.71875 771.40625 709.917969 771.703125 710.675781 C 772 711.433594 771.539062 713.167969 771.988281 714.078125 C 772.433594 714.988281 774.238281 716.507812 774.464844 716.285156 C 775.074219 715.683594 774.78125 714.320312 774.179688 713.261719 C 773.582031 712.199219 773.515625 710.6875 773.976562 709.179688 C 774.441406 707.671875 774.511719 707.898438 775.261719 709.566406 C 776.003906 711.230469 782.171875 716.632812 785.78125 719.21875 C 789.394531 721.808594 795.929688 728.269531 796.308594 728.121094 C 796.6875 727.972656 796.035156 725.035156 795.886719 722.449219 C 795.679688 718.824219 795.808594 709.984375 796.125 707.417969 C 796.441406 704.851562 797.582031 704.582031 799.390625 704.339844 C 801.300781 704.082031 809.214844 703.941406 811.253906 704.257812 C 813.195312 704.554688 814.726562 705.03125 815.171875 706.09375 C 815.621094 707.152344 815.976562 710.628906 816.089844 717.277344 C 816.203125 723.929688 815.289062 731.292969 814.945312 732.308594 C 814.484375 733.664062 812.820312 734.183594 812.820312 734.183594 C 812.820312 734.183594 812.585938 735.089844 812.273438 737.203125 C 811.957031 739.316406 811.949219 740.828125 811.949219 740.828125 C 811.949219 740.828125 844.433594 767.230469 871.886719 788.769531 C 899.382812 810.34375 915.246094 824.105469 915.246094 824.105469 C 915.246094 824.105469 914.917969 825.503906 915.207031 825.761719 C 915.703125 826.207031 916.640625 826.710938 916.574219 827.480469 C 916.519531 828.144531 916.816406 829.089844 916.816406 829.089844 C 916.816406 829.089844 921.035156 835.386719 921.136719 836.761719 C 921.289062 838.917969 919.652344 838.398438 919.652344 838.398438 Z M 589.261719 820.597656 L 586.054688 823.027344 L 586.328125 823.390625 L 589.566406 820.941406 Z M 595.699219 815.726562 L 589.625 820.324219 L 589.925781 820.664062 L 595.972656 816.085938 Z M 602.144531 810.84375 L 596.058594 815.453125 L 596.335938 815.8125 L 602.382812 811.234375 Z M 610.269531 804.691406 L 602.507812 810.570312 L 602.746094 810.960938 L 610.53125 805.0625 Z M 617.757812 799.023438 L 610.628906 804.417969 L 610.894531 804.789062 L 618.03125 799.382812 Z M 625.332031 793.289062 L 618.121094 798.746094 L 618.394531 799.109375 L 625.589844 793.660156 Z M 633.160156 787.355469 L 625.691406 793.015625 L 625.949219 793.386719 L 633.46875 787.691406 Z M 641.0625 781.375 L 633.523438 787.082031 L 633.828125 787.417969 L 641.316406 781.75 Z M 648.898438 775.441406 L 641.421875 781.097656 L 641.679688 781.472656 L 649.128906 775.832031 Z M 656.675781 769.546875 L 649.261719 775.164062 L 649.492188 775.558594 L 656.933594 769.921875 Z M 664.15625 763.886719 L 657.039062 769.273438 L 657.296875 769.648438 L 664.421875 764.25 Z M 671.625 758.230469 L 664.515625 763.613281 L 664.785156 763.976562 L 671.855469 758.621094 Z M 680.425781 751.5625 L 671.988281 757.953125 L 672.21875 758.347656 L 680.621094 751.988281 Z M 682.726562 749.820312 L 680.796875 751.28125 L 680.988281 751.707031 L 682.90625 750.253906 Z M 689.9375 744.359375 L 683.101562 749.535156 L 683.28125 749.972656 L 690.210938 744.722656 Z M 810.039062 745.054688 L 809.761719 745.410156 L 816.632812 750.742188 L 816.8125 750.308594 Z M 817.183594 750.59375 L 817.003906 751.027344 L 818.90625 752.5 L 819.101562 752.082031 Z M 819.46875 752.363281 L 819.269531 752.785156 L 827.597656 759.242188 L 827.832031 758.851562 Z M 828.191406 759.132812 L 827.957031 759.523438 L 834.964844 764.957031 L 835.238281 764.597656 Z M 835.597656 764.875 L 835.320312 765.234375 L 842.386719 770.714844 L 842.648438 770.34375 Z M 843.007812 770.621094 L 842.746094 770.992188 L 850.125 776.714844 L 850.359375 776.320312 Z M 850.71875 776.601562 L 850.484375 776.992188 L 857.867188 782.722656 L 858.128906 782.347656 Z M 858.484375 782.625 L 858.226562 782.996094 L 865.648438 788.753906 L 865.957031 788.421875 Z M 866.320312 788.699219 L 866.007812 789.03125 L 873.460938 794.808594 L 873.722656 794.441406 Z M 874.078125 794.722656 L 873.816406 795.089844 L 880.949219 800.621094 L 881.226562 800.261719 Z M 881.585938 800.542969 L 881.308594 800.898438 L 888.382812 806.386719 L 888.652344 806.019531 Z M 889.007812 806.296875 L 888.742188 806.664062 L 896.460938 812.648438 L 896.703125 812.261719 Z M 897.0625 812.542969 L 896.820312 812.929688 L 902.8125 817.578125 L 903.09375 817.21875 Z M 903.453125 817.5 L 903.171875 817.855469 L 909.164062 822.503906 L 909.472656 822.167969 Z M 909.832031 822.445312 L 909.523438 822.78125 L 912.730469 825.269531 L 913.007812 824.910156 Z M 909.832031 822.445312 " fill="#d97706" stroke="rgba(255,255,255,0.4)" stroke-width="4"/></svg>
+                                </div>
+
+                                <div class="plane-icon plane-4" title="SWA345">
+                                    <svg class="plane-svg" viewBox="577.125 545 344.875 410" xmlns="http://www.w3.org/2000/svg"><path d="M 919.648438 838.398438 C 919.648438 838.398438 920.148438 840.609375 920.074219 842.933594 C 920.007812 845.210938 919.351562 850.183594 919.359375 849.046875 C 919.367188 847.914062 917.335938 846.488281 917.335938 846.488281 L 917.039062 848.46875 L 915.453125 848.515625 L 915.417969 845.339844 L 867.433594 823.25 C 867.433594 823.25 867.394531 820.53125 867.167969 820.472656 C 867.097656 823.191406 867.257812 825.007812 866.914062 825.230469 C 866.460938 825.058594 813.808594 801.3125 812.660156 800.664062 C 812.152344 800.378906 812.449219 798.058594 812.449219 798.058594 L 798.859375 795.941406 L 798.792969 797.753906 C 798.792969 797.753906 770.203125 793.566406 769.40625 794.070312 C 768.609375 794.574219 769.964844 825.351562 768.484375 846.195312 C 767.003906 867.039062 764.617188 878.246094 763.574219 882.261719 C 762.601562 886.011719 763.378906 886.851562 765.179688 888.449219 C 766.984375 890.042969 803.261719 917.226562 806.308594 919.566406 C 809.300781 921.863281 809.351562 922.90625 809.34375 924.285156 C 809.332031 926.097656 809.320312 938.054688 809.320312 938.054688 L 758.679688 925.410156 C 758.679688 925.410156 758.363281 930.453125 757.625 931.183594 C 756.882812 931.917969 755.355469 931.625 755.355469 931.625 C 755.355469 931.625 754.273438 942.101562 753.707031 942.777344 C 753.132812 943.453125 752.171875 943.789062 752.171875 943.789062 C 752.171875 943.789062 749.847656 954.585938 748.804688 954.863281 L 748.804688 954.875 C 748.796875 954.875 748.789062 954.871094 748.785156 954.871094 C 748.777344 954.871094 748.769531 954.875 748.761719 954.875 L 748.761719 954.863281 C 747.726562 954.574219 745.523438 943.75 745.523438 943.75 C 745.523438 943.75 744.5625 943.40625 744 942.722656 C 743.4375 942.039062 742.480469 931.550781 742.480469 931.550781 C 742.480469 931.550781 740.949219 931.824219 740.214844 931.082031 C 739.484375 930.34375 739.230469 925.300781 739.230469 925.300781 L 688.445312 937.359375 C 688.445312 937.359375 688.570312 925.402344 688.582031 923.589844 C 688.589844 922.210938 688.652344 921.167969 691.667969 918.90625 C 694.738281 916.601562 731.328125 889.839844 733.152344 888.261719 C 734.972656 886.6875 735.757812 885.855469 734.828125 882.097656 C 733.832031 878.066406 731.574219 866.835938 730.335938 845.976562 C 729.09375 825.117188 730.800781 794.359375 730.011719 793.84375 C 729.222656 793.328125 700.585938 797.1875 700.585938 797.1875 L 700.539062 795.375 L 686.929688 797.335938 C 686.929688 797.335938 687.199219 799.660156 686.6875 799.9375 C 685.527344 800.574219 632.605469 823.710938 632.152344 823.878906 C 631.8125 823.648438 631.996094 821.835938 631.953125 819.117188 C 631.726562 819.171875 631.652344 821.894531 631.652344 821.894531 L 583.417969 843.429688 L 583.34375 846.601562 L 581.761719 846.535156 L 581.488281 844.554688 C 581.488281 844.554688 579.441406 845.957031 579.433594 847.089844 C 579.429688 848.222656 578.832031 843.246094 578.789062 840.96875 C 578.746094 838.644531 579.269531 836.4375 579.269531 836.4375 C 579.269531 836.4375 577.625 836.9375 577.804688 834.785156 C 577.921875 833.414062 582.214844 827.160156 582.214844 827.160156 C 582.214844 827.160156 582.519531 826.222656 582.472656 825.558594 C 582.417969 824.785156 583.363281 824.292969 583.863281 823.851562 C 584.152344 823.601562 583.839844 822.195312 583.839844 822.195312 C 583.839844 822.195312 599.863281 808.617188 627.605469 787.363281 C 655.304688 766.140625 688.089844 740.113281 688.089844 740.113281 C 688.089844 740.113281 688.097656 738.601562 687.808594 736.484375 C 687.519531 734.371094 687.296875 733.460938 687.296875 733.460938 C 687.296875 733.460938 685.640625 732.921875 685.195312 731.558594 C 684.863281 730.542969 684.035156 723.167969 684.222656 716.519531 C 684.414062 709.871094 684.808594 706.398438 685.269531 705.34375 C 685.730469 704.289062 687.261719 703.828125 689.207031 703.554688 C 691.25 703.265625 699.164062 703.496094 701.070312 703.773438 C 702.878906 704.035156 704.011719 704.320312 704.300781 706.890625 C 704.585938 709.460938 704.613281 718.296875 704.363281 721.921875 C 704.1875 724.503906 703.5 727.433594 703.878906 727.585938 C 704.253906 727.742188 710.863281 721.355469 714.503906 718.808594 C 718.148438 716.261719 724.371094 710.933594 725.136719 709.277344 C 725.902344 707.617188 725.980469 707.390625 726.425781 708.90625 C 726.867188 710.417969 726.785156 711.929688 726.171875 712.984375 C 725.5625 714.039062 725.253906 715.398438 725.851562 716.003906 C 726.078125 716.230469 727.898438 714.730469 728.359375 713.828125 C 728.820312 712.921875 728.375 711.183594 728.683594 710.429688 C 728.988281 709.675781 730.183594 707.488281 730.144531 705.675781 C 729.90625 694.871094 729.632812 678.703125 729.746094 643.34375 C 729.875 605.507812 730.3125 594.207031 735.207031 574.019531 C 739.652344 555.695312 742.933594 552.085938 744.617188 549.449219 C 746.175781 547.007812 749.667969 545.128906 751.125 545.105469 L 751.125 545.101562 C 751.128906 545.101562 751.136719 545.101562 751.144531 545.101562 C 751.152344 545.101562 751.160156 545.101562 751.167969 545.101562 L 751.167969 545.105469 C 752.625 545.144531 756.09375 547.066406 757.621094 549.523438 C 759.277344 552.175781 762.511719 555.828125 766.746094 574.203125 C 771.410156 594.445312 771.71875 605.75 771.410156 643.585938 C 771.121094 678.941406 770.660156 695.109375 770.292969 705.910156 C 770.234375 707.71875 771.40625 709.917969 771.703125 710.675781 C 772 711.433594 771.539062 713.167969 771.988281 714.078125 C 772.433594 714.988281 774.238281 716.507812 774.464844 716.285156 C 775.074219 715.683594 774.78125 714.320312 774.179688 713.261719 C 773.582031 712.199219 773.515625 710.6875 773.976562 709.179688 C 774.441406 707.671875 774.511719 707.898438 775.261719 709.566406 C 776.003906 711.230469 782.171875 716.632812 785.78125 719.21875 C 789.394531 721.808594 795.929688 728.269531 796.308594 728.121094 C 796.6875 727.972656 796.035156 725.035156 795.886719 722.449219 C 795.679688 718.824219 795.808594 709.984375 796.125 707.417969 C 796.441406 704.851562 797.582031 704.582031 799.390625 704.339844 C 801.300781 704.082031 809.214844 703.941406 811.253906 704.257812 C 813.195312 704.554688 814.726562 705.03125 815.171875 706.09375 C 815.621094 707.152344 815.976562 710.628906 816.089844 717.277344 C 816.203125 723.929688 815.289062 731.292969 814.945312 732.308594 C 814.484375 733.664062 812.820312 734.183594 812.820312 734.183594 C 812.820312 734.183594 812.585938 735.089844 812.273438 737.203125 C 811.957031 739.316406 811.949219 740.828125 811.949219 740.828125 C 811.949219 740.828125 844.433594 767.230469 871.886719 788.769531 C 899.382812 810.34375 915.246094 824.105469 915.246094 824.105469 C 915.246094 824.105469 914.917969 825.503906 915.207031 825.761719 C 915.703125 826.207031 916.640625 826.710938 916.574219 827.480469 C 916.519531 828.144531 916.816406 829.089844 916.816406 829.089844 C 916.816406 829.089844 921.035156 835.386719 921.136719 836.761719 C 921.289062 838.917969 919.652344 838.398438 919.652344 838.398438 Z M 589.261719 820.597656 L 586.054688 823.027344 L 586.328125 823.390625 L 589.566406 820.941406 Z M 595.699219 815.726562 L 589.625 820.324219 L 589.925781 820.664062 L 595.972656 816.085938 Z M 602.144531 810.84375 L 596.058594 815.453125 L 596.335938 815.8125 L 602.382812 811.234375 Z M 610.269531 804.691406 L 602.507812 810.570312 L 602.746094 810.960938 L 610.53125 805.0625 Z M 617.757812 799.023438 L 610.628906 804.417969 L 610.894531 804.789062 L 618.03125 799.382812 Z M 625.332031 793.289062 L 618.121094 798.746094 L 618.394531 799.109375 L 625.589844 793.660156 Z M 633.160156 787.355469 L 625.691406 793.015625 L 625.949219 793.386719 L 633.46875 787.691406 Z M 641.0625 781.375 L 633.523438 787.082031 L 633.828125 787.417969 L 641.316406 781.75 Z M 648.898438 775.441406 L 641.421875 781.097656 L 641.679688 781.472656 L 649.128906 775.832031 Z M 656.675781 769.546875 L 649.261719 775.164062 L 649.492188 775.558594 L 656.933594 769.921875 Z M 664.15625 763.886719 L 657.039062 769.273438 L 657.296875 769.648438 L 664.421875 764.25 Z M 671.625 758.230469 L 664.515625 763.613281 L 664.785156 763.976562 L 671.855469 758.621094 Z M 680.425781 751.5625 L 671.988281 757.953125 L 672.21875 758.347656 L 680.621094 751.988281 Z M 682.726562 749.820312 L 680.796875 751.28125 L 680.988281 751.707031 L 682.90625 750.253906 Z M 689.9375 744.359375 L 683.101562 749.535156 L 683.28125 749.972656 L 690.210938 744.722656 Z M 810.039062 745.054688 L 809.761719 745.410156 L 816.632812 750.742188 L 816.8125 750.308594 Z M 817.183594 750.59375 L 817.003906 751.027344 L 818.90625 752.5 L 819.101562 752.082031 Z M 819.46875 752.363281 L 819.269531 752.785156 L 827.597656 759.242188 L 827.832031 758.851562 Z M 828.191406 759.132812 L 827.957031 759.523438 L 834.964844 764.957031 L 835.238281 764.597656 Z M 835.597656 764.875 L 835.320312 765.234375 L 842.386719 770.714844 L 842.648438 770.34375 Z M 843.007812 770.621094 L 842.746094 770.992188 L 850.125 776.714844 L 850.359375 776.320312 Z M 850.71875 776.601562 L 850.484375 776.992188 L 857.867188 782.722656 L 858.128906 782.347656 Z M 858.484375 782.625 L 858.226562 782.996094 L 865.648438 788.753906 L 865.957031 788.421875 Z M 866.320312 788.699219 L 866.007812 789.03125 L 873.460938 794.808594 L 873.722656 794.441406 Z M 874.078125 794.722656 L 873.816406 795.089844 L 880.949219 800.621094 L 881.226562 800.261719 Z M 881.585938 800.542969 L 881.308594 800.898438 L 888.382812 806.386719 L 888.652344 806.019531 Z M 889.007812 806.296875 L 888.742188 806.664062 L 896.460938 812.648438 L 896.703125 812.261719 Z M 897.0625 812.542969 L 896.820312 812.929688 L 902.8125 817.578125 L 903.09375 817.21875 Z M 903.453125 817.5 L 903.171875 817.855469 L 909.164062 822.503906 L 909.472656 822.167969 Z M 909.832031 822.445312 L 909.523438 822.78125 L 912.730469 825.269531 L 913.007812 824.910156 Z M 909.832031 822.445312 " fill="#2563eb" stroke="rgba(255,255,255,0.4)" stroke-width="4"/></svg>
+                                </div>
+
+                                <!-- HUD OVERLAYS -->
+                                <div class="hud-container">
+                                    <div class="hud-card hud-1">
+                                        <div class="hud-callsign">UAL456</div>
+                                        <div class="hud-row">
+                                            <span class="hud-label">Alt:</span>
+                                            <span class="hud-value">28,450 ft</span>
+                                        </div>
+                                        <div class="hud-row">
+                                            <span class="hud-label">Spd:</span>
+                                            <span class="hud-value">482 kts</span>
+                                        </div>
+                                        <div class="hud-row">
+                                            <span class="hud-label">Hdg:</span>
+                                            <span class="hud-value">273°</span>
+                                        </div>
+                                        <div class="hud-row">
+                                            <span class="hud-label">Route:</span>
+                                            <span class="hud-value">ORD→SFO</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="hud-card hud-2">
+                                        <div class="hud-callsign">AAL892</div>
+                                        <div class="hud-row">
+                                            <span class="hud-label">Alt:</span>
+                                            <span class="hud-value">18,200 ft</span>
+                                        </div>
+                                        <div class="hud-row">
+                                            <span class="hud-label">Spd:</span>
+                                            <span class="hud-value">425 kts</span>
+                                        </div>
+                                        <div class="hud-row">
+                                            <span class="hud-label">Descent:</span>
+                                            <span class="hud-value">-650 fpm</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="hud-card hud-3">
+                                        <div class="hud-callsign">SWA345</div>
+                                        <div class="hud-row">
+                                            <span class="hud-label">Alt:</span>
+                                            <span class="hud-value">5,200 ft</span>
+                                        </div>
+                                        <div class="hud-row">
+                                            <span class="hud-label">Spd:</span>
+                                            <span class="hud-value">210 kts</span>
+                                        </div>
+                                        <div class="hud-row">
+                                            <span class="hud-label">Status:</span>
+                                            <span class="hud-value" style="color: #16a34a;">On Approach</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT SIDEBAR -->
+                    <div class="right-sidebar">
+                        <!-- ACTIVE FLIGHTS PANEL -->
+                        <div class="panel">
+                            <div class="panel-header">Active Flights</div>
+                            <div class="panel-content flight-board">
+                                <div class="flight-row active">
+                                    <div class="flight-status status-active"></div>
+                                    <div class="flight-callsign">UAL456</div>
+                                    <div class="flight-info">
+                                        <div class="flight-route">ORD → SFO</div>
+                                        <div class="flight-altitude">FL284 | 482 kts</div>
+                                    </div>
+                                </div>
+
+                                <div class="flight-row">
+                                    <div class="flight-status status-active"></div>
+                                    <div class="flight-callsign">AAL892</div>
+                                    <div class="flight-info">
+                                        <div class="flight-route">JFK → MIA</div>
+                                        <div class="flight-altitude">FL182 | 425 kts</div>
+                                    </div>
+                                </div>
+
+                                <div class="flight-row">
+                                    <div class="flight-status status-warning"></div>
+                                    <div class="flight-callsign">DAL721</div>
+                                    <div class="flight-info">
+                                        <div class="flight-route">LAX → DEN</div>
+                                        <div class="flight-altitude">FL310 | 498 kts</div>
+                                    </div>
+                                </div>
+
+                                <div class="flight-row">
+                                    <div class="flight-status status-active"></div>
+                                    <div class="flight-callsign">SWA345</div>
+                                    <div class="flight-info">
+                                        <div class="flight-route">PHX → LAS</div>
+                                        <div class="flight-altitude">5,200 ft | 210 kts</div>
+                                    </div>
+                                </div>
+
+                                <div class="flight-row">
+                                    <div class="flight-status status-idle"></div>
+                                    <div class="flight-callsign">FDX234</div>
+                                    <div class="flight-info">
+                                        <div class="flight-route">MEM → ATL</div>
+                                        <div class="flight-altitude">Idle</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- STATUS PANEL -->
+                        <div class="panel status-panel">
+                            <div class="panel-header">System Status</div>
+                            <div class="panel-content">
+                                <div class="status-row">
+                                    <div class="status-dot" style="background: #16a34a;"></div>
+                                    <span class="status-label">SimConnect</span>
+                                    <span class="status-value">Connected</span>
+                                </div>
+                                <div class="status-row">
+                                    <div class="status-dot" style="background: #16a34a;"></div>
+                                    <span class="status-label">Data Sync</span>
+                                    <span class="status-value">Active</span>
+                                </div>
+                                <div class="status-row">
+                                    <div class="status-dot" style="background: #16a34a;"></div>
+                                    <span class="status-label">Recording</span>
+                                    <span class="status-value">Standby</span>
+                                </div>
+                                <div class="status-row">
+                                    <div class="status-dot" style="background: #9ca3af;"></div>
+                                    <span class="status-label">GPU Memory</span>
+                                    <span class="status-value">340 MB</span>
+                                </div>
+                                <div class="status-row">
+                                    <div class="status-dot" style="background: #16a34a;"></div>
+                                    <span class="status-label">Flight API</span>
+                                    <span class="status-value">Ok</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MY FLIGHT VIEW -->
+                <div id="flightView" class="view">
+                    <div class="mf-section">
+                        <div class="mf-card">
+                            <div class="mf-title">Flight Status</div>
+                            <div class="phase-badge phase-landing">On Approach</div>
+                            <div class="mf-grid">
+                                <div class="mf-item">
+                                    <div class="mf-label">Callsign</div>
+                                    <div class="mf-value">N12345</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Flight</div>
+                                    <div class="mf-value">UAL456</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Route</div>
+                                    <div class="mf-value">KJFK → KDFW</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Flight Time</div>
+                                    <div class="mf-value">3h 42m</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mf-card">
+                            <div class="mf-title">Performance</div>
+                            <div class="mf-grid">
+                                <div class="mf-item">
+                                    <div class="mf-label">Score</div>
+                                    <div class="mf-value" style="color: #16a34a;">98.5</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Fuel Used</div>
+                                    <div class="mf-value">4,200 lbs</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Deviation</div>
+                                    <div class="mf-value">±0.2 nm</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Violations</div>
+                                    <div class="mf-value" style="color: #16a34a;">0</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mf-card">
+                            <div class="mf-title">Telemetry</div>
+                            <div class="mf-grid">
+                                <div class="mf-item">
+                                    <div class="mf-label">Altitude</div>
+                                    <div class="mf-value">2,400 ft</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Speed</div>
+                                    <div class="mf-value">180 kts</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Descent</div>
+                                    <div class="mf-value">-800 fpm</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">VS Speed</div>
+                                    <div class="mf-value">-1.5 ft/s</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mf-card">
+                            <div class="mf-title">Next Legs</div>
+                            <div class="mf-grid" style="grid-template-columns: 1fr;">
+                                <div class="mf-item">
+                                    <div class="mf-label">Leg 2</div>
+                                    <div class="mf-value">KDFW → KDEN</div>
+                                    <div class="mf-label" style="margin-top: 8px;">Departure: 18:45 UTC</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Leg 3</div>
+                                    <div class="mf-value">KDEN → KSLC</div>
+                                    <div class="mf-label" style="margin-top: 8px;">Departure: 20:30 UTC</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ACARS VIEW -->
+                <div id="acarsView" class="view">
+                    <div class="acars-grid">
+                        <div class="msg-list">
+                            <div class="msg-item" style="background: #1c2333;">
+                                <div class="msg-header">
+                                    <div style="display: flex; gap: 6px; align-items: center;">
+                                        <span class="msg-badge msg-fuel">FUEL</span>
+                                        <span class="msg-from">DISPATCH</span>
+                                    </div>
+                                    <span class="msg-time">14:32 UTC</span>
+                                </div>
+                                <div class="msg-text">Fuel quantity looks good. Contingency fuel adequate for destination.</div>
+                            </div>
+
+                            <div class="msg-item">
+                                <div class="msg-header">
+                                    <div style="display: flex; gap: 6px; align-items: center;">
+                                        <span class="msg-badge msg-weather">WX</span>
+                                        <span class="msg-from">WEATHER</span>
+                                    </div>
+                                    <span class="msg-time">14:15 UTC</span>
+                                </div>
+                                <div class="msg-text">KDFW showing scattered thunderstorms. Recommend landing on 17L.</div>
+                            </div>
+
+                            <div class="msg-item">
+                                <div class="msg-header">
+                                    <div style="display: flex; gap: 6px; align-items: center;">
+                                        <span class="msg-badge msg-dispatch">DISP</span>
+                                        <span class="msg-from">DISPATCH</span>
+                                    </div>
+                                    <span class="msg-time">13:58 UTC</span>
+                                </div>
+                                <div class="msg-text">Release issued. Flight plan filed. ETA KDFW 16:42 UTC.</div>
+                            </div>
+
+                            <div class="msg-item">
+                                <div class="msg-header">
+                                    <div style="display: flex; gap: 6px; align-items: center;">
+                                        <span class="msg-badge msg-ops">OPS</span>
+                                        <span class="msg-from">OPERATIONS</span>
+                                    </div>
+                                    <span class="msg-time">13:42 UTC</span>
+                                </div>
+                                <div class="msg-text">Pushback approved. Expect wheels up 14:05 UTC.</div>
+                            </div>
+
+                            <div class="msg-item">
+                                <div class="msg-header">
+                                    <div style="display: flex; gap: 6px; align-items: center;">
+                                        <span class="msg-badge msg-maintenance">MX</span>
+                                        <span class="msg-from">MAINTENANCE</span>
+                                    </div>
+                                    <span class="msg-time">13:25 UTC</span>
+                                </div>
+                                <div class="msg-text">Aircraft inspection complete. Ready for departure.</div>
+                            </div>
+                        </div>
+
+                        <div style="background: #161b22; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06); padding: 16px; display: flex; flex-direction: column;">
+                            <div style="font-weight: 600; color: #e6edf3; margin-bottom: 12px; border-bottom: 1px solid #21262d; padding-bottom: 12px;">Compose Message</div>
+                            <textarea style="flex: 1; padding: 12px; background: #0d1117; color: #e6edf3; border: 1px solid #21262d; border-radius: 6px; font-family: Inter, sans-serif; resize: none;" placeholder="Type a message..."></textarea>
+                            <button class="btn btn-primary" style="margin-top: 12px;">Send</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SCHEDULE VIEW -->
+                <div id="scheduleView" class="view">
+                    <div class="sched-grid">
+                        <div class="sched-section">
+                            <div class="sched-header">In Progress</div>
+                            <div class="sched-item">
+                                <div>
+                                    <div class="sched-route">UAL456</div>
+                                    <div class="sched-time">KJFK → KDFW</div>
+                                </div>
+                                <div class="sched-time">ETA: 16:42 UTC</div>
+                            </div>
+                        </div>
+
+                        <div class="sched-section">
+                            <div class="sched-header">Upcoming</div>
+                            <div class="sched-item">
+                                <div>
+                                    <div class="sched-route">UAL234</div>
+                                    <div class="sched-time">KDFW → KDEN</div>
+                                </div>
+                                <div class="sched-time">Depart: 18:45 UTC</div>
+                            </div>
+                            <div class="sched-item">
+                                <div>
+                                    <div class="sched-route">UAL567</div>
+                                    <div class="sched-time">KDEN → KSLC</div>
+                                </div>
+                                <div class="sched-time">Depart: 20:30 UTC</div>
+                            </div>
+                            <div class="sched-item">
+                                <div>
+                                    <div class="sched-route">UAL890</div>
+                                    <div class="sched-time">KSLC → KSFO</div>
+                                </div>
+                                <div class="sched-time">Depart: 22:15 UTC</div>
+                            </div>
+                        </div>
+
+                        <div class="sched-section">
+                            <div class="sched-header">Completed</div>
+                            <div class="sched-item">
+                                <div>
+                                    <div class="sched-route">UAL123</div>
+                                    <div class="sched-time">KSEA → KJFK</div>
+                                </div>
+                                <div class="sched-time">Landed: 12:30 UTC</div>
+                            </div>
+                            <div class="sched-item">
+                                <div>
+                                    <div class="sched-route">UAL111</div>
+                                    <div class="sched-time">KDCA → KSEA</div>
+                                </div>
+                                <div class="sched-time">Landed: 08:15 UTC</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- WEATHER VIEW -->
+                <div id="weatherView" class="view">
+                    <div class="weather-grid">
+                        <div class="weather-card">
+                            <div class="mf-title">KJFK - John F. Kennedy Intl</div>
+                            <div style="font-size: 14px; color: #7d8590; margin-bottom: 12px;">Current Conditions</div>
+                            <div class="mf-grid">
+                                <div class="mf-item">
+                                    <div class="mf-label">Temperature</div>
+                                    <div class="mf-value">72°F</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Wind</div>
+                                    <div class="mf-value">18G28 kts</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Visibility</div>
+                                    <div class="mf-value">10 SM</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Ceiling</div>
+                                    <div class="mf-value">BKN 4500</div>
+                                </div>
+                            </div>
+                            <div class="weather-code">KJFK 121851Z 31018G28KT 10SM BKN045 22/14 A3012 RMK AO2 PK WND 31028/1803 SLP201</div>
+                        </div>
+
+                        <div class="weather-card">
+                            <div class="mf-title">KDFW - Dallas/Fort Worth Intl</div>
+                            <div style="font-size: 14px; color: #7d8590; margin-bottom: 12px;">Current Conditions</div>
+                            <div class="mf-grid">
+                                <div class="mf-item">
+                                    <div class="mf-label">Temperature</div>
+                                    <div class="mf-value">75°F</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Wind</div>
+                                    <div class="mf-value">22G35 kts</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Visibility</div>
+                                    <div class="mf-value">8 SM</div>
+                                </div>
+                                <div class="mf-item">
+                                    <div class="mf-label">Ceiling</div>
+                                    <div class="mf-value">OVC 3500</div>
+                                </div>
+                            </div>
+                            <div class="weather-code">KDFW 121853Z 31022G35KT 8SM -RA OVC035 25/16 A3010 RMK AO2 PK WND 31035/1815</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COMPANY FEED VIEW -->
+                <div id="feedView" class="view">
+                    <div class="feed-grid">
+                        <div class="feed-items">
+                            <div class="feed-item">
+                                <div class="feed-title">New Route Alert</div>
+                                <div class="feed-desc">Seasonal route KSFO→KHNL now available for scheduling.</div>
+                            </div>
+                            <div class="feed-item">
+                                <div class="feed-title">Fuel Prices Updated</div>
+                                <div class="feed-desc">Jet fuel prices updated for Q2. Check dispatch for details.</div>
+                            </div>
+                            <div class="feed-item">
+                                <div class="feed-title">New Safety Protocol</div>
+                                <div class="feed-desc">Updated crew resource management guidelines effective immediately.</div>
+                            </div>
+                            <div class="feed-item">
+                                <div class="feed-title">Maintenance Advisory</div>
+                                <div class="feed-desc">Several aircraft undergoing scheduled maintenance next week.</div>
+                            </div>
+                            <div class="feed-item">
+                                <div class="feed-title">Performance Recognition</div>
+                                <div class="feed-desc">Congratulations to this month's top performers! See leaderboard.</div>
+                            </div>
+                        </div>
+
+                        <div class="leaderboard">
+                            <div class="lb-header">Top Performers</div>
+                            <div class="lb-row">
+                                <div class="lb-rank">1</div>
+                                <div class="lb-name">Captain Sarah M.</div>
+                                <div class="lb-score">1,245 pts</div>
+                            </div>
+                            <div class="lb-row">
+                                <div class="lb-rank">2</div>
+                                <div class="lb-name">Captain James T.</div>
+                                <div class="lb-score">1,198 pts</div>
+                            </div>
+                            <div class="lb-row">
+                                <div class="lb-rank">3</div>
+                                <div class="lb-name">Captain Alex J.</div>
+                                <div class="lb-score">1,156 pts</div>
+                            </div>
+                            <div class="lb-row">
+                                <div class="lb-rank">4</div>
+                                <div class="lb-name">Captain David R.</div>
+                                <div class="lb-score">1,092 pts</div>
+                            </div>
+                            <div class="lb-row">
+                                <div class="lb-rank">5</div>
+                                <div class="lb-name">Captain Maria L.</div>
+                                <div class="lb-score">1,045 pts</div>
+                            </div>
+                            <div class="lb-row">
+                                <div class="lb-rank">6</div>
+                                <div class="lb-name">Captain Thomas K.</div>
+                                <div class="lb-score">998 pts</div>
+                            </div>
+                            <div class="lb-row">
+                                <div class="lb-rank">7</div>
+                                <div class="lb-name">Captain Patricia N.</div>
+                                <div class="lb-score">947 pts</div>
+                            </div>
+                            <div class="lb-row">
+                                <div class="lb-rank">8</div>
+                                <div class="lb-name">Captain Robert S.</div>
+                                <div class="lb-score">912 pts</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SETTINGS VIEW -->
+                <div id="settingsView" class="view">
+                    <div class="settings-grid">
+                        <div class="setting-group">
+                            <div class="setting-title">General Settings</div>
+                            <div class="setting-item">
+                                <div>
+                                    <div class="setting-label">Auto-Save Flight Data</div>
+                                    <div class="setting-desc">Automatically save flight data to cloud</div>
+                                </div>
+                                <div class="toggle active">
+                                    <div class="toggle-ball"></div>
+                                </div>
+                            </div>
+                            <div class="setting-item">
+                                <div>
+                                    <div class="setting-label">Enable Notifications</div>
+                                    <div class="setting-desc">Show system notifications for messages</div>
+                                </div>
+                                <div class="toggle active">
+                                    <div class="toggle-ball"></div>
+                                </div>
+                            </div>
+                            <div class="setting-item">
+                                <div>
+                                    <div class="setting-label">Strict Compliance Mode</div>
+                                    <div class="setting-desc">Enforce strict adherence to flight rules</div>
+                                </div>
+                                <div class="toggle">
+                                    <div class="toggle-ball"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="setting-title">Display Options</div>
+                            <div class="setting-item">
+                                <div>
+                                    <div class="setting-label">Dark Mode</div>
+                                    <div class="setting-desc">Use dark color scheme</div>
+                                </div>
+                                <div class="toggle">
+                                    <div class="toggle-ball"></div>
+                                </div>
+                            </div>
+                            <div class="setting-item">
+                                <div>
+                                    <div class="setting-label">Compact View</div>
+                                    <div class="setting-desc">Use compact layout for details</div>
+                                </div>
+                                <div class="toggle">
+                                    <div class="toggle-ball"></div>
+                                </div>
+                            </div>
+                            <div class="setting-item">
+                                <div>
+                                    <div class="setting-label">Show Advanced Metrics</div>
+                                    <div class="setting-desc">Display detailed performance metrics</div>
+                                </div>
+                                <div class="toggle active">
+                                    <div class="toggle-ball"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="setting-title">Data & Privacy</div>
+                            <div class="setting-item">
+                                <div>
+                                    <div class="setting-label">Share Flight Data</div>
+                                    <div class="setting-desc">Allow company to analyze flight data</div>
+                                </div>
+                                <div class="toggle active">
+                                    <div class="toggle-ball"></div>
+                                </div>
+                            </div>
+                            <div class="setting-item">
+                                <div>
+                                    <div class="setting-label">Sync with Fleet</div>
+                                    <div class="setting-desc">Synchronize data across fleet management</div>
+                                </div>
+                                <div class="toggle active">
+                                    <div class="toggle-ball"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STATUS BAR -->
+            <div class="status-bar">
+                <div class="status-item">
+                    <div class="status-indicator"></div>
+                    <span>5 active flights</span>
+                </div>
+                <div class="status-item">
+                    <span>Last update: 2 sec ago</span>
+                </div>
+                <div class="status-item">
+                    <span style="margin-left: auto; display:flex; align-items:center; gap:8px;"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAbYAAABGCAYAAACg7LHdAAAAtGVYSWZJSSoACAAAAAYAEgEDAAEAAAABAAAAGgEFAAEAAABWAAAAGwEFAAEAAABeAAAAKAEDAAEAAAACAAAAEwIDAAEAAAABAAAAaYcEAAEAAABmAAAAAAAAAFQAAAABAAAAVAAAAAEAAAAGAACQBwAEAAAAMDIxMAGRBwAEAAAAAQIDAACgBwAEAAAAMDEwMAGgAwABAAAA//8AAAKgBAABAAAAtgEAAAOgBAABAAAARgAAAAAAAABi/RZoAAAACXBIWXMAAAzrAAAM6wHl1kTSAAAF1WlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSfvu78nIGlkPSdXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQnPz4KPHg6eG1wbWV0YSB4bWxuczp4PSdhZG9iZTpuczptZXRhLyc+CjxyZGY6UkRGIHhtbG5zOnJkZj0naHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyc+CgogPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9JycKICB4bWxuczpBdHRyaWI9J2h0dHA6Ly9ucy5hdHRyaWJ1dGlvbi5jb20vYWRzLzEuMC8nPgogIDxBdHRyaWI6QWRzPgogICA8cmRmOlNlcT4KICAgIDxyZGY6bGkgcmRmOnBhcnNlVHlwZT0nUmVzb3VyY2UnPgogICAgIDxBdHRyaWI6Q3JlYXRlZD4yMDI2LTA0LTA2PC9BdHRyaWI6Q3JlYXRlZD4KICAgICA8QXR0cmliOkRhdGE+eyZxdW90O2RvYyZxdW90OzomcXVvdDtEQUhHQ0tOU3RsSSZxdW90OywmcXVvdDt1c2VyJnF1b3Q7OiZxdW90O1VBSERPZ3o4bkdJJnF1b3Q7LCZxdW90O2JyYW5kJnF1b3Q7OiZxdW90O0JBSERPbjZkV0dvJnF1b3Q7LCZxdW90O3RlbXBsYXRlJnF1b3Q7OiZxdW90O2RnLTYxYTIxNGQzLTgxNjctNGZjNi04YWYwLWEwZjE0ZjMzMjE3ZiZxdW90O308L0F0dHJpYjpEYXRhPgogICAgIDxBdHRyaWI6RXh0SWQ+OWU4MjFiMmQtYTQ2Mi00Y2Q0LWIyYzMtMWEzMzg5M2EyN2ExPC9BdHRyaWI6RXh0SWQ+CiAgICAgPEF0dHJpYjpGYklkPjUyNTI2NTkxNDE3OTU4MDwvQXR0cmliOkZiSWQ+CiAgICAgPEF0dHJpYjpUb3VjaFR5cGU+MjwvQXR0cmliOlRvdWNoVHlwZT4KICAgIDwvcmRmOmxpPgogICA8L3JkZjpTZXE+CiAgPC9BdHRyaWI6QWRzPgogPC9yZGY6RGVzY3JpcHRpb24+CgogPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9JycKICB4bWxuczpkYz0naHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8nPgogIDxkYzp0aXRsZT4KICAgPHJkZjpBbHQ+CiAgICA8cmRmOmxpIHhtbDpsYW5nPSd4LWRlZmF1bHQnPkNvcHkgb2YgTW9kZXJuIEZsaWdodCBTaW11bGF0aW9uIExvZ28gRGVzaWduIC0gMTwvcmRmOmxpPgogICA8L3JkZjpBbHQ+CiAgPC9kYzp0aXRsZT4KIDwvcmRmOkRlc2NyaXB0aW9uPgoKIDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PScnCiAgeG1sbnM6cGRmPSdodHRwOi8vbnMuYWRvYmUuY29tL3BkZi8xLjMvJz4KICA8cGRmOkF1dGhvcj5EYXJ5YSBSPC9wZGY6QXV0aG9yPgogPC9yZGY6RGVzY3JpcHRpb24+CgogPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9JycKICB4bWxuczp4bXA9J2h0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8nPgogIDx4bXA6Q3JlYXRvclRvb2w+Q2FudmEgZG9jPURBSEdDS05TdGxJIHVzZXI9VUFIRE9nejhuR0kgYnJhbmQ9QkFIRE9uNmRXR28gdGVtcGxhdGU9ZGctNjFhMjE0ZDMtODE2Ny00ZmM2LThhZjAtYTBmMTRmMzMyMTdmPC94bXA6Q3JlYXRvclRvb2w+CiA8L3JkZjpEZXNjcmlwdGlvbj4KPC9yZGY6UkRGPgo8L3g6eG1wbWV0YT4KPD94cGFja2V0IGVuZD0ncic/PopO7ZEAACAASURBVHic7V0JmCRFsd6FBUVBlFMQdqarZhdFF+TwQG7B46EiPlxPvHVFFHmI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" style="height:14px;opacity:0.85;" alt="SimCrewOps"/> <span style="opacity:0.45;font-size:10px;">TrackerV2</span></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchView(event, viewName) {
+            // Update nav items
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.target.closest('.nav-item').classList.add('active');
+
+            // Update views
+            document.querySelectorAll('.view').forEach(view => {
+                view.classList.remove('active');
+            });
+            document.getElementById(viewName + 'View').classList.add('active');
+
+            // Update top bar title
+            const titles = {
+                map: 'Live Map',
+                flight: 'My Flight',
+                acars: 'ACARS',
+                schedule: 'Schedule',
+                weather: 'Weather',
+                feed: 'Company Feed',
+                settings: 'Settings'
+            };
+            document.querySelector('.top-bar-title').textContent = titles[viewName] || 'Dashboard';
+        }
+
+        // Flight row interactivity
+        document.querySelectorAll('.flight-row').forEach(row => {
+            row.addEventListener('click', function() {
+                document.querySelectorAll('.flight-row').forEach(r => r.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // Plane icon interactivity
+        document.querySelectorAll('.plane-icon').forEach(plane => {
+            plane.addEventListener('click', function() {
+                const callsign = this.getAttribute('title');
+                console.log('Selected flight:', callsign);
+            });
+        });
+
+        // Toggle switches
+        document.querySelectorAll('.toggle').forEach(toggle => {
+            toggle.addEventListener('click', function() {
+                this.classList.toggle('active');
+            });
+        });
+    </script>
+</body>
+</html>

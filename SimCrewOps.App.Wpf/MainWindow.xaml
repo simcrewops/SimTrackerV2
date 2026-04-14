@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:model="clr-namespace:SimCrewOps.App.Wpf.Models"
+        xmlns:local="clr-namespace:SimCrewOps.App.Wpf.Views"
         mc:Ignorable="d"
         Title="SimCrewOps Tracker"
         Width="1440"
@@ -475,6 +476,33 @@
                         </Grid>
                     </Grid>
 
+                    <!-- Live Map panel -->
+                    <Border Grid.Column="0" Grid.ColumnSpan="3" Background="#0B111A" CornerRadius="28"
+                            Visibility="{Binding IsLiveMapVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <!-- Header bar -->
+                            <Border Background="#0B111A" CornerRadius="28,28,0,0" Padding="24,16">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="LIVE MAP" Foreground="#5CA4C0" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
+                                    <Border Background="#1A2A38" CornerRadius="8" Padding="10,4" Margin="16,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding LiveFlights.Count, StringFormat='{}{0} aircraft online'}" Foreground="#8BB8CC" FontSize="12" />
+                                    </Border>
+                                    <TextBlock Text="Updates every 5s" Foreground="#3A5060" FontSize="11" Margin="16,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Map canvas — code-behind renders plane icons via MapProjection -->
+                            <local:LiveMapCanvas x:Name="LiveMapCanvas" Grid.Row="1"
+                                                 Background="#0D1520"
+                                                 LiveFlights="{Binding LiveFlights}" />
+                        </Grid>
+                    </Border>
+
                     <Border Grid.Column="0" Grid.ColumnSpan="3" Background="#F4F6F0" CornerRadius="28" Padding="28"
                             Visibility="{Binding IsReviewVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Grid>
@@ -603,6 +631,10 @@
                     <StackPanel Orientation="Vertical" Margin="0,0,12,0">
                         <Button Content="Dispatch" Command="{Binding ShowDashboardCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />
                         <Border Height="2" Width="46" Background="{StaticResource AccentBrush}" Visibility="{Binding DashboardNavUnderlineVisibility}" HorizontalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Orientation="Vertical" Margin="0,0,12,0">
+                        <Button Content="Live Map" Command="{Binding ShowLiveMapCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />
+                        <Border Height="2" Width="50" Background="{StaticResource AccentBrush}" Visibility="{Binding LiveMapNavUnderlineVisibility}" HorizontalAlignment="Center" />
                     </StackPanel>
                     <StackPanel Orientation="Vertical" Margin="0,0,12,0">
                         <Button Content="PIREP Draft" Command="{Binding ShowReviewCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />

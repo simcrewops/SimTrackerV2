@@ -21,6 +21,7 @@ public sealed class MainWindowViewModel : ObservableObject
 {
     private readonly TrackerShellHost _shellHost;
     private readonly DispatcherTimer _pollingTimer;
+    private readonly SimCrewOps.Hosting.Hosting.LiveMapService? _liveMapService;
 
     private TrackerShellSnapshot? _latestSnapshot;
     private bool _isRefreshing;
@@ -111,11 +112,20 @@ public sealed class MainWindowViewModel : ObservableObject
         SecondaryScoreRows = new ObservableCollection<ScoreRowModel>();
         ReviewScoreRows = new ObservableCollection<ScoreRowModel>();
         PhasePills = new ObservableCollection<PhasePillModel>();
+        PlaneMarkers = new ObservableCollection<PlaneMarkerModel>();
 
         ShowDashboardCommand = new RelayCommand(() => SelectedPage = NavPage.Dashboard);
+        ShowLiveMapCommand   = new RelayCommand(() => SelectedPage = NavPage.LiveMap);
         ShowReviewCommand = new RelayCommand(() => SelectedPage = NavPage.Review);
         ShowDiagnosticsCommand = new RelayCommand(() => SelectedPage = NavPage.Diagnostics);
         ShowSettingsCommand = new RelayCommand(() => SelectedPage = NavPage.Settings);
+
+        // Wire up the live map service if one was created for this service stack.
+        _liveMapService = bootstrap.LiveMapService;
+        if (_liveMapService is not null)
+        {
+            _liveMapService.PositionsUpdated += OnLiveMapPositionsUpdated;
+        }
         RetrySyncCommand = new RelayCommand(() => _ = RetrySyncAsync());
         SaveSettingsCommand = new RelayCommand(() => _ = SaveSettingsAsync());
 
@@ -138,9 +148,28 @@ public sealed class MainWindowViewModel : ObservableObject
     public ObservableCollection<PhasePillModel> PhasePills { get; }
 
     public RelayCommand ShowDashboardCommand { get; }
+    public RelayCommand ShowLiveMapCommand   { get; }
     public RelayCommand ShowReviewCommand { get; }
     public RelayCommand ShowDiagnosticsCommand { get; }
     public RelayCommand ShowSettingsCommand { get; }
+
+    /// <summary>Live-updated collection of aircraft markers for the map canvas.</summary>
+    public ObservableCollection<PlaneMarkerModel> PlaneMarkers { get; }
+
+    /// <summary>True when the live map service is running (API token configured).</summary>
+    public bool LiveMapAvailable => _liveMapService is not null;
+
+    private IReadOnlyList<SimCrewOps.Hosting.Models.LiveFlight> _liveFlights = Array.Empty<SimCrewOps.Hosting.Models.LiveFlight>();
+
+    /// <summary>
+    /// Latest snapshot of fleet positions, suitable for the map canvas to project and render.
+    /// The canvas code-behind listens for changes via PropertyChanged and redraws.
+    /// </summary>
+    public IReadOnlyList<SimCrewOps.Hosting.Models.LiveFlight> LiveFlights
+    {
+        get => _liveFlights;
+        private set => SetProperty(ref _liveFlights, value);
+    }
     public RelayCommand RetrySyncCommand { get; }
     public RelayCommand SaveSettingsCommand { get; }
     public RelayCommand OpenAccountSettingsCommand { get; } = new RelayCommand(() =>
@@ -449,22 +478,35 @@ public sealed class MainWindowViewModel : ObservableObject
             }
 
             RaisePropertyChanged(nameof(IsDashboardVisible));
+            RaisePropertyChanged(nameof(IsLiveMapVisible));
             RaisePropertyChanged(nameof(IsReviewVisible));
             RaisePropertyChanged(nameof(IsDiagnosticsVisible));
             RaisePropertyChanged(nameof(IsSettingsVisible));
             RaisePropertyChanged(nameof(DashboardNavUnderlineVisibility));
+            RaisePropertyChanged(nameof(LiveMapNavUnderlineVisibility));
             RaisePropertyChanged(nameof(ReviewNavUnderlineVisibility));
             RaisePropertyChanged(nameof(DiagnosticsNavUnderlineVisibility));
             RaisePropertyChanged(nameof(SettingsNavUnderlineVisibility));
+
+            // Start/stop the map polling based on whether the Live Map tab is visible.
+            if (_liveMapService is not null)
+            {
+                if (value == NavPage.LiveMap)
+                    _liveMapService.Start();
+                else
+                    _ = _liveMapService.StopAsync();
+            }
         }
     }
 
     public bool IsDashboardVisible => SelectedPage == NavPage.Dashboard;
+    public bool IsLiveMapVisible   => SelectedPage == NavPage.LiveMap;
     public bool IsReviewVisible => SelectedPage == NavPage.Review;
     public bool IsDiagnosticsVisible => SelectedPage == NavPage.Diagnostics;
     public bool IsSettingsVisible => SelectedPage == NavPage.Settings;
 
     public Visibility DashboardNavUnderlineVisibility => IsDashboardVisible ? Visibility.Visible : Visibility.Hidden;
+    public Visibility LiveMapNavUnderlineVisibility   => IsLiveMapVisible   ? Visibility.Visible : Visibility.Hidden;
     public Visibility ReviewNavUnderlineVisibility => IsReviewVisible ? Visibility.Visible : Visibility.Hidden;
     public Visibility DiagnosticsNavUnderlineVisibility => IsDiagnosticsVisible ? Visibility.Visible : Visibility.Hidden;
     public Visibility SettingsNavUnderlineVisibility => IsSettingsVisible ? Visibility.Visible : Visibility.Hidden;
@@ -536,6 +578,19 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             ApplySnapshot(await _shellHost.PollAsync());
         }
+    }
+
+    /// <summary>
+    /// Called on the thread-pool whenever LiveMapService delivers a new fleet snapshot.
+    /// Marshals the update onto the UI thread via LiveFlights; the view's canvas
+    /// code-behind listens for PropertyChanged and redraws using its own ActualWidth/Height.
+    /// </summary>
+    private void OnLiveMapPositionsUpdated(object? sender, IReadOnlyList<SimCrewOps.Hosting.Models.LiveFlight> flights)
+    {
+        System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
+        {
+            LiveFlights = flights;
+        });
     }
 
     private async Task SaveSettingsAsync()

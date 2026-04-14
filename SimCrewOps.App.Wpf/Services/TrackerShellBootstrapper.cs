@@ -40,6 +40,7 @@ public static class TrackerShellBootstrapper
             SettingsStore = settingsStore,
             Settings = settings,
             SettingsFilePath = settingsFilePath,
+            LiveMapService = serviceStack.LiveMapService,
         };
     }
 
