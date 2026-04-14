@@ -4,6 +4,11 @@ using System.Windows.Media;
 using SimCrewOps.App.Wpf.Infrastructure;
 using SimCrewOps.Hosting.Models;
 
+// Disambiguate WPF types from System.Drawing (pulled in by UseWindowsForms)
+using Brush = System.Windows.Media.Brush;
+using Pen   = System.Windows.Media.Pen;
+using Color = System.Windows.Media.Color;
+
 namespace SimCrewOps.App.Wpf.Views;
 
 /// <summary>
