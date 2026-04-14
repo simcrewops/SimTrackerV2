@@ -91,6 +91,10 @@ public sealed class MainWindowViewModel : ObservableObject
     private Brush _ledEng2Brush = new SolidColorBrush(MediaColor.FromRgb(42, 64, 80));
     private Brush _ledParkingBrakeBrush = new SolidColorBrush(MediaColor.FromRgb(42, 64, 80));
 
+    // Live sync / account connection status
+    private string _liveSyncStatusText = "NOT CONNECTED";
+    private Brush _liveSyncStatusBrush = new SolidColorBrush(MediaColor.FromRgb(90, 106, 112));
+
     public MainWindowViewModel(TrackerShellBootstrapResult bootstrap)
     {
         ArgumentNullException.ThrowIfNull(bootstrap);
@@ -138,6 +142,24 @@ public sealed class MainWindowViewModel : ObservableObject
     public RelayCommand ShowSettingsCommand { get; }
     public RelayCommand RetrySyncCommand { get; }
     public RelayCommand SaveSettingsCommand { get; }
+    public RelayCommand OpenAccountSettingsCommand { get; } = new RelayCommand(() =>
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "https://simcrewops.com/settings",
+            UseShellExecute = true,
+        }));
+
+    public string LiveSyncStatusText
+    {
+        get => _liveSyncStatusText;
+        private set => SetProperty(ref _liveSyncStatusText, value);
+    }
+
+    public Brush LiveSyncStatusBrush
+    {
+        get => _liveSyncStatusBrush;
+        private set => SetProperty(ref _liveSyncStatusBrush, value);
+    }
 
     public string MsfsStatusText
     {
@@ -521,7 +543,10 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             var updatedSettings = SettingsEditor.ToSettings();
             await _shellHost.SaveSettingsAsync(updatedSettings);
-            SettingsSaveStatus = "Settings saved. Restart the tracker to apply connection changes.";
+            var hasToken = !string.IsNullOrWhiteSpace(updatedSettings.Api.PilotApiToken);
+            SettingsSaveStatus = hasToken
+                ? "Settings saved. Live position sync is now active."
+                : "Settings saved. Enter your Pilot API Token to enable live position sync.";
             DiagnosticsStoragePath = updatedSettings.Storage.RootDirectory;
         }
         catch (Exception ex)
@@ -558,6 +583,11 @@ public sealed class MainWindowViewModel : ObservableObject
         SyncStatusBrush = snapshot.BackgroundSyncStatus?.LastErrorMessage is null
             ? new SolidColorBrush(MediaColor.FromRgb(56, 91, 105))
             : new SolidColorBrush(MediaColor.FromRgb(212, 98, 90));
+
+        LiveSyncStatusText = snapshot.LivePositionEnabled ? "LIVE SYNC ON" : "NOT CONNECTED";
+        LiveSyncStatusBrush = snapshot.LivePositionEnabled
+            ? new SolidColorBrush(MediaColor.FromRgb(44, 122, 125))
+            : new SolidColorBrush(MediaColor.FromRgb(90, 106, 112));
 
         PhaseTitle = phase.ToString().ToUpperInvariant();
         HeaderFlightText = BuildHeaderFlightText(activeState);

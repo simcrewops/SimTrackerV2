@@ -559,7 +559,12 @@
                                 <TextBox Text="{Binding SettingsEditor.BaseUrl, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
                                 <TextBlock Text="Sim Sessions Path" Margin="0,16,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
                                 <TextBox Text="{Binding SettingsEditor.SimSessionsPath, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                                <TextBlock Text="Pilot API Token" Margin="0,16,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
+                                <TextBlock Text="Pilot API Token" Margin="0,16,0,4" Foreground="{StaticResource TextPrimaryBrush}" />
+                                <TextBlock Margin="0,0,0,6" FontSize="12" Foreground="#7EA4AF" TextWrapping="Wrap">
+                                    <Run Text="Copy your token from " />
+                                    <Hyperlink Command="{Binding OpenAccountSettingsCommand}" Foreground="#F48223">simcrewops.com/settings</Hyperlink>
+                                    <Run Text=" → Connect Tracker." />
+                                </TextBlock>
                                 <TextBox Text="{Binding SettingsEditor.PilotApiToken, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
                                 <TextBlock Text="Tracker Version" Margin="0,16,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
                                 <TextBox Text="{Binding SettingsEditor.TrackerVersion, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
@@ -612,6 +617,10 @@
                         <Border Height="2" Width="48" Background="{StaticResource AccentBrush}" Visibility="{Binding SettingsNavUnderlineVisibility}" HorizontalAlignment="Center" />
                     </StackPanel>
                     <Button Content="Retry Sync" Command="{Binding RetrySyncCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />
+                    <!-- Live sync status badge -->
+                    <Border Background="{Binding LiveSyncStatusBrush}" CornerRadius="8" Padding="10,4" Margin="8,6,0,6" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding LiveSyncStatusText}" Foreground="White" FontSize="11" FontWeight="Bold" />
+                    </Border>
                 </StackPanel>
             </Border>
         </Grid>

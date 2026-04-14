@@ -17,7 +17,7 @@ public sealed class RuntimeCoordinator
     private readonly FlightSessionScoringTracker _scoringTracker;
     private readonly ScoringEngine _scoringEngine;
     private readonly RunwayResolver _runwayResolver;
-    private readonly ILivePositionUploader? _livePositionUploader;
+    private ILivePositionUploader? _livePositionUploader;
 
     private FlightSessionBlockTimes _blockTimes = new();
     private RunwayResolutionResult? _landingRunwayResolution;
@@ -43,6 +43,15 @@ public sealed class RuntimeCoordinator
         _phaseEngine = phaseEngine ?? new FlightPhaseEngine();
         _scoringTracker = scoringTracker ?? new FlightSessionScoringTracker(context.Profile);
         _scoringEngine = scoringEngine ?? new ScoringEngine();
+    }
+
+    /// <summary>
+    /// Hot-swaps the live position uploader. Safe to call at any time — the next telemetry
+    /// frame will use the new uploader (or send nothing if <paramref name="uploader"/> is null).
+    /// </summary>
+    public void UpdateLivePositionUploader(ILivePositionUploader? uploader)
+    {
+        _livePositionUploader = uploader;
     }
 
     public void Restore(FlightSessionRuntimeState state)

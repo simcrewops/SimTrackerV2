@@ -1,6 +1,7 @@
 using System.IO;
 using SimCrewOps.App.Wpf.Models;
 using SimCrewOps.Hosting.Config;
+using SimCrewOps.Hosting.Hosting;
 using SimCrewOps.Hosting.Models;
 using SimCrewOps.Persistence.Models;
 using SimCrewOps.Persistence.Persistence;
@@ -19,6 +20,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
     private readonly ITrackerAppSettingsStore _settingsStore;
     private readonly string _settingsFilePath;
     private readonly TrackerServiceStack _serviceStack;
+    private readonly TrackerServiceFactory _serviceFactory;
     private readonly MsfsSimConnectHost _simConnectHost;
     private readonly PersistentRuntimeCoordinator _persistentRuntimeCoordinator;
 
@@ -39,6 +41,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
         _settingsStore = settingsStore;
         _settingsFilePath = settingsFilePath;
         _serviceStack = serviceStack;
+        _serviceFactory = new TrackerServiceFactory();
         _settings = serviceStack.Settings;
         _simConnectHost = new MsfsSimConnectHost(
             new SimulatorProcessDetector(new SystemProcessListProvider()),
@@ -104,6 +107,11 @@ public sealed class TrackerShellHost : IAsyncDisposable
     {
         await _settingsStore.SaveAsync(settings, cancellationToken).ConfigureAwait(false);
         _settings = settings;
+
+        // Hot-reload the live position uploader so a newly-entered API token takes effect
+        // immediately without requiring an app restart.
+        var newUploader = _serviceFactory.CreateLivePositionUploader(settings.Api);
+        _persistentRuntimeCoordinator.UpdateLivePositionUploader(newUploader);
     }
 
     public async Task DiscardRecoveryAsync(CancellationToken cancellationToken = default)
@@ -200,5 +208,6 @@ public sealed class TrackerShellHost : IAsyncDisposable
             LastRawTelemetryFrame = _lastRawTelemetryFrame,
             RuntimeState = _runtimeState,
             BackgroundSyncStatus = _serviceStack.BackgroundSyncCoordinator?.Status,
+            LivePositionEnabled = !string.IsNullOrWhiteSpace(Settings.Api.PilotApiToken),
         };
 }

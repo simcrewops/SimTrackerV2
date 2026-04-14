@@ -14,4 +14,9 @@ public sealed record TrackerShellSnapshot
     public SimConnectRawTelemetryFrame? LastRawTelemetryFrame { get; init; }
     public FlightSessionRuntimeState? RuntimeState { get; init; }
     public BackgroundSyncStatus? BackgroundSyncStatus { get; init; }
+
+    /// <summary>
+    /// True when a valid API token is configured and live position uploading is active.
+    /// </summary>
+    public bool LivePositionEnabled { get; init; }
 }

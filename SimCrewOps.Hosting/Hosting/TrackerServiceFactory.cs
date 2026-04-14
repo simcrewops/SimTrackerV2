@@ -1,5 +1,6 @@
 using SimCrewOps.Hosting.Models;
 using SimCrewOps.Persistence.Persistence;
+using SimCrewOps.Runtime.Runtime;
 using SimCrewOps.Sync.Sync;
 
 namespace SimCrewOps.Hosting.Hosting;
@@ -11,6 +12,29 @@ public sealed class TrackerServiceFactory
     public TrackerServiceFactory(Func<HttpClient>? httpClientFactory = null)
     {
         _httpClientFactory = httpClientFactory ?? (() => new HttpClient());
+    }
+
+    /// <summary>
+    /// Creates just the live position uploader from the given settings.
+    /// Returns null if no API token is configured.
+    /// Used for hot-reloading after settings change without restarting the app.
+    /// </summary>
+    public ILivePositionUploader? CreateLivePositionUploader(TrackerApiSettings apiSettings)
+    {
+        ArgumentNullException.ThrowIfNull(apiSettings);
+
+        if (string.IsNullOrWhiteSpace(apiSettings.PilotApiToken))
+            return null;
+
+        return new HttpLivePositionUploader(
+            _httpClientFactory(),
+            new SimCrewOpsApiUploaderOptions
+            {
+                BaseUri = apiSettings.BaseUri,
+                SimSessionsPath = apiSettings.SimSessionsPath,
+                PilotApiToken = apiSettings.PilotApiToken!,
+                TrackerVersion = apiSettings.TrackerVersion,
+            });
     }
 
     public TrackerServiceStack Create(TrackerAppSettings settings)

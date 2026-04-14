@@ -52,6 +52,13 @@ public sealed class PersistentRuntimeCoordinator
         };
     }
 
+    /// <summary>
+    /// Hot-swaps the live position uploader on the underlying coordinator.
+    /// Called when the pilot API token is saved in settings without restarting the app.
+    /// </summary>
+    public void UpdateLivePositionUploader(ILivePositionUploader? uploader)
+        => _runtimeCoordinator.UpdateLivePositionUploader(uploader);
+
     public void Restore(FlightSessionRuntimeState state)
     {
         ArgumentNullException.ThrowIfNull(state);
