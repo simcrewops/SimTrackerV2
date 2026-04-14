@@ -616,12 +616,35 @@ public sealed class MainWindowViewModel : ObservableObject
         try
         {
             var updatedSettings = SettingsEditor.ToSettings();
-            await _shellHost.SaveSettingsAsync(updatedSettings);
             var hasToken = !string.IsNullOrWhiteSpace(updatedSettings.Api.PilotApiToken);
-            SettingsSaveStatus = hasToken
-                ? "Settings saved. Live position sync is now active."
-                : "Settings saved. Enter your Pilot API Token to enable live position sync.";
+
+            if (!hasToken)
+            {
+                await _shellHost.SaveSettingsAsync(updatedSettings);
+                SettingsSaveStatus = "Settings saved. Enter your Pilot API Token to enable live position sync.";
+                DiagnosticsStoragePath = updatedSettings.Storage.RootDirectory;
+                return;
+            }
+
+            SettingsSaveStatus = "Saving and verifying connection…";
+            await _shellHost.SaveSettingsAsync(updatedSettings);
             DiagnosticsStoragePath = updatedSettings.Storage.RootDirectory;
+
+            // Immediately refresh the UI from the snapshot that SaveSettingsAsync just built
+            // (includes ActiveFlight result from the fresh fetch).
+            var snapshot = _shellHost.GetSnapshot();
+            ApplySnapshot(snapshot);
+
+            if (snapshot.ActiveFlight is not null)
+            {
+                var dep = snapshot.ActiveFlight.Departure ?? "----";
+                var arr = snapshot.ActiveFlight.Arrival ?? "----";
+                SettingsSaveStatus = $"Connected ✓  Next flight: {dep} → {arr}";
+            }
+            else
+            {
+                SettingsSaveStatus = "Connected ✓  No scheduled flight found — check My Flights on simcrewops.com.";
+            }
         }
         catch (Exception ex)
         {
