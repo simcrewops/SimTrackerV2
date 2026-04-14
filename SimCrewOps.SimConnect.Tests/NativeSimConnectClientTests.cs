@@ -25,6 +25,33 @@ public sealed class NativeSimConnectClientTests
     }
 
     [Fact]
+    public void NormalizeValueType_UsesInt32ForBoolAndMaskDefinitions()
+    {
+        var boolDefinition = new SimConnectVariableDefinition
+        {
+            Key = "landing_light",
+            SimVarName = "LIGHT LANDING",
+            Unit = "bool",
+            UpdateRate = SimConnectUpdateRate.Second,
+            ValueType = SimConnectValueType.Float64,
+            RequiredForScoring = true,
+        };
+
+        var maskDefinition = new SimConnectVariableDefinition
+        {
+            Key = "light_states",
+            SimVarName = "LIGHT STATES",
+            Unit = "Mask",
+            UpdateRate = SimConnectUpdateRate.Second,
+            ValueType = SimConnectValueType.Int32,
+            RequiredForScoring = true,
+        };
+
+        Assert.Equal(SimConnectDataType.Int32, NativeSimConnectBridge.NormalizeValueType(boolDefinition));
+        Assert.Equal(SimConnectDataType.Int32, NativeSimConnectBridge.NormalizeValueType(maskDefinition));
+    }
+
+    [Fact]
     public async Task OpenAsync_UsesBridgeFactoryAndReadsFrames()
     {
         if (!OperatingSystem.IsWindows())

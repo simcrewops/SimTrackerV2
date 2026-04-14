@@ -475,10 +475,11 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         });
     }
 
-    private static SimConnectDataType NormalizeValueType(SimConnectVariableDefinition definition) =>
+    internal static SimConnectDataType NormalizeValueType(SimConnectVariableDefinition definition) =>
         definition.ValueType switch
         {
             SimConnectValueType.Int32 => SimConnectDataType.Int32,
+            _ when string.Equals(definition.Unit, "bool", StringComparison.OrdinalIgnoreCase) => SimConnectDataType.Int32,
             _ => SimConnectDataType.Float64,
         };
 
