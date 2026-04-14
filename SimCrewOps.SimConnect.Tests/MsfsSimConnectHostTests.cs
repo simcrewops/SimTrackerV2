@@ -104,7 +104,7 @@ public sealed class MsfsSimConnectHostTests
     {
         Assert.Contains("FlightSimulator2024.exe", SimConnectDefinitionCatalog.DefaultSimulatorProcessNames);
         Assert.Contains(SimConnectDefinitionCatalog.FlightCriticalVariables, variable => variable.SimVarName == "PLANE LATITUDE");
-        Assert.Contains(SimConnectDefinitionCatalog.FlightCriticalVariables, variable => variable.SimVarName == "PLANE ALT ABOVE GROUND");
+        Assert.Contains(SimConnectDefinitionCatalog.FlightCriticalVariables, variable => variable.SimVarName == "PLANE ALT ABOVE GROUND LEVEL");
         Assert.Contains(SimConnectDefinitionCatalog.FlightCriticalVariables, variable => variable.SimVarName == "PLANE ALTITUDE");
         Assert.Contains(SimConnectDefinitionCatalog.ScoringAndOperationalVariables, variable => variable.SimVarName == "PLANE HEADING DEGREES MAGNETIC");
         Assert.Contains(SimConnectDefinitionCatalog.ScoringAndOperationalVariables, variable => variable.SimVarName == "LIGHT STATES");
