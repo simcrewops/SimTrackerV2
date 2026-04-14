@@ -283,12 +283,26 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <!-- Flight context line -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Flight context + web-fetched assignment -->
+                    <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="{Binding HeaderFlightText}"
                                    Foreground="#8b949e"
-                                   FontSize="13"
-                                   VerticalAlignment="Center" />
+                                   FontSize="13" />
+                        <TextBlock FontSize="11"
+                                   Margin="0,3,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding AssignedFlightText, Converter={StaticResource StringNotEmptyConverter}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                            <Run Text="ASSIGNED  " Foreground="{StaticResource TextSubtleBrush}" FontWeight="SemiBold" />
+                            <Run Text="{Binding AssignedFlightText}" Foreground="{StaticResource AccentSoftBrush}" />
+                        </TextBlock>
                     </StackPanel>
 
                     <!-- Phase pill + career chips -->

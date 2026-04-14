@@ -1,7 +1,12 @@
 <Application x:Class="SimCrewOps.App.Wpf.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:infra="clr-namespace:SimCrewOps.App.Wpf.Infrastructure">
     <Application.Resources>
+
+        <!-- ── Converters ─────────────────────────────────────────────── -->
+        <infra:StringNotEmptyConverter x:Key="StringNotEmptyConverter" />
+        <BooleanToVisibilityConverter  x:Key="BooleanToVisibilityConverter" />
 
         <!-- ── Dark theme palette ─────────────────────────────────────── -->
         <!-- Base -->
@@ -36,9 +41,6 @@
         <!-- Instrument tile colours (kept teal for avionics feel) -->
         <SolidColorBrush x:Key="InstrumentTileBrush"  Color="#16303D" />
         <SolidColorBrush x:Key="InstrumentPanelBrush" Color="#0C1D25" />
-
-        <!-- ── Converters ──────────────────────────────────────────────── -->
-        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
         <!-- ── Nav item button style ──────────────────────────────────── -->
         <!-- Transparent click surface; inner Border handles the highlight -->

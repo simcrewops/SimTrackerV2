@@ -49,6 +49,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _syncStatusText = "SYNC READY";
     private Brush _syncStatusBrush = new SolidColorBrush(MediaColor.FromRgb(56, 91, 105));
     private string _headerFlightText = "Waiting for flight context • MSFS telemetry will populate here";
+    private string _assignedFlightText = string.Empty;
     private string _phaseTitle = "PREFLIGHT";
     private string _phaseSubtitle = "The live ops board stays blank until the tracker receives real telemetry.";
     private string _phaseStatusLine = "Waiting for telemetry";
@@ -243,6 +244,16 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         get => _headerFlightText;
         private set => SetProperty(ref _headerFlightText, value);
+    }
+
+    /// <summary>
+    /// Always shows the web-fetched assignment (departure → arrival, flight number, aircraft).
+    /// Empty string when no flight is assigned. Visible independent of live session state.
+    /// </summary>
+    public string AssignedFlightText
+    {
+        get => _assignedFlightText;
+        private set => SetProperty(ref _assignedFlightText, value);
     }
 
     public string PhaseSubtitle
@@ -688,6 +699,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
         PhaseTitle = phase.ToString().ToUpperInvariant();
         HeaderFlightText = BuildHeaderFlightText(activeState, snapshot.ActiveFlight);
+        AssignedFlightText = BuildAssignedFlightText(snapshot.ActiveFlight);
         PhaseSubtitle = BuildPhaseSubtitle(phase);
         PhaseStatusLine = BuildPhaseStatusLine(telemetry, phase);
 
@@ -1022,6 +1034,30 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         return "Waiting for flight context • MSFS telemetry will populate here";
+    }
+
+    /// <summary>
+    /// Always returns the web-fetched assignment as a single line, e.g.
+    /// "KDFW → KMIA • AA123 • B738  (career)"
+    /// Empty string when nothing is fetched — hides the row via Visibility binding.
+    /// </summary>
+    private static string BuildAssignedFlightText(ActiveFlightResponse? activeFlight)
+    {
+        if (activeFlight is null) return string.Empty;
+        var dep = (activeFlight.Departure ?? "----").ToUpperInvariant();
+        var arr = (activeFlight.Arrival ?? "----").ToUpperInvariant();
+        var fn  = string.IsNullOrWhiteSpace(activeFlight.FlightNumber) ? "" : $" • {activeFlight.FlightNumber.ToUpperInvariant()}";
+        var ac  = string.IsNullOrWhiteSpace(activeFlight.AircraftType)  ? "" : $" • {activeFlight.AircraftType}";
+        var src = activeFlight.Source switch
+        {
+            "bid_packet"   => "bid",
+            "open_time"    => "open time",
+            "roster"       => "schedule",
+            "dispatch"     => "dispatch",
+            "premium_time" => "premium",
+            _              => "booked",
+        };
+        return $"{dep} → {arr}{fn}{ac}  ({src})";
     }
 
     private static string BuildBidDisplay(
