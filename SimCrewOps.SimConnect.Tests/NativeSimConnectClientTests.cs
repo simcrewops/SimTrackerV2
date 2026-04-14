@@ -7,6 +7,13 @@ namespace SimCrewOps.SimConnect.Tests;
 public sealed class NativeSimConnectClientTests
 {
     [Fact]
+    public void IsNoDispatchAvailable_TreatsEFailAsEmptyQueue()
+    {
+        Assert.True(NativeSimConnectBridge.IsNoDispatchAvailable(unchecked((int)0x80004005)));
+        Assert.False(NativeSimConnectBridge.IsNoDispatchAvailable(0));
+    }
+
+    [Fact]
     public async Task OpenAsync_UsesBridgeFactoryAndReadsFrames()
     {
         if (!OperatingSystem.IsWindows())

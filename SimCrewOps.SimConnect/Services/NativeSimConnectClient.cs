@@ -332,9 +332,13 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
     private SimConnectRawTelemetryFrame? TryDispatchNextMessage()
     {
-        ThrowIfFailed(
-            _exports.GetNextDispatch(_simConnectHandle, out var dispatchPointer, out _),
-            "SimConnect_GetNextDispatch");
+        var result = _exports.GetNextDispatch(_simConnectHandle, out var dispatchPointer, out _);
+        if (IsNoDispatchAvailable(result))
+        {
+            return _frames.TryDequeue(out var emptyFrame) ? emptyFrame : null;
+        }
+
+        ThrowIfFailed(result, "SimConnect_GetNextDispatch");
 
         if (dispatchPointer == nint.Zero)
         {
@@ -494,6 +498,8 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
         throw new InvalidOperationException($"{operation} failed with HRESULT 0x{hresult:X8}.", Marshal.GetExceptionForHR(hresult));
     }
+
+    internal static bool IsNoDispatchAvailable(int hresult) => hresult == unchecked((int)0x80004005);
 
     private void ThrowIfDisposed()
     {
