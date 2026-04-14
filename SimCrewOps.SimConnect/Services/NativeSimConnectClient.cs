@@ -4,7 +4,7 @@ using SimCrewOps.SimConnect.Models;
 
 namespace SimCrewOps.SimConnect.Services;
 
-public sealed class NativeSimConnectClient : ISimConnectClient
+public sealed class NativeSimConnectClient : ISimConnectClient, ISimConnectClientDiagnostics
 {
     private readonly NativeSimConnectLibraryLocator _libraryLocator;
     private readonly INativeSimConnectBridgeFactory _bridgeFactory;
@@ -27,6 +27,7 @@ public sealed class NativeSimConnectClient : ISimConnectClient
     }
 
     public bool IsConnected => _bridge?.IsConnected == true;
+    public string DiagnosticsClientName => "Native SimConnect";
 
     public async Task OpenAsync(SimConnectHostOptions options, CancellationToken cancellationToken = default)
     {
@@ -82,7 +83,7 @@ public sealed class NativeSimConnectClient : ISimConnectClient
     }
 }
 
-public sealed class AdaptiveSimConnectClient : ISimConnectClient
+public sealed class AdaptiveSimConnectClient : ISimConnectClient, ISimConnectClientDiagnostics
 {
     private readonly ISimConnectClient _primaryClient;
     private readonly ISimConnectClient _fallbackClient;
@@ -103,6 +104,10 @@ public sealed class AdaptiveSimConnectClient : ISimConnectClient
     }
 
     public bool IsConnected => _activeClient?.IsConnected == true;
+    public string DiagnosticsClientName =>
+        _activeClient is ISimConnectClientDiagnostics diagnostics
+            ? diagnostics.DiagnosticsClientName
+            : _activeClient?.GetType().Name ?? "Adaptive SimConnect (native first)";
 
     public async Task OpenAsync(SimConnectHostOptions options, CancellationToken cancellationToken = default)
     {
@@ -408,6 +413,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
         _latestState = _latestState with
         {
+            HasOperational = true,
             HeadingMagneticDegrees = snapshot.HeadingMagneticDegrees,
             HeadingTrueDegrees = snapshot.HeadingTrueDegrees,
             TrueAirspeedKnots = snapshot.TrueAirspeedKnots,
@@ -441,6 +447,8 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         _frames.Enqueue(new SimConnectRawTelemetryFrame
         {
             TimestampUtc = DateTimeOffset.UtcNow,
+            HasFlightCriticalData = _latestState.HasFlightCritical,
+            HasOperationalData = _latestState.HasOperational,
             Latitude = _latestState.Latitude,
             Longitude = _latestState.Longitude,
             AltitudeAglFeet = _latestState.AltitudeAglFeet,
@@ -591,6 +599,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private sealed record LatestSimConnectState
     {
         public bool HasFlightCritical { get; init; }
+        public bool HasOperational { get; init; }
         public double Latitude { get; init; }
         public double Longitude { get; init; }
         public double AltitudeAglFeet { get; init; }

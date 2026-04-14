@@ -3,6 +3,8 @@ namespace SimCrewOps.SimConnect.Models;
 public sealed record SimConnectRawTelemetryFrame
 {
     public DateTimeOffset TimestampUtc { get; init; }
+    public bool HasFlightCriticalData { get; init; }
+    public bool HasOperationalData { get; init; }
 
     public double Latitude { get; init; }
     public double Longitude { get; init; }

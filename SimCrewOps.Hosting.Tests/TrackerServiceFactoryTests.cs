@@ -73,6 +73,10 @@ public sealed class TrackerServiceFactoryTests
                 IntervalSeconds = 60,
                 MaxSessionsPerPass = 5,
             },
+            Debug = new TrackerDebugSettings
+            {
+                EnableTelemetryDiagnostics = false,
+            },
         };
 
     private sealed class FakeHttpMessageHandler : HttpMessageHandler

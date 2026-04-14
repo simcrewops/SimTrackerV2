@@ -38,6 +38,10 @@ public sealed class FileSystemTrackerAppSettingsStoreTests : IDisposable
                 IntervalSeconds = 120,
                 MaxSessionsPerPass = 10,
             },
+            Debug = new TrackerDebugSettings
+            {
+                EnableTelemetryDiagnostics = true,
+            },
         };
 
         await store.SaveAsync(settings);
@@ -50,6 +54,7 @@ public sealed class FileSystemTrackerAppSettingsStoreTests : IDisposable
         Assert.Equal(settings.Api.TrackerVersion, loaded.Api.TrackerVersion);
         Assert.Equal(settings.BackgroundSync.IntervalSeconds, loaded.BackgroundSync.IntervalSeconds);
         Assert.Equal(settings.BackgroundSync.MaxSessionsPerPass, loaded.BackgroundSync.MaxSessionsPerPass);
+        Assert.Equal(settings.Debug.EnableTelemetryDiagnostics, loaded.Debug.EnableTelemetryDiagnostics);
     }
 
     [Fact]

@@ -2,7 +2,7 @@ using SimCrewOps.SimConnect.Models;
 
 namespace SimCrewOps.SimConnect.Services;
 
-public sealed class ManagedSimConnectClient : ISimConnectClient
+public sealed class ManagedSimConnectClient : ISimConnectClient, ISimConnectClientDiagnostics
 {
     private readonly SimConnectAssemblyLocator _assemblyLocator;
     private readonly ISimConnectManagedBridgeFactory _bridgeFactory;
@@ -25,6 +25,7 @@ public sealed class ManagedSimConnectClient : ISimConnectClient
     }
 
     public bool IsConnected => _bridge?.IsConnected == true;
+    public string DiagnosticsClientName => "Managed SimConnect";
 
     public async Task OpenAsync(SimConnectHostOptions options, CancellationToken cancellationToken = default)
     {

@@ -62,6 +62,10 @@ public static class TrackerShellBootstrapper
                 IntervalSeconds = 300,
                 MaxSessionsPerPass = 10,
             },
+            Debug = new TrackerDebugSettings
+            {
+                EnableTelemetryDiagnostics = false,
+            },
         };
 
     private static string ResolveDefaultTrackerVersion()

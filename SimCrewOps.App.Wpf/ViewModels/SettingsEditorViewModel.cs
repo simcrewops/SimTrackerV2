@@ -11,6 +11,7 @@ public sealed class SettingsEditorViewModel : ObservableObject
     private string _trackerVersion = string.Empty;
     private string _storageRootDirectory = string.Empty;
     private bool _backgroundSyncEnabled;
+    private bool _enableTelemetryDiagnostics;
     private int _backgroundSyncIntervalSeconds;
     private int? _maxSessionsPerPass;
 
@@ -50,6 +51,12 @@ public sealed class SettingsEditorViewModel : ObservableObject
         set => SetProperty(ref _backgroundSyncEnabled, value);
     }
 
+    public bool EnableTelemetryDiagnostics
+    {
+        get => _enableTelemetryDiagnostics;
+        set => SetProperty(ref _enableTelemetryDiagnostics, value);
+    }
+
     public int BackgroundSyncIntervalSeconds
     {
         get => _backgroundSyncIntervalSeconds;
@@ -71,6 +78,7 @@ public sealed class SettingsEditorViewModel : ObservableObject
             TrackerVersion = settings.Api.TrackerVersion,
             StorageRootDirectory = settings.Storage.RootDirectory,
             BackgroundSyncEnabled = settings.BackgroundSync.Enabled,
+            EnableTelemetryDiagnostics = settings.Debug.EnableTelemetryDiagnostics,
             BackgroundSyncIntervalSeconds = settings.BackgroundSync.IntervalSeconds,
             MaxSessionsPerPass = settings.BackgroundSync.MaxSessionsPerPass,
         };
@@ -94,6 +102,10 @@ public sealed class SettingsEditorViewModel : ObservableObject
                 Enabled = BackgroundSyncEnabled,
                 IntervalSeconds = BackgroundSyncIntervalSeconds,
                 MaxSessionsPerPass = MaxSessionsPerPass,
+            },
+            Debug = new TrackerDebugSettings
+            {
+                EnableTelemetryDiagnostics = EnableTelemetryDiagnostics,
             },
         };
 }

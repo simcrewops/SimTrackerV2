@@ -348,6 +348,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
 
         _latestState = _latestState with
         {
+            HasOperational = true,
             HeadingMagneticDegrees = snapshot.HeadingMagneticDegrees,
             TrueAirspeedKnots = snapshot.TrueAirspeedKnots,
             HeadingTrueDegrees = snapshot.HeadingTrueDegrees,
@@ -381,6 +382,8 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         _frames.Enqueue(new SimConnectRawTelemetryFrame
         {
             TimestampUtc = DateTimeOffset.UtcNow,
+            HasFlightCriticalData = _latestState.HasFlightCritical,
+            HasOperationalData = _latestState.HasOperational,
             Latitude = _latestState.Latitude,
             Longitude = _latestState.Longitude,
             AltitudeAglFeet = _latestState.AltitudeAglFeet,
@@ -554,6 +557,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
     private sealed record LatestSimConnectState
     {
         public bool HasFlightCritical { get; init; }
+        public bool HasOperational { get; init; }
         public double Latitude { get; init; }
         public double Longitude { get; init; }
         public double AltitudeAglFeet { get; init; }

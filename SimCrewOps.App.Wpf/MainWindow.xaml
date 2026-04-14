@@ -427,6 +427,10 @@
                                 <StackPanel>
                                     <TextBlock Text="SIM STATUS" Style="{StaticResource SectionLabelStyle}" />
                                     <TextBlock Text="{Binding DiagnosticsSimState}" Margin="0,14,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock Text="TELEMETRY DEBUG" Margin="0,24,0,0" Style="{StaticResource SectionLabelStyle}" />
+                                    <TextBlock Text="{Binding DiagnosticsTelemetryClient}" Margin="0,14,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding DiagnosticsTelemetryFlow}" Margin="0,10,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding DiagnosticsTelemetryCounters}" Margin="0,10,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
                                     <TextBlock Text="LAST TELEMETRY" Margin="0,24,0,0" Style="{StaticResource SectionLabelStyle}" />
                                     <TextBlock Text="{Binding DiagnosticsLastTelemetry}" Margin="0,14,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
                                     <TextBlock Text="RECOVERY" Margin="0,24,0,0" Style="{StaticResource SectionLabelStyle}" />
@@ -476,6 +480,11 @@
                                 <CheckBox Content="Enable background sync"
                                           IsChecked="{Binding SettingsEditor.BackgroundSyncEnabled}"
                                           Margin="0,18,0,0"
+                                          FontSize="15"
+                                          Foreground="{StaticResource TextPrimaryBrush}" />
+                                <CheckBox Content="Enable telemetry diagnostics (debug)"
+                                          IsChecked="{Binding SettingsEditor.EnableTelemetryDiagnostics}"
+                                          Margin="0,12,0,0"
                                           FontSize="15"
                                           Foreground="{StaticResource TextPrimaryBrush}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,24,0,0">

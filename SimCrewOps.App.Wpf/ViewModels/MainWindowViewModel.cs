@@ -60,6 +60,10 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _diagnosticsSettingsPath = string.Empty;
     private string _diagnosticsStoragePath = string.Empty;
     private string _diagnosticsLastTelemetry = "No telemetry received yet";
+    private bool _telemetryDiagnosticsEnabled;
+    private string _diagnosticsTelemetryClient = "Telemetry debug disabled in Settings.";
+    private string _diagnosticsTelemetryFlow = "Enable telemetry diagnostics to inspect raw SimConnect frame flow.";
+    private string _diagnosticsTelemetryCounters = "Poll, null-frame, and mapping counters will appear here.";
     private string _settingsSaveStatus = "Changes are saved for the next launch.";
 
     public MainWindowViewModel(TrackerShellBootstrapResult bootstrap)
@@ -326,6 +330,30 @@ public sealed class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _diagnosticsLastTelemetry, value);
     }
 
+    public bool TelemetryDiagnosticsEnabled
+    {
+        get => _telemetryDiagnosticsEnabled;
+        private set => SetProperty(ref _telemetryDiagnosticsEnabled, value);
+    }
+
+    public string DiagnosticsTelemetryClient
+    {
+        get => _diagnosticsTelemetryClient;
+        private set => SetProperty(ref _diagnosticsTelemetryClient, value);
+    }
+
+    public string DiagnosticsTelemetryFlow
+    {
+        get => _diagnosticsTelemetryFlow;
+        private set => SetProperty(ref _diagnosticsTelemetryFlow, value);
+    }
+
+    public string DiagnosticsTelemetryCounters
+    {
+        get => _diagnosticsTelemetryCounters;
+        private set => SetProperty(ref _diagnosticsTelemetryCounters, value);
+    }
+
     public string SettingsSaveStatus
     {
         get => _settingsSaveStatus;
@@ -551,6 +579,23 @@ public sealed class MainWindowViewModel : ObservableObject
         DiagnosticsLastTelemetry = telemetry is null
             ? "No telemetry received yet"
             : $"IAS {telemetry.IndicatedAirspeedKnots:0} • VS {telemetry.VerticalSpeedFpm:0} • AGL {telemetry.AltitudeAglFeet:0}";
+
+        TelemetryDiagnosticsEnabled = snapshot.Settings.Debug.EnableTelemetryDiagnostics;
+        if (TelemetryDiagnosticsEnabled)
+        {
+            DiagnosticsTelemetryClient =
+                $"{snapshot.SimConnectStatus.ClientPath} • raw {FormatTimeAgo(snapshot.SimConnectStatus.LastRawFrameUtc)} • mapped {FormatTimeAgo(snapshot.SimConnectStatus.LastTelemetryUtc)}";
+            DiagnosticsTelemetryFlow =
+                $"Flight-critical: {ToYesNo(snapshot.SimConnectStatus.HasReceivedFlightCriticalData)} • Operational: {ToYesNo(snapshot.SimConnectStatus.HasReceivedOperationalData)}";
+            DiagnosticsTelemetryCounters =
+                $"Polls {snapshot.SimConnectStatus.PollCount} • Null polls {snapshot.SimConnectStatus.NullPollCount} • Raw frames {snapshot.SimConnectStatus.RawFrameCount} • Mapped frames {snapshot.SimConnectStatus.TelemetryFrameCount}";
+        }
+        else
+        {
+            DiagnosticsTelemetryClient = "Telemetry debug disabled in Settings.";
+            DiagnosticsTelemetryFlow = "Enable telemetry diagnostics to inspect raw SimConnect frame flow.";
+            DiagnosticsTelemetryCounters = "Poll, null-frame, and mapping counters will appear here.";
+        }
     }
 
     private void ApplySampleState()
@@ -810,4 +855,11 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private static string FormatTime(DateTimeOffset? value, string fallback) =>
         value?.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture) ?? fallback;
+
+    private static string ToYesNo(bool value) => value ? "yes" : "no";
+
+    private static string FormatTimeAgo(DateTimeOffset? value) =>
+        value is null
+            ? "never"
+            : $"{Math.Max(0, (DateTimeOffset.UtcNow - value.Value).TotalSeconds):0.#}s ago";
 }
