@@ -36,4 +36,21 @@ public sealed record LivePositionPayload
 
     [JsonPropertyName("bidId")]
     public string? BidId { get; init; }
+
+    // Route and aircraft info — sourced from the active flight assignment fetched from the web app.
+    // These populate the LiveFlight row so the world map can show departure/arrival/flight number.
+    [JsonPropertyName("departure")]
+    public string? Departure { get; init; }
+
+    [JsonPropertyName("arrival")]
+    public string? Arrival { get; init; }
+
+    [JsonPropertyName("flightNumber")]
+    public string? FlightNumber { get; init; }
+
+    [JsonPropertyName("aircraft")]
+    public string? Aircraft { get; init; }
+
+    [JsonPropertyName("aircraftCategory")]
+    public string? AircraftCategory { get; init; }
 }

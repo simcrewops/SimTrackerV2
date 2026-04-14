@@ -149,6 +149,9 @@ public sealed class TrackerShellHost : IAsyncDisposable
                     DepartureAirportIcao = flight.Departure,
                     ArrivalAirportIcao   = flight.Arrival,
                     FlightMode           = "career",
+                    FlightNumber         = flight.FlightNumber,
+                    AircraftType         = flight.AircraftType,
+                    AircraftCategory     = ResolveAircraftCategory(flight.AircraftType),
                 }
                 : new FlightSessionContext();
 
@@ -225,6 +228,32 @@ public sealed class TrackerShellHost : IAsyncDisposable
         }
 
         await _simConnectHost.DisconnectAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Maps an aircraft type string (e.g. "B738", "A320", "CRJ9") to the world map
+    /// category expected by the frontend: "regional", "narrowbody", or "widebody".
+    /// </summary>
+    private static string ResolveAircraftCategory(string? aircraftType)
+    {
+        if (string.IsNullOrWhiteSpace(aircraftType))
+            return "narrowbody";
+
+        var t = aircraftType.ToUpperInvariant();
+
+        // Widebody types
+        if (t.StartsWith("B74") || t.StartsWith("B77") || t.StartsWith("B78") ||
+            t.StartsWith("A33") || t.StartsWith("A34") || t.StartsWith("A35") ||
+            t.StartsWith("A38") || t.StartsWith("B76") || t == "A300" || t == "A310")
+            return "widebody";
+
+        // Regional jets and turboprops
+        if (t.StartsWith("CRJ") || t.StartsWith("E17") || t.StartsWith("E19") ||
+            t.StartsWith("AT") || t.StartsWith("DH8") || t.StartsWith("SF3") ||
+            t.StartsWith("E14") || t == "E145" || t == "E135" || t.StartsWith("RJ"))
+            return "regional";
+
+        return "narrowbody";
     }
 
     private static IRunwayDataProvider CreateRunwayDataProvider(string settingsFilePath)

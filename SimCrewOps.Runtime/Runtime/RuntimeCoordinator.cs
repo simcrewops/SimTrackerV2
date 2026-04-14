@@ -220,6 +220,11 @@ public sealed class RuntimeCoordinator
             Phase = telemetryFrame.Phase.ToString(),
             FlightMode = _context.FlightMode,
             BidId = string.IsNullOrWhiteSpace(_context.BidId) ? null : _context.BidId,
+            Departure      = _context.DepartureAirportIcao,
+            Arrival        = _context.ArrivalAirportIcao,
+            FlightNumber   = _context.FlightNumber,
+            Aircraft       = _context.AircraftType,
+            AircraftCategory = _context.AircraftCategory,
         };
 
         _ = SendLivePositionAsync(payload, cancellationToken);

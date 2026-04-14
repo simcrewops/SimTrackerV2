@@ -11,4 +11,9 @@ public sealed record FlightSessionContext
     public string FlightMode { get; init; } = "free_flight";
     public double? ScheduledBlockHours { get; init; }
     public FlightSessionProfile Profile { get; init; } = new();
+
+    // Populated from the active flight assignment fetched from the web app.
+    public string? FlightNumber { get; init; }
+    public string? AircraftType { get; init; }
+    public string? AircraftCategory { get; init; }
 }
