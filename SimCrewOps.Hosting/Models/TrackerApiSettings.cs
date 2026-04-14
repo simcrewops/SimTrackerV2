@@ -6,4 +6,5 @@ public sealed record TrackerApiSettings
     public string SimSessionsPath { get; init; } = "/api/sim-sessions";
     public string? PilotApiToken { get; init; }
     public string TrackerVersion { get; init; } = "dev";
+    public bool LiveSyncEnabled { get; init; }
 }

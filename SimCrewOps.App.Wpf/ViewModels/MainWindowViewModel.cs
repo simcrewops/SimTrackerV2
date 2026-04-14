@@ -111,6 +111,18 @@ public sealed class MainWindowViewModel : ObservableObject
         ShowReviewCommand = new RelayCommand(() => SelectedPage = NavPage.Review);
         ShowDiagnosticsCommand = new RelayCommand(() => SelectedPage = NavPage.Diagnostics);
         ShowSettingsCommand = new RelayCommand(() => SelectedPage = NavPage.Settings);
+        // TODO (live map): Add NavPage.Map and ShowMapCommand = new RelayCommand(() => SelectedPage = NavPage.Map)
+        // TODO (live map): Accept LiveMapService from bootstrap.ServiceStack.LiveMapService
+        // TODO (live map): Subscribe: _liveMapService.PositionsUpdated += OnPositionsUpdated
+        // TODO (live map): In OnPositionsUpdated project each LiveFlight via MapProjection.LatLonToCanvas and
+        //                  place a rotated polygon plane icon on the map canvas; color by phase:
+        //                    IsMyFlight           → blue   (#1E90FF)
+        //                    "approach"           → amber  (#FFA500)
+        //                    "cruise" / "descent" → green  (#32CD32)
+        //                    "climb"              → purple (#9370DB)
+        //                    "ground" / other     → gray   (#808080)
+        // TODO (live map): Call _liveMapService.Start() when the Map page is first shown and
+        //                  _liveMapService.StopAsync() on window close / disposal
         RetrySyncCommand = new RelayCommand(() => _ = RetrySyncAsync());
         SaveSettingsCommand = new RelayCommand(() => _ = SaveSettingsAsync());
 

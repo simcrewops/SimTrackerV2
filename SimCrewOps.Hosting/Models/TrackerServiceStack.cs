@@ -13,6 +13,7 @@ public sealed record TrackerServiceStack
     public ICompletedSessionUploader? CompletedSessionUploader { get; init; }
     public ICompletedSessionSyncService? CompletedSessionSyncService { get; init; }
     public BackgroundSyncCoordinator? BackgroundSyncCoordinator { get; init; }
+    public LiveMapService? LiveMapService { get; init; }
 
     public bool SyncEnabled => BackgroundSyncCoordinator is not null;
 }
