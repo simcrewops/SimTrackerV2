@@ -814,7 +814,8 @@ public sealed class FlightSessionScoringTracker
         // be wildly overstated — skip to the barometric fallback instead.
         if (_previousFrame is not null
             && !_previousFrame.OnGround
-            && _previousFrame.AltitudeAglFeet <= 15)
+            && _previousFrame.AltitudeAglFeet <= 15
+            && _previousFrame.VerticalSpeedFpm < 0)   // must be descending, not on a bounce peak
         {
             var dtSeconds = (touchdownFrame.TimestampUtc - _previousFrame.TimestampUtc).TotalSeconds;
             if (dtSeconds >= 0.05)
