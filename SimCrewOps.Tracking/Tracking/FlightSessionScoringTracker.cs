@@ -803,10 +803,18 @@ public sealed class FlightSessionScoringTracker
 
     private double CalculateTouchdownVerticalSpeed(TelemetryFrame touchdownFrame)
     {
-        // Primary: AGL drop between the last airborne frame and the first on-ground frame.
-        // This is the exact moment the wheels contacted the runway — no averaging, no window.
-        // VERTICAL SPEED is barometric and spikes at gear compression; AGL is the ground truth.
-        if (_previousFrame is not null && !_previousFrame.OnGround)
+        // Primary: AGL rate-of-change between the last airborne frame and the touchdown frame.
+        // This gives the true sink rate at wheel contact rather than the barometric VS, which
+        // can spike at gear compression.
+        //
+        // Guard: only use this path when the previous airborne frame was ≤ 15 ft AGL.
+        // At 1 Hz a smooth 120-fpm flare puts the last airborne frame at ~2 ft; even a firm
+        // 700-fpm touch only reaches ~12 ft.  If the gap is larger (e.g. the test skips from
+        // 480 ft straight to on-ground, or the tracker reconnects mid-air) the AGL delta would
+        // be wildly overstated — skip to the barometric fallback instead.
+        if (_previousFrame is not null
+            && !_previousFrame.OnGround
+            && _previousFrame.AltitudeAglFeet <= 15)
         {
             var dtSeconds = (touchdownFrame.TimestampUtc - _previousFrame.TimestampUtc).TotalSeconds;
             if (dtSeconds >= 0.05)
@@ -815,15 +823,19 @@ public sealed class FlightSessionScoringTracker
                 if (aglSinkFpm > 0)
                     return aglSinkFpm;
             }
-
-            // dt too short or AGL already 0 on the airborne frame — use that frame's barometric VS
-            // (barometric is reliable when not under gear-compression shock)
-            if (_previousFrame.VerticalSpeedFpm < 0)
-                return Math.Abs(_previousFrame.VerticalSpeedFpm);
         }
 
-        // Fallback: AGL rate-of-change across the final flare window (0.5–30 ft) in the
-        // 2-second rolling buffer.  Used when _previousFrame isn't available (e.g. Restore).
+        // Fallback A: barometric VS on the touchdown frame itself (AGL ≈ 0, just contacted).
+        // This is the sim's own reported descent rate at the moment of ground contact and is
+        // more accurate than any earlier approach-phase sample.
+        if (touchdownFrame.VerticalSpeedFpm < 0)
+            return Math.Abs(touchdownFrame.VerticalSpeedFpm);
+
+        // Fallback B: last airborne frame's barometric VS (avoids gear-compression artefact).
+        if (_previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VerticalSpeedFpm < 0)
+            return Math.Abs(_previousFrame.VerticalSpeedFpm);
+
+        // Fallback C: AGL rate-of-change from the flare window in the 2-second rolling buffer.
         var flareFrames = _recentSamples
             .Where(static s => s.AltitudeAglFeet >= 0.5 && s.AltitudeAglFeet <= 30)
             .OrderBy(static s => s.TimestampUtc)
@@ -841,14 +853,7 @@ public sealed class FlightSessionScoringTracker
             }
         }
 
-        // Last resort: barometric VS from the nearest-to-ground airborne samples.
-        var nearGroundSamples = _recentSamples
-            .Where(static s => s.AltitudeAglFeet is > 0 and <= 30)
-            .ToList();
-
-        if (nearGroundSamples.Count > 0)
-            return Math.Abs(nearGroundSamples.Min(static s => s.VerticalSpeedFpm));
-
+        // Last resort: barometric VS from the nearest-to-ground samples.
         var subHundredSamples = _recentSamples
             .Where(static s => s.AltitudeAglFeet is > 0 and <= 100)
             .ToList();
