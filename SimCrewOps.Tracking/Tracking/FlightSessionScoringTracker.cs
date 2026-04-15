@@ -803,17 +803,44 @@ public sealed class FlightSessionScoringTracker
 
     private double CalculateTouchdownVerticalSpeed()
     {
-        var touchdownSamples = _recentSamples
-            .Where(sample => sample.AltitudeAglFeet <= 100)
+        // Derive sink rate from AGL rate-of-change across the final flare (0.5–30 ft).
+        // VERTICAL SPEED is barometric and can over-read at gear compression; differentiating
+        // PLANE ALT ABOVE GROUND gives the true rate at the moment of wheel contact.
+        var flareFrames = _recentSamples
+            .Where(static s => s.AltitudeAglFeet >= 0.5 && s.AltitudeAglFeet <= 30)
+            .OrderBy(static s => s.TimestampUtc)
             .ToList();
 
-        if (touchdownSamples.Count == 0)
+        if (flareFrames.Count >= 2)
         {
-            return 0;
+            var first = flareFrames[0];
+            var last  = flareFrames[^1];
+            var dtSeconds = (last.TimestampUtc - first.TimestampUtc).TotalSeconds;
+            if (dtSeconds >= 0.1)
+            {
+                // Positive = descending (AGL decreasing over time)
+                var aglSinkFpm = (first.AltitudeAglFeet - last.AltitudeAglFeet) / dtSeconds * 60.0;
+                return Math.Max(0, aglSinkFpm);
+            }
         }
 
-        var minVs = touchdownSamples.Min(sample => sample.VerticalSpeedFpm);
-        return Math.Abs(minVs);
+        // Fallback: barometric VS from just above the ground (≤ 30 ft) avoids capturing
+        // high approach-phase descent rates measured at 80–100 ft AGL before the flare.
+        var nearGroundSamples = _recentSamples
+            .Where(static s => s.AltitudeAglFeet is > 0 and <= 30)
+            .ToList();
+
+        if (nearGroundSamples.Count > 0)
+            return Math.Abs(nearGroundSamples.Min(static s => s.VerticalSpeedFpm));
+
+        // Last resort: anything below 100 ft.
+        var subHundredSamples = _recentSamples
+            .Where(static s => s.AltitudeAglFeet is > 0 and <= 100)
+            .ToList();
+
+        return subHundredSamples.Count > 0
+            ? Math.Abs(subHundredSamples.Min(static s => s.VerticalSpeedFpm))
+            : 0;
     }
 
     private double CalculateTouchdownGForce()
