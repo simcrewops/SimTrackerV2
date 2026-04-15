@@ -88,6 +88,12 @@ public sealed class FlightSessionScoringTracker
     private bool _arrivalParkingBrakeSetBeforeAllEnginesShutdown = true;
     private bool _arrivalAllEnginesOffByEndOfSession;
 
+    // After a session restore (tracker restart / reconnect) the first few frames from
+    // SimConnect may carry stale boolean SimVar values (all false) before MSFS has
+    // fully populated the aircraft state.  We skip "negative" watchdog checks for
+    // this many frames to prevent false deductions on reconnect.
+    private int _postRestoreGraceFrames;
+
     private bool _crashDetected;
     private int _overspeedEvents;
     private int _sustainedOverspeedEvents;
@@ -211,6 +217,10 @@ public sealed class FlightSessionScoringTracker
             !_arrivalSeen || input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown;
         _arrivalAllEnginesOffByEndOfSession = input.Arrival.AllEnginesOffByEndOfSession;
 
+        // Give the first several frames after reconnect a chance to reflect the real
+        // aircraft state before any "lights off" watchdog checks can trigger.
+        _postRestoreGraceFrames = 10;
+
         _crashDetected = input.Safety.CrashDetected;
         _overspeedEvents = input.Safety.OverspeedEvents;
         _sustainedOverspeedEvents = input.Safety.SustainedOverspeedEvents;
@@ -226,6 +236,8 @@ public sealed class FlightSessionScoringTracker
 
     public void Ingest(TelemetryFrame frame)
     {
+        if (_postRestoreGraceFrames > 0) _postRestoreGraceFrames--;
+
         AddRecentSample(frame);
         UpdatePreflight(frame);
         UpdateTaxiOut(frame);
@@ -372,7 +384,8 @@ public sealed class FlightSessionScoringTracker
         // (ground speed ≥ 4 kt).  Pushback by tug typically runs at 1–2 kt, so this guard
         // prevents a false deduction for lights being off during pushback while the phase
         // has already transitioned to TaxiOut (parking brake released + GS > 0.5 kt).
-        if (frame.GroundSpeedKnots >= 4.0 && !frame.TaxiLightsOn)
+        // Also skip during the post-restore grace window to avoid stale SimVar false positives.
+        if (_postRestoreGraceFrames <= 0 && frame.GroundSpeedKnots >= 4.0 && !frame.TaxiLightsOn)
         {
             _taxiOutTaxiLightsValid = false;
         }
@@ -389,7 +402,7 @@ public sealed class FlightSessionScoringTracker
             _takeoffMaxPitch = Math.Max(_takeoffMaxPitch, Math.Abs(frame.PitchAngleDegrees));
             _takeoffMaxG = Math.Max(_takeoffMaxG, frame.GForce);
 
-            if (!frame.LandingLightsOn)
+            if (_postRestoreGraceFrames <= 0 && !frame.LandingLightsOn)
             {
                 _takeoffLandingLightsOnBeforeTakeoff = false;
             }
@@ -407,7 +420,7 @@ public sealed class FlightSessionScoringTracker
                 _takeoffLandingLightsOffByFl180 = false;
             }
 
-            if (!frame.OnGround && !frame.StrobesOn)
+            if (_postRestoreGraceFrames <= 0 && !frame.OnGround && !frame.StrobesOn)
             {
                 _takeoffStrobesOnFromTakeoffToLanding = false;
             }
@@ -553,7 +566,7 @@ public sealed class FlightSessionScoringTracker
             _descentMaxIasBelowFl100 = Math.Max(_descentMaxIasBelowFl100, frame.IndicatedAirspeedKnots);
         }
 
-        if (frame.IndicatedAltitudeFeet <= 18000 && !frame.LandingLightsOn)
+        if (_postRestoreGraceFrames <= 0 && frame.IndicatedAltitudeFeet <= 18000 && !frame.LandingLightsOn)
         {
             _descentLandingLightsOnByFl180 = false;
         }
