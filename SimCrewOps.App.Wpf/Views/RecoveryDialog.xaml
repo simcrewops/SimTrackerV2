@@ -3,57 +3,105 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Recover Session"
         Width="520"
-        Height="300"
+        Height="320"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
-        Background="#F6F8F2">
-    <Grid Margin="24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+        Background="#0a0f1a">
+    <Border Background="#141b2d"
+            BorderBrush="#1e2a3a"
+            BorderThickness="1"
+            CornerRadius="16"
+            Margin="1">
+        <Grid Margin="28">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-        <TextBlock Text="Recover Previous Session"
-                   FontSize="26"
-                   FontWeight="Bold"
-                   Foreground="#172B39" />
+            <TextBlock Text="Recover Previous Session"
+                       FontSize="20"
+                       FontWeight="Bold"
+                       Foreground="#f0f2f5" />
 
-        <StackPanel Grid.Row="1" Margin="0,18,0,18">
-            <TextBlock Text="{Binding SummaryText}"
-                       TextWrapping="Wrap"
-                       FontSize="15"
-                       Foreground="#4E6066" />
-            <Border Margin="0,18,0,0" Padding="16" Background="#FFFFFF" CornerRadius="16">
-                <StackPanel>
-                    <TextBlock Text="{Binding FlightText}" FontSize="16" FontWeight="SemiBold" Foreground="#172B39" />
-                    <TextBlock Text="{Binding SavedText}" Margin="0,8,0,0" Foreground="#5F7076" />
-                    <TextBlock Text="{Binding PendingText}" Margin="0,4,0,0" Foreground="#5F7076" />
-                </StackPanel>
-            </Border>
-        </StackPanel>
+            <StackPanel Grid.Row="1" Margin="0,18,0,18">
+                <TextBlock Text="{Binding SummaryText}"
+                           TextWrapping="Wrap"
+                           FontSize="13"
+                           Foreground="#8b95a5" />
+                <Border Margin="0,16,0,0"
+                        Padding="16"
+                        Background="#1a1f2e"
+                        BorderBrush="#1e2a3a"
+                        BorderThickness="1"
+                        CornerRadius="12">
+                    <StackPanel>
+                        <TextBlock Text="{Binding FlightText}"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Foreground="#f0f2f5" />
+                        <TextBlock Text="{Binding SavedText}"
+                                   Margin="0,8,0,0"
+                                   FontSize="13"
+                                   Foreground="#8b95a5" />
+                        <TextBlock Text="{Binding PendingText}"
+                                   Margin="0,4,0,0"
+                                   FontSize="13"
+                                   Foreground="#8b95a5" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="Resume"
-                    Width="110"
-                    Height="38"
-                    Margin="0,0,12,0"
-                    Click="Resume_Click"
-                    Style="{StaticResource ShellActionButtonStyle}" />
-            <Button Content="Discard"
-                    Width="110"
-                    Height="38"
-                    Margin="0,0,12,0"
-                    Background="#FFE7E3"
-                    BorderBrush="#D4625A"
-                    Foreground="#B3473E"
-                    Click="Discard_Click"
-                    Style="{StaticResource ShellActionButtonStyle}" />
-            <Button Content="Later"
-                    Width="110"
-                    Height="38"
-                    Click="Later_Click"
-                    Style="{StaticResource ShellActionButtonStyle}" />
-        </StackPanel>
-    </Grid>
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                <!-- Resume — primary orange -->
+                <Button Content="Resume"
+                        Width="110"
+                        Height="38"
+                        Margin="0,0,10,0"
+                        Click="Resume_Click"
+                        Style="{StaticResource PrimaryButtonStyle}" />
+
+                <!-- Discard — red variant -->
+                <Button Content="Discard"
+                        Width="110"
+                        Height="38"
+                        Margin="0,0,10,0"
+                        Click="Discard_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Background"      Value="#170a0a" />
+                            <Setter Property="Foreground"      Value="#f87171" />
+                            <Setter Property="BorderBrush"     Value="#f87171" />
+                            <Setter Property="BorderThickness" Value="1" />
+                            <Setter Property="Padding"         Value="14,7" />
+                            <Setter Property="FontWeight"      Value="SemiBold" />
+                            <Setter Property="FontSize"        Value="12" />
+                            <Setter Property="Cursor"          Value="Hand" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                CornerRadius="8">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"
+                                                              Margin="{TemplateBinding Padding}" />
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <!-- Later — secondary ghost -->
+                <Button Content="Later"
+                        Width="110"
+                        Height="38"
+                        Click="Later_Click"
+                        Style="{StaticResource SecondaryButtonStyle}" />
+            </StackPanel>
+        </Grid>
+    </Border>
 </Window>

@@ -52,6 +52,30 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _sessionHealthLine1 = "API Queue 0";
     private string _sessionHealthLine2 = "Last sync 22:41";
     private string _sessionHealthLine3 = "Runtime healthy";
+    private string _departureIcao = "----";
+    private string _departureName = string.Empty;
+    private string _arrivalIcao = "----";
+    private string _arrivalName = string.Empty;
+    private string _aircraftType = "—";
+    private bool _beaconLightOn;
+    private bool _taxiLightOn;
+    private bool _strobeLightOn;
+    private bool _landingLightOn;
+    private bool _landingLightViolation;
+    private bool _parkingBrakeSet;
+    private bool _landingRecorded;
+    private string _touchdownVS = "--";
+    private string _touchdownBank = "--";
+    private string _touchdownIAS = "--";
+    private string _touchdownPitch = "--";
+    private string _touchdownGForce = "--";
+    private string _touchdownBounces = "--";
+    private string _tdzDistanceFt = "--";
+    private string _tdzCrossTrackFt = "--";
+    private string _tdzExcessFt = "--";
+    private string _landingRunway = string.Empty;
+    private double _scoreBarWidth;
+    private string _alertType = "APPROACH CHECK";
     private string _reviewSummary = "Landing metrics will populate after touchdown.";
     private string _reviewLandingMetrics = "VS --   G --   Bank --   Pitch --   TZ Excess --";
     private string _diagnosticsSimState = "Waiting for simulator process";
@@ -72,7 +96,7 @@ public sealed class MainWindowViewModel : ObservableObject
         _diagnosticsStoragePath = bootstrap.Settings.Storage.RootDirectory;
 
         MetricTiles = new ObservableCollection<MetricTileModel>();
-        StatusChips = new ObservableCollection<string>();
+        StatusChips = new ObservableCollection<SecondaryMetricModel>();
         PrimaryScoreRows = new ObservableCollection<ScoreRowModel>();
         SecondaryScoreRows = new ObservableCollection<ScoreRowModel>();
         ReviewScoreRows = new ObservableCollection<ScoreRowModel>();
@@ -97,7 +121,7 @@ public sealed class MainWindowViewModel : ObservableObject
     public SettingsEditorViewModel SettingsEditor { get; }
 
     public ObservableCollection<MetricTileModel> MetricTiles { get; }
-    public ObservableCollection<string> StatusChips { get; }
+    public ObservableCollection<SecondaryMetricModel> StatusChips { get; }
     public ObservableCollection<ScoreRowModel> PrimaryScoreRows { get; }
     public ObservableCollection<ScoreRowModel> SecondaryScoreRows { get; }
     public ObservableCollection<ScoreRowModel> ReviewScoreRows { get; }
@@ -332,6 +356,150 @@ public sealed class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _settingsSaveStatus, value);
     }
 
+    public string DepartureIcao
+    {
+        get => _departureIcao;
+        private set => SetProperty(ref _departureIcao, value);
+    }
+
+    public string DepartureName
+    {
+        get => _departureName;
+        private set => SetProperty(ref _departureName, value);
+    }
+
+    public string ArrivalIcao
+    {
+        get => _arrivalIcao;
+        private set => SetProperty(ref _arrivalIcao, value);
+    }
+
+    public string ArrivalName
+    {
+        get => _arrivalName;
+        private set => SetProperty(ref _arrivalName, value);
+    }
+
+    public string AircraftType
+    {
+        get => _aircraftType;
+        private set => SetProperty(ref _aircraftType, value);
+    }
+
+    public bool BeaconLightOn
+    {
+        get => _beaconLightOn;
+        private set => SetProperty(ref _beaconLightOn, value);
+    }
+
+    public bool TaxiLightOn
+    {
+        get => _taxiLightOn;
+        private set => SetProperty(ref _taxiLightOn, value);
+    }
+
+    public bool StrobeLightOn
+    {
+        get => _strobeLightOn;
+        private set => SetProperty(ref _strobeLightOn, value);
+    }
+
+    public bool LandingLightOn
+    {
+        get => _landingLightOn;
+        private set => SetProperty(ref _landingLightOn, value);
+    }
+
+    public bool LandingLightViolation
+    {
+        get => _landingLightViolation;
+        private set => SetProperty(ref _landingLightViolation, value);
+    }
+
+    public bool ParkingBrakeSet
+    {
+        get => _parkingBrakeSet;
+        private set => SetProperty(ref _parkingBrakeSet, value);
+    }
+
+    public bool LandingRecorded
+    {
+        get => _landingRecorded;
+        private set => SetProperty(ref _landingRecorded, value);
+    }
+
+    public string TouchdownVS
+    {
+        get => _touchdownVS;
+        private set => SetProperty(ref _touchdownVS, value);
+    }
+
+    public string TouchdownBank
+    {
+        get => _touchdownBank;
+        private set => SetProperty(ref _touchdownBank, value);
+    }
+
+    public string TouchdownIAS
+    {
+        get => _touchdownIAS;
+        private set => SetProperty(ref _touchdownIAS, value);
+    }
+
+    public string TouchdownPitch
+    {
+        get => _touchdownPitch;
+        private set => SetProperty(ref _touchdownPitch, value);
+    }
+
+    public string TouchdownGForce
+    {
+        get => _touchdownGForce;
+        private set => SetProperty(ref _touchdownGForce, value);
+    }
+
+    public string TouchdownBounces
+    {
+        get => _touchdownBounces;
+        private set => SetProperty(ref _touchdownBounces, value);
+    }
+
+    public string TdzDistanceFt
+    {
+        get => _tdzDistanceFt;
+        private set => SetProperty(ref _tdzDistanceFt, value);
+    }
+
+    public string TdzCrossTrackFt
+    {
+        get => _tdzCrossTrackFt;
+        private set => SetProperty(ref _tdzCrossTrackFt, value);
+    }
+
+    public string TdzExcessFt
+    {
+        get => _tdzExcessFt;
+        private set => SetProperty(ref _tdzExcessFt, value);
+    }
+
+    public string LandingRunway
+    {
+        get => _landingRunway;
+        private set => SetProperty(ref _landingRunway, value);
+    }
+
+    public double ScoreBarWidth
+    {
+        get => _scoreBarWidth;
+        private set => SetProperty(ref _scoreBarWidth, value);
+    }
+
+    public string AlertType
+    {
+        get => _alertType;
+        private set => SetProperty(ref _alertType, value);
+    }
+
     public NavPage SelectedPage
     {
         get => _selectedPage;
@@ -485,6 +653,48 @@ public sealed class MainWindowViewModel : ObservableObject
         BidDisplay = string.IsNullOrWhiteSpace(activeState?.Context.BidId) ? "Free Flight" : $"Bid #{activeState!.Context.BidId}";
         ReputationDisplay = BuildModeDisplay(activeState);
 
+        DepartureIcao = activeState?.Context.DepartureAirportIcao?.ToUpperInvariant() ?? "----";
+        DepartureName = string.Empty;
+        ArrivalIcao = activeState?.Context.ArrivalAirportIcao?.ToUpperInvariant() ?? "----";
+        ArrivalName = string.Empty;
+        AircraftType = BuildAircraftTypeDisplay(activeState);
+
+        BeaconLightOn = telemetry?.BeaconLightOn == true;
+        TaxiLightOn = telemetry?.TaxiLightsOn == true;
+        StrobeLightOn = telemetry?.StrobesOn == true;
+        LandingLightOn = telemetry?.LandingLightsOn == true;
+        LandingLightViolation = telemetry?.LandingLightsOn == true
+            && (phase == FlightPhase.TaxiIn || phase == FlightPhase.Arrival);
+        ParkingBrakeSet = telemetry?.ParkingBrakeSet == true;
+
+        var landingMetrics = activeState?.ScoreInput.Landing;
+        LandingRecorded = landingMetrics is { TouchdownVerticalSpeedFpm: not 0 };
+        TouchdownVS = landingMetrics is not null ? $"{landingMetrics.TouchdownVerticalSpeedFpm:0}" : "--";
+        TouchdownBank = landingMetrics is not null ? $"{landingMetrics.TouchdownBankAngleDegrees:0.#}" : "--";
+        TouchdownIAS = landingMetrics is not null ? $"{landingMetrics.TouchdownIndicatedAirspeedKnots:0}" : "--";
+        TouchdownPitch = landingMetrics is not null ? $"{landingMetrics.TouchdownPitchAngleDegrees:0.#}" : "--";
+        TouchdownGForce = landingMetrics is not null ? $"{landingMetrics.TouchdownGForce:0.00}" : "--";
+        TouchdownBounces = landingMetrics is not null ? $"{landingMetrics.BounceCount}" : "--";
+
+        var runway = activeState?.LandingRunwayResolution;
+        LandingRunway = runway is not null ? $"{runway.AirportIcao} {runway.Runway.RunwayIdentifier}" : string.Empty;
+        TdzDistanceFt = runway is not null ? $"{runway.Projection.DistanceFromThresholdFeet:0}" : "--";
+        TdzCrossTrackFt = runway is not null ? $"{Math.Abs(runway.Projection.CrossTrackDistanceFeet):0}" : "--";
+        TdzExcessFt = runway is not null && runway.Projection.TouchdownZoneExcessDistanceFeet > 0
+            ? $"{runway.Projection.TouchdownZoneExcessDistanceFeet:0}"
+            : "0";
+
+        var score = activeState?.ScoreResult.FinalScore ?? 88;
+        ScoreBarWidth = Math.Clamp(score / 100.0 * 200.0, 0, 200);
+
+        AlertType = phase switch
+        {
+            FlightPhase.Approach => "APPROACH CHECK",
+            FlightPhase.Landing => "LANDING",
+            FlightPhase.TaxiIn or FlightPhase.Arrival => "TAXI / ARRIVAL",
+            _ => "PHASE MONITOR",
+        };
+
         OutTime = FormatTime(activeState?.BlockTimes.BlocksOffUtc, "19:45");
         OffTime = FormatTime(activeState?.BlockTimes.WheelsOffUtc, "19:58");
         OnTime = FormatTime(activeState?.BlockTimes.WheelsOnUtc, "--:--");
@@ -621,32 +831,32 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
 
-    private IReadOnlyList<string> BuildStatusChips(FlightPhase phase, TelemetryFrame? telemetry) => phase switch
+    private IReadOnlyList<SecondaryMetricModel> BuildStatusChips(FlightPhase phase, TelemetryFrame? telemetry) => phase switch
     {
         FlightPhase.Approach => new[]
         {
-            "RUNWAY 27R",
-            telemetry?.GearDown == false ? "GEAR UP" : "GEAR DOWN",
-            $"FLAPS {telemetry?.FlapsHandleIndex ?? 2}",
-            "500 OK",
+            new SecondaryMetricModel("RUNWAY", "27R"),
+            new SecondaryMetricModel("GEAR", telemetry?.GearDown == false ? "UP" : "DOWN"),
+            new SecondaryMetricModel("FLAPS", $"{telemetry?.FlapsHandleIndex ?? 2}"),
+            new SecondaryMetricModel("500 AGL", "OK"),
         },
         FlightPhase.Landing => new[]
         {
-            "TOUCHDOWN",
-            telemetry?.GearDown == false ? "GEAR UP" : "GEAR DOWN",
-            "ROLL OUT",
+            new SecondaryMetricModel("STATE", "TOUCHDOWN"),
+            new SecondaryMetricModel("GEAR", telemetry?.GearDown == false ? "UP" : "DOWN"),
+            new SecondaryMetricModel("ROLLOUT", "ACTIVE"),
         },
         FlightPhase.Arrival => new[]
         {
-            telemetry?.ParkingBrakeSet == true ? "PB SET" : "PB OFF",
-            telemetry?.TaxiLightsOn == false ? "TAXI LT OFF" : "TAXI LT ON",
-            telemetry?.Engine1Running == false && telemetry?.Engine2Running == false ? "ENG OFF" : "ENG RUN",
+            new SecondaryMetricModel("PARK BRAKE", telemetry?.ParkingBrakeSet == true ? "SET" : "OFF"),
+            new SecondaryMetricModel("TAXI LT", telemetry?.TaxiLightsOn == false ? "OFF" : "ON"),
+            new SecondaryMetricModel("ENGINES", telemetry?.Engine1Running == false && telemetry?.Engine2Running == false ? "OFF" : "RUN"),
         },
         _ => new[]
         {
-            $"PHASE {phase.ToString().ToUpperInvariant()}",
-            telemetry?.LandingLightsOn == true ? "LDG LT ON" : "LDG LT OFF",
-            telemetry?.StrobesOn == true ? "STROBES ON" : "STROBES OFF",
+            new SecondaryMetricModel("GS", $"{telemetry?.GroundSpeedKnots ?? 0:0} kt"),
+            new SecondaryMetricModel("LDG LT", telemetry?.LandingLightsOn == true ? "ON" : "OFF"),
+            new SecondaryMetricModel("STROBE", telemetry?.StrobesOn == true ? "ON" : "OFF"),
         },
     };
 
@@ -709,7 +919,9 @@ public sealed class MainWindowViewModel : ObservableObject
         PhasePills.Clear();
         foreach (var phase in Enum.GetValues<FlightPhase>())
         {
-            PhasePills.Add(new PhasePillModel(ToPhaseLabel(phase), phase == currentPhase));
+            var isActive = phase == currentPhase;
+            var isDone = !isActive && phase < currentPhase;
+            PhasePills.Add(new PhasePillModel(ToPhaseLabel(phase), isActive, isDone));
         }
     }
 
@@ -798,6 +1010,22 @@ public sealed class MainWindowViewModel : ObservableObject
         return string.Equals(mode, "career", StringComparison.OrdinalIgnoreCase)
             ? "Career Mode"
             : "Free Flight";
+    }
+
+    private static string BuildAircraftTypeDisplay(FlightSessionRuntimeState? activeState)
+    {
+        if (activeState is null)
+        {
+            return "—";
+        }
+
+        var profile = activeState.Context.Profile;
+        if (profile.HeavyFourEngineAircraft)
+        {
+            return "Heavy / 4-Engine";
+        }
+
+        return profile.EngineCount > 0 ? $"{profile.EngineCount}-Engine" : "—";
     }
 
     private static string FormatTime(DateTimeOffset? value, string fallback) =>

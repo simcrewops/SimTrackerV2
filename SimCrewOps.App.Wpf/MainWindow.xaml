@@ -8,508 +8,1066 @@
         Title="SimCrewOps Tracker"
         Width="1440"
         Height="960"
-        MinWidth="1200"
-        MinHeight="800"
-        Background="{StaticResource ShellBackgroundBrush}">
+        MinWidth="1100"
+        MinHeight="740"
+        Background="{StaticResource BgBaseBrush}">
+
     <Window.Resources>
-        <Style x:Key="SectionLabelStyle" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="FontWeight" Value="Bold" />
+
+        <!-- Metric tile card (phase grid) -->
+        <Style x:Key="MetricTileStyle" TargetType="Border">
+            <Setter Property="Background"      Value="{StaticResource BgElevatedBrush}" />
+            <Setter Property="BorderBrush"     Value="{StaticResource BorderDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius"    Value="10" />
+            <Setter Property="Padding"         Value="12,10" />
+            <Setter Property="Margin"          Value="0,0,8,8" />
         </Style>
 
-        <Style x:Key="MetricCardStyle" TargetType="Border">
-            <Setter Property="CornerRadius" Value="18" />
-            <Setter Property="Background" Value="{StaticResource HeroCardBrush}" />
-            <Setter Property="Padding" Value="18,12" />
-            <Setter Property="Margin" Value="0,0,18,16" />
+        <!-- Phase pill (inactive) -->
+        <Style x:Key="PhasePillStyle" TargetType="Border">
+            <Setter Property="Background"      Value="{StaticResource BgElevatedBrush}" />
+            <Setter Property="BorderBrush"     Value="{StaticResource BorderDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius"    Value="12" />
+            <Setter Property="Padding"         Value="10,4" />
+            <Setter Property="Margin"          Value="0,0,6,6" />
         </Style>
+
+        <!-- Light/status indicator pill -->
+        <Style x:Key="StatusPillStyle" TargetType="Border">
+            <Setter Property="Background"      Value="{StaticResource BgMutedBrush}" />
+            <Setter Property="BorderBrush"     Value="{StaticResource BorderDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius"    Value="6" />
+            <Setter Property="Padding"         Value="10,4" />
+            <Setter Property="Margin"          Value="0,0,6,0" />
+        </Style>
+
     </Window.Resources>
 
-    <Border Margin="24" Padding="22" Background="{StaticResource ShellSurfaceBrush}" CornerRadius="28">
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="118" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="34" />
-            </Grid.RowDefinitions>
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />  <!-- Identity bar -->
+            <RowDefinition Height="12" />
+            <RowDefinition Height="*" />     <!-- Main content -->
+            <RowDefinition Height="12" />
+            <RowDefinition Height="44" />    <!-- Nav footer -->
+        </Grid.RowDefinitions>
 
-            <Border Background="{StaticResource HeaderBrush}" CornerRadius="24" Padding="36,18">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+        <!-- ═══════════════════════════════════════════════════════
+             ROW 0 — IDENTITY BAR
+        ═══════════════════════════════════════════════════════ -->
+        <Border Grid.Row="0"
+                Background="{StaticResource BgSurfaceBrush}"
+                BorderBrush="{StaticResource BorderDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="14"
+                Padding="22,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="SimCrewOps Tracker"
-                                   Foreground="#F2F6F2"
-                                   FontSize="34"
-                                   FontWeight="Bold" />
-                        <TextBlock Text="{Binding HeaderFlightText}"
-                                   Foreground="#AABCC5"
-                                   Margin="0,8,0,8"
-                                   FontSize="18" />
-                        <StackPanel Orientation="Horizontal">
-                            <Border Background="#2A4B5A" CornerRadius="12" Padding="18,4" Margin="0,0,10,0">
-                                <TextBlock Text="{Binding CareerTier}" Foreground="#D9E9EE" FontSize="12" FontWeight="Bold" />
-                            </Border>
-                            <Border Background="#2A4B5A" CornerRadius="12" Padding="18,4" Margin="0,0,10,0">
-                                <TextBlock Text="{Binding BidDisplay}" Foreground="#D9E9EE" FontSize="12" FontWeight="Bold" />
-                            </Border>
-                            <Border Background="#2A4B5A" CornerRadius="12" Padding="18,4">
-                                <TextBlock Text="{Binding ReputationDisplay}" Foreground="#D9E9EE" FontSize="12" FontWeight="Bold" />
-                            </Border>
+                <!-- Left: flight number + route + aircraft -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,0">
+
+                    <!-- Flight number -->
+                    <TextBlock Text="{Binding HeaderFlightText}"
+                               FontSize="28"
+                               FontWeight="Black"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               VerticalAlignment="Center" />
+
+                    <!-- Divider -->
+                    <Border Width="1" Background="{StaticResource BorderDefaultBrush}" Margin="18,4" />
+
+                    <!-- Route -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel>
+                            <TextBlock Text="{Binding DepartureIcao}"
+                                       FontSize="22"
+                                       FontWeight="ExtraBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding DepartureName}"
+                                       FontSize="10"
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       Margin="0,2,0,0" />
+                        </StackPanel>
+                        <TextBlock Text="→"
+                                   FontSize="16"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource AccentOrangeBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="10,0" />
+                        <StackPanel>
+                            <TextBlock Text="{Binding ArrivalIcao}"
+                                       FontSize="22"
+                                       FontWeight="ExtraBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding ArrivalName}"
+                                       FontSize="10"
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       Margin="0,2,0,0" />
                         </StackPanel>
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Right">
-                        <Border Background="{Binding MsfsStatusBrush}" CornerRadius="18" Padding="18,8" Margin="0,0,12,0">
-                            <StackPanel Orientation="Horizontal">
-                                <Ellipse Width="10" Height="10" Fill="#C4F5EE" Margin="0,4,10,0" />
-                                <TextBlock Text="{Binding MsfsStatusText}" Foreground="#EEF9F8" FontSize="15" FontWeight="Bold" />
-                            </StackPanel>
-                        </Border>
-                        <Border Background="{Binding SyncStatusBrush}" CornerRadius="18" Padding="18,8" Margin="0,0,16,0">
-                            <TextBlock Text="{Binding SyncStatusText}" Foreground="#EEF2F4" FontSize="15" FontWeight="Bold" />
-                        </Border>
-                        <Border Background="{StaticResource AmberBrush}" CornerRadius="22" Padding="24,14" Width="270">
-                            <StackPanel>
-                                <TextBlock Text="CURRENT PHASE" Foreground="#1C3139" FontSize="14" FontWeight="Bold" />
-                                <TextBlock Text="{Binding PhaseTitle}" Foreground="#1C3139" FontSize="32" FontWeight="Bold" />
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </Grid>
-            </Border>
+                    <!-- Divider -->
+                    <Border Width="1" Background="{StaticResource BorderDefaultBrush}" Margin="18,4" />
 
-            <Grid Grid.Row="1" Margin="6,22,6,18">
+                    <!-- Aircraft -->
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="{Binding AircraftType}"
+                                   FontSize="20"
+                                   FontWeight="ExtraBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock Text="AIRCRAFT"
+                                   FontSize="9"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Margin="0,3,0,0" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Right: status pills -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Background="{StaticResource BgElevatedBrush}"
+                            BorderBrush="{StaticResource BorderDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="99"
+                            Padding="12,5"
+                            Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="7" Height="7"
+                                     Fill="{Binding MsfsStatusBrush}"
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding MsfsStatusText}"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Background="{StaticResource BgElevatedBrush}"
+                            BorderBrush="{StaticResource BorderDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="99"
+                            Padding="12,5">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="7" Height="7"
+                                     Fill="{Binding SyncStatusBrush}"
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding SyncStatusText}"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ═══════════════════════════════════════════════════════
+             ROW 2 — MAIN CONTENT
+        ═══════════════════════════════════════════════════════ -->
+        <Grid Grid.Row="2">
+            <Grid Visibility="{Binding IsDashboardVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="282" />
-                    <ColumnDefinition Width="24" />
-                    <ColumnDefinition Width="710" />
-                    <ColumnDefinition Width="24" />
-                    <ColumnDefinition Width="298" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="320" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Background="{StaticResource PanelBrush}" CornerRadius="26" Padding="24">
-                    <StackPanel>
-                        <TextBlock Text="Flight Stack"
-                                   Foreground="{StaticResource TextPrimaryBrush}"
-                                   FontSize="22"
-                                   FontWeight="Bold" />
+                <!-- ── Left column ── -->
+                <Grid Grid.Column="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />  <!-- Phase hero -->
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="Auto" />  <!-- Key metrics -->
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="Auto" />  <!-- Secondary metrics -->
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="Auto" />  <!-- Lights + systems strip -->
+                    </Grid.RowDefinitions>
 
-                        <TextBlock Text="SESSION CONTEXT" Margin="0,28,0,10" Style="{StaticResource SectionLabelStyle}" />
-                        <TextBlock Text="{Binding CareerTier}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="28" FontWeight="Bold" />
-                        <TextBlock Text="{Binding BidDisplay}" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,0" FontSize="17" />
-                        <TextBlock Text="{Binding ReputationDisplay}" Foreground="{StaticResource TextMutedBrush}" Margin="0,6,0,0" FontSize="17" />
-
-                        <Border Height="1" Background="{StaticResource DividerBrush}" Margin="0,22,0,22" />
-
-                        <TextBlock Text="FLIGHT TIMES" Style="{StaticResource SectionLabelStyle}" />
-                        <Grid Margin="0,18,0,0">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="OUT" Foreground="{StaticResource TextPrimaryBrush}" FontSize="17" FontWeight="Bold" />
-                            <TextBlock Grid.Column="1" Text="{Binding OutTime}" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Consolas" FontSize="18" />
-                            <TextBlock Grid.Row="1" Text="OFF" Margin="0,14,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="17" FontWeight="Bold" />
-                            <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,14,0,0" Text="{Binding OffTime}" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Consolas" FontSize="18" />
-                            <TextBlock Grid.Row="2" Text="ON" Margin="0,14,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="17" FontWeight="Bold" />
-                            <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,14,0,0" Text="{Binding OnTime}" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Consolas" FontSize="18" />
-                            <TextBlock Grid.Row="3" Text="IN" Margin="0,14,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="17" FontWeight="Bold" />
-                            <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,14,0,0" Text="{Binding InTime}" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Consolas" FontSize="18" />
-                        </Grid>
-
-                        <Border Height="1" Background="{StaticResource DividerBrush}" Margin="0,28,0,22" />
-
-                        <TextBlock Text="PHASE RAIL" Style="{StaticResource SectionLabelStyle}" />
-                        <ItemsControl ItemsSource="{Binding PhasePills}" Margin="0,18,0,0">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <WrapPanel ItemWidth="74" ItemHeight="36" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type model:PhasePillModel}">
-                                    <Border Width="64"
-                                            Height="30"
-                                            Margin="0,0,8,10"
-                                            CornerRadius="15">
-                                        <Border.Style>
-                                            <Style TargetType="Border">
-                                                <Setter Property="Background" Value="#D7DED5" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                        <Setter Property="Background" Value="{StaticResource AmberBrush}" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
-                                        <TextBlock Text="{Binding Label}"
-                                                   VerticalAlignment="Center"
-                                                   HorizontalAlignment="Center"
-                                                   Foreground="#3C525D"
-                                                   FontSize="13"
-                                                   FontWeight="Bold" />
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </Border>
-
-                <Grid Grid.Column="2" Grid.ColumnSpan="3">
-                    <Grid Visibility="{Binding IsDashboardVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="710" />
-                            <ColumnDefinition Width="24" />
-                            <ColumnDefinition Width="298" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="434" />
-                            <RowDefinition Height="24" />
-                            <RowDefinition Height="240" />
-                        </Grid.RowDefinitions>
-
-                        <Border Grid.Column="0" Background="{StaticResource HeroBrush}" CornerRadius="28" Padding="28" Grid.RowSpan="1">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Text="LIVE OPS BOARD" Foreground="#9CC7CF" FontSize="13" FontWeight="Bold" />
-                                <TextBlock Grid.Row="1" Text="{Binding PhaseTitle}" Foreground="#F1F6F4" FontSize="34" FontWeight="Bold" Margin="0,14,0,0" />
-                                <TextBlock Grid.Row="2" Text="{Binding PhaseSubtitle}" Foreground="#83A4AE" FontSize="16" Margin="0,10,0,0" TextWrapping="Wrap" />
-                                <TextBlock Grid.Row="2" Text="{Binding PhaseStatusLine}" Foreground="#83A4AE" FontSize="15" Margin="0,34,0,0" TextWrapping="Wrap" />
-
-                                <Border Grid.Row="3" Margin="0,22,0,0" Background="#0C1D25" BorderBrush="#2E4C59" BorderThickness="2" CornerRadius="26">
-                                    <Grid Margin="28,24,28,22">
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="*" />
-                                        </Grid.RowDefinitions>
-                                        <TextBlock Text="PHASE GRID" Foreground="#8FB3BE" FontSize="13" FontWeight="Bold" />
-                                        <ItemsControl Grid.Row="1" ItemsSource="{Binding MetricTiles}" Margin="0,16,0,0">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <WrapPanel Orientation="Horizontal" ItemWidth="248" ItemHeight="56" />
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate DataType="{x:Type model:MetricTileModel}">
-                                                    <Border Width="220"
-                                                            Height="40"
-                                                            Background="#16303D"
-                                                            Padding="16,8"
-                                                            Margin="0,0,22,16">
-                                                        <Border.Style>
-                                                            <Style TargetType="Border" BasedOn="{StaticResource MetricCardStyle}">
-                                                                <Setter Property="Background" Value="#16303D" />
-                                                                <Setter Property="BorderBrush" Value="Transparent" />
-                                                                <Setter Property="BorderThickness" Value="0" />
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsAlert}" Value="True">
-                                                                        <Setter Property="Background" Value="#22333B" />
-                                                                        <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
-                                                                        <Setter Property="BorderThickness" Value="2" />
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Border.Style>
-                                                        <Grid>
-                                                            <Grid.RowDefinitions>
-                                                                <RowDefinition Height="Auto" />
-                                                                <RowDefinition Height="Auto" />
-                                                            </Grid.RowDefinitions>
-                                                            <TextBlock Text="{Binding Label}" Foreground="#7EA4AF" FontSize="12" FontWeight="Bold" />
-                                                            <TextBlock Grid.Row="1" Text="{Binding Value}" Foreground="#F0F6F3" FontSize="27" FontWeight="Bold" />
-                                                        </Grid>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </Grid>
-                                </Border>
-
-                                <ItemsControl Grid.Row="4" ItemsSource="{Binding StatusChips}" Margin="0,16,0,0">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Background="#213B49" CornerRadius="17" Padding="22,8" Margin="0,0,12,0">
-                                                <TextBlock Text="{Binding}" Foreground="#E3F3F3" FontSize="14" FontWeight="Bold" />
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </Grid>
-                        </Border>
-
-                        <Border Grid.Row="2" Grid.Column="0" Background="#F4F6F0" CornerRadius="28" Padding="28">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" />
-                                </Grid.RowDefinitions>
-                                <TextBlock Text="SCOREBOARD" Foreground="{StaticResource TextMutedBrush}" FontSize="13" FontWeight="Bold" />
-                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,14,0,0">
-                                    <TextBlock Text="{Binding ScoreText}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="48" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding GradeText}" Foreground="#37515C" FontSize="28" FontWeight="Bold" Margin="14,14,0,0" />
-                                </StackPanel>
-                                <TextBlock Grid.Row="1" Text="{Binding ScoreSummary}" Margin="0,70,0,0" Foreground="#56686E" FontSize="16" TextWrapping="Wrap" />
-
-                                <Grid Grid.Row="2" Margin="0,18,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="306" />
-                                        <ColumnDefinition Width="24" />
-                                        <ColumnDefinition Width="330" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <Border Background="#FFFFFF" CornerRadius="20" Padding="22">
-                                        <StackPanel>
-                                            <TextBlock Text="SECTION SCORES" Style="{StaticResource SectionLabelStyle}" />
-                                            <ItemsControl ItemsSource="{Binding PrimaryScoreRows}" Margin="0,16,0,0">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate DataType="{x:Type model:ScoreRowModel}">
-                                                        <Grid Margin="0,0,0,14">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="70" />
-                                                                <ColumnDefinition Width="112" />
-                                                                <ColumnDefinition Width="*" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding Label}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="16" FontWeight="Bold" />
-                                                            <Grid Grid.Column="1" Margin="10,8,0,0" Height="8" Width="112" HorizontalAlignment="Left">
-                                                                <Border Background="#D9DFD6" CornerRadius="4" />
-                                                                <Border Background="{Binding FillBrush}" CornerRadius="4" Width="{Binding FillWidth}" HorizontalAlignment="Left" />
-                                                            </Grid>
-                                                            <TextBlock Grid.Column="2" Text="{Binding ScoreText}" HorizontalAlignment="Right" Foreground="{StaticResource TextPrimaryBrush}" FontSize="15" FontWeight="Bold" />
-                                                        </Grid>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <Border Grid.Column="2" Background="#FFFFFF" CornerRadius="20" Padding="22">
-                                        <StackPanel>
-                                            <TextBlock Text="APPROACH AND LANDING" Style="{StaticResource SectionLabelStyle}" />
-                                            <ItemsControl ItemsSource="{Binding SecondaryScoreRows}" Margin="0,16,0,0">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate DataType="{x:Type model:ScoreRowModel}">
-                                                        <Grid Margin="0,0,0,14">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="86" />
-                                                                <ColumnDefinition Width="116" />
-                                                                <ColumnDefinition Width="*" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding Label}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="16" FontWeight="Bold" />
-                                                            <Grid Grid.Column="1" Margin="10,8,0,0" Height="8" Width="116" HorizontalAlignment="Left">
-                                                                <Border Background="#D9DFD6" CornerRadius="4" />
-                                                                <Border Background="{Binding FillBrush}" CornerRadius="4" Width="{Binding FillWidth}" HorizontalAlignment="Left" />
-                                                            </Grid>
-                                                            <TextBlock Grid.Column="2" Text="{Binding ScoreText}" HorizontalAlignment="Right" Foreground="{StaticResource TextPrimaryBrush}" FontSize="15" FontWeight="Bold" />
-                                                        </Grid>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </Border>
-                                </Grid>
-                            </Grid>
-                        </Border>
-
-                        <Grid Grid.Column="2" Grid.RowSpan="3">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="116" />
-                                <RowDefinition Height="18" />
-                                <RowDefinition Height="116" />
-                                <RowDefinition Height="18" />
-                                <RowDefinition Height="156" />
-                                <RowDefinition Height="18" />
-                                <RowDefinition Height="160" />
-                            </Grid.RowDefinitions>
-
-                            <Border Background="#FFF2DF" BorderBrush="#F1A45E" BorderThickness="1" CornerRadius="20" Padding="22">
-                                <StackPanel>
-                                    <TextBlock Text="APPROACH CHECK" Foreground="#A36122" FontSize="13" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding AlertPrimaryTitle}" Margin="0,14,0,0" Foreground="#182D37" FontSize="24" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding AlertPrimaryBody}" Margin="0,12,0,0" Foreground="#6C5B48" FontSize="15" TextWrapping="Wrap" />
-                                </StackPanel>
-                            </Border>
-
-                            <Border Grid.Row="2" Background="#FFE7E3" BorderBrush="#D4625A" BorderThickness="1" CornerRadius="20" Padding="22">
-                                <StackPanel>
-                                    <TextBlock Text="SPEED EVENT" Foreground="#B3473E" FontSize="13" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding AlertSecondaryTitle}" Margin="0,14,0,0" Foreground="#182D37" FontSize="24" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding AlertSecondaryBody}" Margin="0,12,0,0" Foreground="#715350" FontSize="15" TextWrapping="Wrap" />
-                                </StackPanel>
-                            </Border>
-
-                            <Border Grid.Row="4" Background="#EAF7F4" BorderBrush="#57D0C0" BorderThickness="1" CornerRadius="20" Padding="22">
-                                <StackPanel>
-                                    <TextBlock Text="DISPATCH" Foreground="#2B7D6D" FontSize="13" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding DispatchTitle}" Margin="0,14,0,0" Foreground="#182D37" FontSize="22" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding DispatchBody}" Margin="0,12,0,16" Foreground="#4A6B71" FontSize="15" TextWrapping="Wrap" />
-                                    <Button Content="Open ACARS" Width="130" HorizontalAlignment="Left" Style="{StaticResource ShellActionButtonStyle}" />
-                                </StackPanel>
-                            </Border>
-
-                            <Border Grid.Row="6" Background="#FBFCF8" CornerRadius="20" Padding="22">
-                                <StackPanel>
-                                    <TextBlock Text="SESSION HEALTH" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding SessionHealthTitle}" Margin="0,14,0,0" Foreground="#182D37" FontSize="20" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding SessionHealthLine1}" Margin="0,12,0,0" Foreground="#55676D" FontSize="15" />
-                                    <TextBlock Text="{Binding SessionHealthLine2}" Margin="0,8,0,0" Foreground="#55676D" FontSize="15" />
-                                    <TextBlock Text="{Binding SessionHealthLine3}" Margin="0,8,0,0" Foreground="#55676D" FontSize="15" TextWrapping="Wrap" />
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-                    </Grid>
-
-                    <Border Grid.Column="0" Grid.ColumnSpan="3" Background="#F4F6F0" CornerRadius="28" Padding="28"
-                            Visibility="{Binding IsReviewVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <!-- Phase hero -->
+                    <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="22,18">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="6" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <TextBlock Text="POST-FLIGHT REVIEW" Foreground="{StaticResource TextMutedBrush}" FontSize="13" FontWeight="Bold" />
-                            <TextBlock Grid.Row="1" Text="{Binding ReviewSummary}" Margin="0,14,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="18" FontWeight="SemiBold" />
-                            <TextBlock Grid.Row="1" Text="{Binding ReviewLandingMetrics}" Margin="0,46,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" />
-                            <ItemsControl Grid.Row="2" ItemsSource="{Binding ReviewScoreRows}" Margin="0,28,0,0">
+
+                            <TextBlock Grid.Row="0"
+                                       Text="CURRENT PHASE"
+                                       Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Grid.Row="1"
+                                       Text="{Binding PhaseTitle}"
+                                       FontSize="32"
+                                       FontWeight="Black"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       Margin="0,6,0,0" />
+                            <TextBlock Grid.Row="2"
+                                       Text="{Binding PhaseSubtitle}"
+                                       FontSize="13"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Margin="0,4,0,0"
+                                       TextWrapping="Wrap" />
+
+                            <!-- Phase progress strip -->
+                            <ItemsControl Grid.Row="4" ItemsSource="{Binding PhasePills}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type model:PhasePillModel}">
+                                        <Border Height="4" Width="60" Margin="0,0,3,0" CornerRadius="2">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="{StaticResource BgMutedBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                            <Setter Property="Background" Value="{StaticResource AccentOrangeBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsDone}" Value="True">
+                                                            <Setter Property="Background" Value="{StaticResource AccentGreenBrush}" />
+                                                            <Setter Property="Opacity" Value="0.5" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- Phase labels -->
+                            <ItemsControl Grid.Row="6" ItemsSource="{Binding PhasePills}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type model:PhasePillModel}">
+                                        <TextBlock Text="{Binding Label}"
+                                                   Width="63"
+                                                   FontSize="9"
+                                                   FontWeight="Bold"
+                                                   TextAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                            <Setter Property="Foreground" Value="{StaticResource AccentOrangeBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsDone}" Value="True">
+                                                            <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}" />
+                                                            <Setter Property="Opacity" Value="0.6" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                        </Grid>
+                    </Border>
+
+                    <!-- Key metrics (3 large cards) -->
+                    <ItemsControl Grid.Row="2" ItemsSource="{Binding MetricTiles}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Rows="1" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type model:MetricTileModel}">
+                                <Border Margin="0,0,10,0" CornerRadius="14" Padding="16,14">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background"      Value="{StaticResource BgSurfaceBrush}" />
+                                            <Setter Property="BorderBrush"     Value="{StaticResource BorderDefaultBrush}" />
+                                            <Setter Property="BorderThickness" Value="1" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsAlert}" Value="True">
+                                                    <Setter Property="Background"  Value="#170a0a" />
+                                                    <Setter Property="BorderBrush" Value="#4d1010" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Label}"
+                                                   Style="{StaticResource SectionLabelStyle}"
+                                                   Margin="0,0,0,8" />
+                                        <TextBlock Text="{Binding Value}"
+                                                   FontSize="30"
+                                                   FontWeight="Black">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsAlert}" Value="True">
+                                                            <Setter Property="Foreground" Value="{StaticResource AccentRedBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding Unit}"
+                                                   FontSize="12"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   Margin="0,4,0,0" />
+                                        <TextBlock Text="{Binding Hint}"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource TextMutedBrush}"
+                                                   Margin="0,5,0,0"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Secondary metrics (5 smaller tiles) -->
+                    <ItemsControl Grid.Row="4" ItemsSource="{Binding StatusChips}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Rows="1" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource InnerCardStyle}" Margin="0,0,8,0" Padding="12,10">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Label}"
+                                                   Style="{StaticResource SectionLabelStyle}"
+                                                   Margin="0,0,0,5" />
+                                        <TextBlock Text="{Binding Value}"
+                                                   FontSize="16"
+                                                   FontWeight="Bold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Lights + parking brake strip -->
+                    <Border Grid.Row="6"
+                            Style="{StaticResource CardStyle}"
+                            Padding="14,10">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="LIGHTS"
+                                       Style="{StaticResource SectionLabelStyle}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,14,0" />
+
+                            <!-- Beacon -->
+                            <Border Style="{StaticResource StatusPillStyle}">
+                                <Border.Style>
+                                    <Style TargetType="Border" BasedOn="{StaticResource StatusPillStyle}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding BeaconLightOn}" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource LightRedBgBrush}" />
+                                                <Setter Property="BorderBrush" Value="{StaticResource AccentRedBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,5,0">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="{StaticResource TextMutedBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding BeaconLightOn}" Value="True">
+                                                        <Setter Property="Fill" Value="{StaticResource AccentRedBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBlock Text="Beacon" FontSize="11" FontWeight="SemiBold">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding BeaconLightOn}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource AccentRedBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Taxi -->
+                            <Border Style="{StaticResource StatusPillStyle}">
+                                <Border.Style>
+                                    <Style TargetType="Border" BasedOn="{StaticResource StatusPillStyle}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding TaxiLightOn}" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource LightWhiteBgBrush}" />
+                                                <Setter Property="BorderBrush" Value="#4a5568" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,5,0">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="{StaticResource TextMutedBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding TaxiLightOn}" Value="True">
+                                                        <Setter Property="Fill" Value="{StaticResource TextPrimaryBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBlock Text="Taxi" FontSize="11" FontWeight="SemiBold">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding TaxiLightOn}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Strobe -->
+                            <Border Style="{StaticResource StatusPillStyle}">
+                                <Border.Style>
+                                    <Style TargetType="Border" BasedOn="{StaticResource StatusPillStyle}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding StrobeLightOn}" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource LightWhiteBgBrush}" />
+                                                <Setter Property="BorderBrush" Value="#4a5568" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,5,0">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="{StaticResource TextMutedBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding StrobeLightOn}" Value="True">
+                                                        <Setter Property="Fill" Value="{StaticResource TextPrimaryBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBlock Text="Strobe" FontSize="11" FontWeight="SemiBold">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding StrobeLightOn}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Landing -->
+                            <Border>
+                                <Border.Style>
+                                    <Style TargetType="Border" BasedOn="{StaticResource StatusPillStyle}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding LandingLightOn}" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource LightWhiteBgBrush}" />
+                                                <Setter Property="BorderBrush" Value="#4a5568" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding LandingLightViolation}" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource LightAmberBgBrush}" />
+                                                <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,5,0">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="{StaticResource TextMutedBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding LandingLightOn}" Value="True">
+                                                        <Setter Property="Fill" Value="{StaticResource TextPrimaryBrush}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding LandingLightViolation}" Value="True">
+                                                        <Setter Property="Fill" Value="{StaticResource AccentAmberBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBlock FontSize="11" FontWeight="SemiBold">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text"       Value="Landing" />
+                                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding LandingLightOn}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding LandingLightViolation}" Value="True">
+                                                        <Setter Property="Text"       Value="Landing ⚠" />
+                                                        <Setter Property="Foreground" Value="{StaticResource AccentAmberBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Divider -->
+                            <Border Width="1" Background="{StaticResource BorderDefaultBrush}" Margin="10,3" />
+
+                            <!-- Parking Brake -->
+                            <Border>
+                                <Border.Style>
+                                    <Style TargetType="Border" BasedOn="{StaticResource StatusPillStyle}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ParkingBrakeSet}" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource LightRedBgBrush}" />
+                                                <Setter Property="BorderBrush" Value="{StaticResource AccentRedBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,5,0">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="{StaticResource TextMutedBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ParkingBrakeSet}" Value="True">
+                                                        <Setter Property="Fill" Value="{StaticResource AccentRedBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBlock Text="Park Brake" FontSize="11" FontWeight="SemiBold">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ParkingBrakeSet}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource AccentRedBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+                    </Border>
+
+                </Grid>
+
+                <!-- ── Right column ── -->
+                <Grid Grid.Column="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />  <!-- Alert -->
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="Auto" />  <!-- Score -->
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="Auto" />  <!-- Landing analyzer -->
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="Auto" />  <!-- OOOI -->
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="Auto" />  <!-- Sync health -->
+                    </Grid.RowDefinitions>
+
+                    <!-- Primary alert -->
+                    <Border Grid.Row="0" CornerRadius="14" Padding="16">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background"      Value="{StaticResource AlertAmberBgBrush}" />
+                                <Setter Property="BorderBrush"     Value="{StaticResource AlertAmberBorderBrush}" />
+                                <Setter Property="BorderThickness" Value="1" />
+                            </Style>
+                        </Border.Style>
+                        <StackPanel>
+                            <TextBlock Text="{Binding AlertType}"
+                                       Style="{StaticResource SectionLabelStyle}"
+                                       Foreground="{StaticResource AccentAmberBrush}"
+                                       Margin="0,0,0,8" />
+                            <TextBlock Text="{Binding AlertPrimaryTitle}"
+                                       FontSize="16"
+                                       FontWeight="Bold"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       Margin="0,0,0,6"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding AlertPrimaryBody}"
+                                       FontSize="12"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap"
+                                       LineHeight="18" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Score strip -->
+                    <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="16">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="SCORE" Style="{StaticResource SectionLabelStyle}" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <TextBlock Text="{Binding ScoreText}"
+                                               FontSize="26"
+                                               FontWeight="Black"
+                                               Foreground="{StaticResource TextPrimaryBrush}" />
+                                    <TextBlock Text="{Binding GradeText}"
+                                               FontSize="16"
+                                               FontWeight="Black"
+                                               Foreground="{StaticResource AccentOrangeBrush}"
+                                               Margin="6,6,0,0" />
+                                </StackPanel>
+                            </Grid>
+                            <!-- Score bar -->
+                            <Border Height="6" CornerRadius="3" Background="{StaticResource BgMutedBrush}">
+                                <Border Height="6" CornerRadius="3"
+                                        Background="{StaticResource AccentOrangeBrush}"
+                                        Width="{Binding ScoreBarWidth}"
+                                        HorizontalAlignment="Left" />
+                            </Border>
+                            <!-- Score breakdown rows -->
+                            <ItemsControl ItemsSource="{Binding PrimaryScoreRows}" Margin="0,12,0,0">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate DataType="{x:Type model:ScoreRowModel}">
-                                        <Grid Margin="0,0,0,16">
+                                        <Grid Margin="0,0,0,8">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="140" />
-                                                <ColumnDefinition Width="220" />
                                                 <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="80" />
+                                                <ColumnDefinition Width="44" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="{Binding Label}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="18" FontWeight="Bold" />
-                                            <Grid Grid.Column="1" Margin="16,10,0,0" Height="10" Width="220" HorizontalAlignment="Left">
-                                                <Border Background="#D9DFD6" CornerRadius="5" />
-                                                <Border Background="{Binding FillBrush}" CornerRadius="5" Width="{Binding FillWidth}" HorizontalAlignment="Left" />
-                                            </Grid>
-                                            <TextBlock Grid.Column="2" Text="{Binding ScoreText}" HorizontalAlignment="Right" Foreground="{StaticResource TextPrimaryBrush}" FontSize="16" FontWeight="Bold" />
+                                            <TextBlock Text="{Binding Label}"
+                                                       FontSize="12"
+                                                       FontWeight="Medium"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       VerticalAlignment="Center" />
+                                            <Border Grid.Column="1" Height="4" CornerRadius="2"
+                                                    Background="{StaticResource BgMutedBrush}"
+                                                    VerticalAlignment="Center" Margin="8,0">
+                                                <Border Height="4" CornerRadius="2"
+                                                        Background="{Binding FillBrush}"
+                                                        Width="{Binding FillWidth}"
+                                                        HorizontalAlignment="Left" />
+                                            </Border>
+                                            <TextBlock Grid.Column="2"
+                                                       Text="{Binding ScoreText}"
+                                                       FontSize="11"
+                                                       FontWeight="Bold"
+                                                       Foreground="{StaticResource TextMutedBrush}"
+                                                       HorizontalAlignment="Right"
+                                                       VerticalAlignment="Center" />
                                         </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                        </Grid>
+                        </StackPanel>
                     </Border>
 
-                    <Border Grid.Column="0" Grid.ColumnSpan="3" Background="#F4F6F0" CornerRadius="28" Padding="28"
-                            Visibility="{Binding IsDiagnosticsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <!-- Landing analyzer -->
+                    <Border Grid.Row="4" CornerRadius="14" Padding="16">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background"      Value="{StaticResource BgSurfaceBrush}" />
+                                <Setter Property="BorderBrush"     Value="{StaticResource BorderDefaultBrush}" />
+                                <Setter Property="BorderThickness" Value="1" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding LandingRecorded}" Value="True">
+                                        <Setter Property="BorderBrush" Value="#0d4d26" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel>
+                            <!-- Header row -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="LANDING ANALYZER" Style="{StaticResource SectionLabelStyle}" VerticalAlignment="Center" />
+                                <Border Grid.Column="1" CornerRadius="4" Padding="8,2">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{StaticResource BgMutedBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding LandingRecorded}" Value="True">
+                                                    <Setter Property="Background" Value="#0a170f" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock FontSize="9" FontWeight="Bold" LetterSpacing="1">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text"       Value="Waiting for touchdown" />
+                                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding LandingRecorded}" Value="True">
+                                                        <Setter Property="Text"       Value="RECORDED" />
+                                                        <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Border>
+                            </Grid>
+
+                            <!-- 2-col metric grid -->
+                            <UniformGrid Columns="2" Rows="3">
+                                <Border Style="{StaticResource InnerCardStyle}" Margin="0,0,4,4" Padding="10,8">
+                                    <StackPanel>
+                                        <TextBlock Text="TOUCHDOWN VS" Style="{StaticResource SectionLabelStyle}" Margin="0,0,0,4" />
+                                        <TextBlock Text="{Binding TouchdownVS}" FontSize="18" FontWeight="ExtraBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                                        <TextBlock Text="fpm" FontSize="10" Foreground="{StaticResource TextMutedBrush}" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource InnerCardStyle}" Margin="4,0,0,4" Padding="10,8">
+                                    <StackPanel>
+                                        <TextBlock Text="BANK ANGLE" Style="{StaticResource SectionLabelStyle}" Margin="0,0,0,4" />
+                                        <TextBlock Text="{Binding TouchdownBank}" FontSize="18" FontWeight="ExtraBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                                        <TextBlock Text="degrees" FontSize="10" Foreground="{StaticResource TextMutedBrush}" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource InnerCardStyle}" Margin="0,0,4,4" Padding="10,8">
+                                    <StackPanel>
+                                        <TextBlock Text="IAS" Style="{StaticResource SectionLabelStyle}" Margin="0,0,0,4" />
+                                        <TextBlock Text="{Binding TouchdownIAS}" FontSize="18" FontWeight="ExtraBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                                        <TextBlock Text="knots" FontSize="10" Foreground="{StaticResource TextMutedBrush}" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource InnerCardStyle}" Margin="4,0,0,4" Padding="10,8">
+                                    <StackPanel>
+                                        <TextBlock Text="G-FORCE" Style="{StaticResource SectionLabelStyle}" Margin="0,0,0,4" />
+                                        <TextBlock Text="{Binding TouchdownGForce}" FontSize="18" FontWeight="ExtraBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                                        <TextBlock Text="G" FontSize="10" Foreground="{StaticResource TextMutedBrush}" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource InnerCardStyle}" Margin="0,0,4,0" Padding="10,8">
+                                    <StackPanel>
+                                        <TextBlock Text="PITCH" Style="{StaticResource SectionLabelStyle}" Margin="0,0,0,4" />
+                                        <TextBlock Text="{Binding TouchdownPitch}" FontSize="18" FontWeight="ExtraBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                                        <TextBlock Text="degrees" FontSize="10" Foreground="{StaticResource TextMutedBrush}" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource InnerCardStyle}" Margin="4,0,0,0" Padding="10,8">
+                                    <StackPanel>
+                                        <TextBlock Text="BOUNCES" Style="{StaticResource SectionLabelStyle}" Margin="0,0,0,4" />
+                                        <TextBlock Text="{Binding TouchdownBounces}" FontSize="18" FontWeight="ExtraBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                                        <TextBlock Text=" " FontSize="10" Foreground="{StaticResource TextMutedBrush}" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </Border>
+                            </UniformGrid>
+
+                            <!-- TDZ row -->
+                            <Border Style="{StaticResource InnerCardStyle}" Margin="0,8,0,0" Padding="10,10">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="8" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="TOUCHDOWN ZONE" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding LandingRunway}"
+                                                   FontSize="9" FontWeight="Bold"
+                                                   Foreground="{StaticResource TextMutedBrush}" />
+                                    </Grid>
+                                    <UniformGrid Grid.Row="2" Columns="3">
+                                        <StackPanel>
+                                            <TextBlock Text="FROM THRESHOLD" Style="{StaticResource SectionLabelStyle}" Margin="0,0,0,4" />
+                                            <TextBlock Text="{Binding TdzDistanceFt}" FontSize="15" FontWeight="ExtraBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                                            <TextBlock Text="ft" FontSize="9" Foreground="{StaticResource TextMutedBrush}" Margin="0,2,0,0" />
+                                        </StackPanel>
+                                        <StackPanel>
+                                            <TextBlock Text="CENTERLINE" Style="{StaticResource SectionLabelStyle}" Margin="0,0,0,4" />
+                                            <TextBlock Text="{Binding TdzCrossTrackFt}" FontSize="15" FontWeight="ExtraBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                                            <TextBlock Text="ft off" FontSize="9" Foreground="{StaticResource TextMutedBrush}" Margin="0,2,0,0" />
+                                        </StackPanel>
+                                        <StackPanel>
+                                            <TextBlock Text="TDZ EXCESS" Style="{StaticResource SectionLabelStyle}" Margin="0,0,0,4" />
+                                            <TextBlock Text="{Binding TdzExcessFt}" FontSize="15" FontWeight="ExtraBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                                            <TextBlock Text="ft past 3000" FontSize="9" Foreground="{StaticResource TextMutedBrush}" Margin="0,2,0,0" />
+                                        </StackPanel>
+                                    </UniformGrid>
+                                </Grid>
+                            </Border>
+
+                        </StackPanel>
+                    </Border>
+
+                    <!-- OOOI strip -->
+                    <Border Grid.Row="6" Style="{StaticResource CardStyle}" Padding="14,12">
+                        <UniformGrid Columns="4">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="OUT" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding OutTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="OFF" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding OffTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="ON" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding OnTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="IN" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding InTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </UniformGrid>
+                    </Border>
+
+                    <!-- Sync health -->
+                    <Border Grid.Row="8" Style="{StaticResource InnerCardStyle}" Padding="12,9">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="24" />
-                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Border Background="#FFFFFF" CornerRadius="20" Padding="22">
-                                <StackPanel>
-                                    <TextBlock Text="SIM STATUS" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding DiagnosticsSimState}" Margin="0,14,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                    <TextBlock Text="LAST TELEMETRY" Margin="0,24,0,0" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding DiagnosticsLastTelemetry}" Margin="0,14,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
-                                    <TextBlock Text="RECOVERY" Margin="0,24,0,0" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding DiagnosticsRecoveryState}" Margin="0,14,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
-                                </StackPanel>
-                            </Border>
-                            <Border Grid.Column="2" Background="#FFFFFF" CornerRadius="20" Padding="22">
-                                <StackPanel>
-                                    <TextBlock Text="SYNC" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding DiagnosticsSyncState}" Margin="0,14,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                    <TextBlock Text="SETTINGS FILE" Margin="0,24,0,0" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding DiagnosticsSettingsPath}" Margin="0,14,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
-                                    <TextBlock Text="STORAGE ROOT" Margin="0,24,0,0" Style="{StaticResource SectionLabelStyle}" />
-                                    <TextBlock Text="{Binding DiagnosticsStoragePath}" Margin="0,14,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="16" TextWrapping="Wrap" />
-                                </StackPanel>
-                            </Border>
+                            <TextBlock Text="API Sync"
+                                       FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding SyncStatusText}"
+                                       FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{StaticResource AccentGreenBrush}"
+                                       VerticalAlignment="Center" />
                         </Grid>
                     </Border>
 
-                    <Border Grid.Column="0" Grid.ColumnSpan="3" Background="#F4F6F0" CornerRadius="28" Padding="28"
-                            Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="24" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="API &amp; SYNC" Style="{StaticResource SectionLabelStyle}" />
-                                <TextBlock Text="Base URL" Margin="0,14,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBox Text="{Binding SettingsEditor.BaseUrl, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                                <TextBlock Text="Sim Sessions Path" Margin="0,16,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBox Text="{Binding SettingsEditor.SimSessionsPath, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                                <TextBlock Text="Pilot API Token" Margin="0,16,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBox Text="{Binding SettingsEditor.PilotApiToken, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                                <TextBlock Text="Tracker Version" Margin="0,16,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBox Text="{Binding SettingsEditor.TrackerVersion, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="STORAGE" Style="{StaticResource SectionLabelStyle}" />
-                                <TextBlock Text="Storage Root Directory" Margin="0,14,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBox Text="{Binding SettingsEditor.StorageRootDirectory, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                                <TextBlock Text="Background Sync Interval (seconds)" Margin="0,16,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBox Text="{Binding SettingsEditor.BackgroundSyncIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                                <TextBlock Text="Max Sessions Per Pass" Margin="0,16,0,6" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBox Text="{Binding SettingsEditor.MaxSessionsPerPass, UpdateSourceTrigger=PropertyChanged}" Padding="12,8" />
-                                <CheckBox Content="Enable background sync"
-                                          IsChecked="{Binding SettingsEditor.BackgroundSyncEnabled}"
-                                          Margin="0,18,0,0"
-                                          FontSize="15"
-                                          Foreground="{StaticResource TextPrimaryBrush}" />
-                                <StackPanel Orientation="Horizontal" Margin="0,24,0,0">
-                                    <Button Content="Save Settings" Command="{Binding SaveSettingsCommand}" Style="{StaticResource ShellActionButtonStyle}" />
-                                    <Button Content="Retry Sync" Command="{Binding RetrySyncCommand}" Style="{StaticResource ShellActionButtonStyle}" />
-                                </StackPanel>
-                                <TextBlock Text="{Binding SettingsSaveStatus}" Margin="0,18,0,0" Foreground="{StaticResource TextMutedBrush}" FontSize="14" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Grid>
-                    </Border>
                 </Grid>
             </Grid>
 
-            <Border Grid.Row="2" Background="#DEE4DB" CornerRadius="17">
-                <StackPanel Orientation="Horizontal" Margin="16,0">
-                    <StackPanel Orientation="Vertical" Margin="0,0,12,0">
-                        <Button Content="Dispatch" Command="{Binding ShowDashboardCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />
-                        <Border Height="2" Width="46" Background="{StaticResource AccentBrush}" Visibility="{Binding DashboardNavUnderlineVisibility}" HorizontalAlignment="Center" />
+            <!-- ── Post-Flight Review ── -->
+            <Border Background="{StaticResource BgSurfaceBrush}"
+                    BorderBrush="{StaticResource BorderDefaultBrush}"
+                    BorderThickness="1" CornerRadius="16" Padding="28"
+                    Visibility="{Binding IsReviewVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="POST-FLIGHT REVIEW" Style="{StaticResource SectionLabelStyle}" />
+                    <TextBlock Grid.Row="1" Text="{Binding ReviewSummary}"
+                               Margin="0,12,0,0" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}" />
+                    <TextBlock Grid.Row="1" Text="{Binding ReviewLandingMetrics}"
+                               Margin="0,40,0,0" FontSize="13"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+                    <ItemsControl Grid.Row="2" ItemsSource="{Binding ReviewScoreRows}" Margin="0,24,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type model:ScoreRowModel}">
+                                <Grid Margin="0,0,0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="220" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Label}"
+                                               FontSize="15" FontWeight="Bold"
+                                               Foreground="{StaticResource TextPrimaryBrush}" />
+                                    <Border Grid.Column="1" Height="6" CornerRadius="3"
+                                            Background="{StaticResource BgMutedBrush}"
+                                            VerticalAlignment="Center" Margin="12,0,0,0">
+                                        <Border Height="6" CornerRadius="3"
+                                                Background="{Binding FillBrush}"
+                                                Width="{Binding FillWidth}"
+                                                HorizontalAlignment="Left" />
+                                    </Border>
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding ScoreText}"
+                                               HorizontalAlignment="Right"
+                                               FontSize="14" FontWeight="Bold"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Grid>
+            </Border>
+
+            <!-- ── Diagnostics ── -->
+            <Border Background="{StaticResource BgSurfaceBrush}"
+                    BorderBrush="{StaticResource BorderDefaultBrush}"
+                    BorderThickness="1" CornerRadius="16" Padding="28"
+                    Visibility="{Binding IsDiagnosticsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="20" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource InnerCardStyle}" Padding="20">
+                        <StackPanel>
+                            <TextBlock Text="SIM STATUS" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Text="{Binding DiagnosticsSimState}" Margin="0,12,0,0" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                            <TextBlock Text="LAST TELEMETRY" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Text="{Binding DiagnosticsLastTelemetry}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                            <TextBlock Text="RECOVERY" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Text="{Binding DiagnosticsRecoveryState}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource InnerCardStyle}" Padding="20">
+                        <StackPanel>
+                            <TextBlock Text="SYNC" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Text="{Binding DiagnosticsSyncState}" Margin="0,12,0,0" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                            <TextBlock Text="SETTINGS FILE" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Text="{Binding DiagnosticsSettingsPath}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                            <TextBlock Text="STORAGE ROOT" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Text="{Binding DiagnosticsStoragePath}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- ── Settings ── -->
+            <Border Background="{StaticResource BgSurfaceBrush}"
+                    BorderBrush="{StaticResource BorderDefaultBrush}"
+                    BorderThickness="1" CornerRadius="16" Padding="28"
+                    Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="20" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="API &amp; SYNC" Style="{StaticResource SectionLabelStyle}" />
+                        <TextBlock Text="Base URL" Margin="0,14,0,6" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding SettingsEditor.BaseUrl, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="Sim Sessions Path" Margin="0,12,0,6" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding SettingsEditor.SimSessionsPath, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="Pilot API Token" Margin="0,12,0,6" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding SettingsEditor.PilotApiToken, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="Tracker Version" Margin="0,12,0,6" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding SettingsEditor.TrackerVersion, UpdateSourceTrigger=PropertyChanged}" />
                     </StackPanel>
-                    <StackPanel Orientation="Vertical" Margin="0,0,12,0">
-                        <Button Content="PIREP Draft" Command="{Binding ShowReviewCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />
-                        <Border Height="2" Width="60" Background="{StaticResource AccentBrush}" Visibility="{Binding ReviewNavUnderlineVisibility}" HorizontalAlignment="Center" />
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="STORAGE" Style="{StaticResource SectionLabelStyle}" />
+                        <TextBlock Text="Storage Root Directory" Margin="0,14,0,6" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding SettingsEditor.StorageRootDirectory, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="Background Sync Interval (seconds)" Margin="0,12,0,6" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding SettingsEditor.BackgroundSyncIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="Max Sessions Per Pass" Margin="0,12,0,6" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding SettingsEditor.MaxSessionsPerPass, UpdateSourceTrigger=PropertyChanged}" />
+                        <CheckBox Content="Enable background sync"
+                                  IsChecked="{Binding SettingsEditor.BackgroundSyncEnabled}"
+                                  Margin="0,16,0,0" />
+                        <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
+                            <Button Content="Save Settings" Command="{Binding SaveSettingsCommand}" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,10,0" />
+                            <Button Content="Retry Sync" Command="{Binding RetrySyncCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding SettingsSaveStatus}"
+                                   Margin="0,14,0,0" FontSize="12"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" />
                     </StackPanel>
-                    <StackPanel Orientation="Vertical" Margin="0,0,12,0">
-                        <Button Content="Diagnostics" Command="{Binding ShowDiagnosticsCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />
-                        <Border Height="2" Width="64" Background="{StaticResource AccentBrush}" Visibility="{Binding DiagnosticsNavUnderlineVisibility}" HorizontalAlignment="Center" />
-                    </StackPanel>
-                    <StackPanel Orientation="Vertical" Margin="0,0,12,0">
-                        <Button Content="Settings" Command="{Binding ShowSettingsCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />
-                        <Border Height="2" Width="48" Background="{StaticResource AccentBrush}" Visibility="{Binding SettingsNavUnderlineVisibility}" HorizontalAlignment="Center" />
-                    </StackPanel>
-                    <Button Content="Retry Sync" Command="{Binding RetrySyncCommand}" Background="Transparent" BorderThickness="0" Foreground="#5A6A70" FontWeight="Bold" Padding="10,6" />
-                </StackPanel>
+                </Grid>
             </Border>
         </Grid>
-    </Border>
+
+        <!-- ═══════════════════════════════════════════════════════
+             ROW 4 — NAV FOOTER
+        ═══════════════════════════════════════════════════════ -->
+        <Border Grid.Row="4"
+                Background="{StaticResource BgSurfaceBrush}"
+                BorderBrush="{StaticResource BorderDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="12">
+            <Grid>
+                <StackPanel Orientation="Horizontal" Margin="10,0" VerticalAlignment="Stretch">
+
+                    <StackPanel Orientation="Vertical">
+                        <Button Content="Dispatch" Command="{Binding ShowDashboardCommand}"
+                                Style="{StaticResource NavButtonStyle}"
+                                Height="42" />
+                        <Border Height="2" CornerRadius="1" Background="{StaticResource AccentOrangeBrush}"
+                                Visibility="{Binding DashboardNavUnderlineVisibility}"
+                                Margin="10,0" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Vertical">
+                        <Button Content="PIREP Draft" Command="{Binding ShowReviewCommand}"
+                                Style="{StaticResource NavButtonStyle}" Height="42" />
+                        <Border Height="2" CornerRadius="1" Background="{StaticResource AccentOrangeBrush}"
+                                Visibility="{Binding ReviewNavUnderlineVisibility}"
+                                Margin="10,0" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Vertical">
+                        <Button Content="Diagnostics" Command="{Binding ShowDiagnosticsCommand}"
+                                Style="{StaticResource NavButtonStyle}" Height="42" />
+                        <Border Height="2" CornerRadius="1" Background="{StaticResource AccentOrangeBrush}"
+                                Visibility="{Binding DiagnosticsNavUnderlineVisibility}"
+                                Margin="10,0" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Vertical">
+                        <Button Content="Settings" Command="{Binding ShowSettingsCommand}"
+                                Style="{StaticResource NavButtonStyle}" Height="42" />
+                        <Border Height="2" CornerRadius="1" Background="{StaticResource AccentOrangeBrush}"
+                                Visibility="{Binding SettingsNavUnderlineVisibility}"
+                                Margin="10,0" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Retry sync — right aligned -->
+                <Button Content="↻ Retry Sync"
+                        Command="{Binding RetrySyncCommand}"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Margin="0,0,14,0" />
+            </Grid>
+        </Border>
+
+    </Grid>
 </Window>
