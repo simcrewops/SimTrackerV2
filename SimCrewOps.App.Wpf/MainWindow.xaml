@@ -349,7 +349,7 @@
                                 </Style>
                             </TextBlock.Style>
                             <Run Text="ASSIGNED  " Foreground="{StaticResource TextSubtleBrush}" FontWeight="SemiBold" />
-                            <Run Text="{Binding AssignedFlightText}" Foreground="{StaticResource AccentSoftBrush}" />
+                            <Run Text="{Binding AssignedFlightText, Mode=OneWay}" Foreground="{StaticResource AccentSoftBrush}" />
                         </TextBlock>
                     </StackPanel>
 
