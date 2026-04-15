@@ -42,16 +42,23 @@ public partial class MainWindow : Window
 
     private void EnsureLiveMapLoaded(MainWindowViewModel vm)
     {
-        // Already initialised (success or failure) — nothing to do.
-        if (_webViewInitialized || _webViewFailed)
+        // No token configured — show a "go to Settings" prompt, don't touch WebView2.
+        if (vm.LiveMapUri is null)
         {
-            // If it succeeded before but the URI changed (e.g. user saved new API token),
-            // navigate again.
-            if (_webViewInitialized && vm.LiveMapUri is { } uri)
-                _ = NavigateAsync(uri);
-
+            ShowWebViewFallback(null);
             return;
         }
+
+        // Already initialised successfully — navigate if the URI changed (e.g. token just saved).
+        if (_webViewInitialized)
+        {
+            _ = NavigateAsync(vm.LiveMapUri);
+            return;
+        }
+
+        // Already failed — don't retry.
+        if (_webViewFailed)
+            return;
 
         _ = InitWebViewAsync(vm);
     }
@@ -87,14 +94,16 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ShowWebViewFallback(Exception ex)
+    private void ShowWebViewFallback(Exception? ex)
     {
         LiveMapWebView.Visibility = Visibility.Collapsed;
         LiveMapFallback.Visibility = Visibility.Visible;
 
-        LiveMapFallbackDetail.Text = ex is WebView2RuntimeNotFoundException
-            ? "The Microsoft Edge WebView2 Runtime is not installed on this machine.\n\n" +
-              "Download it from microsoft.com/edge/webview2 then relaunch the tracker."
-            : $"WebView2 failed to initialise: {ex.Message}";
+        LiveMapFallbackDetail.Text = ex is null
+            ? "Configure your API token in Settings — the Live Map will load automatically."
+            : ex is WebView2RuntimeNotFoundException
+                ? "The Microsoft Edge WebView2 Runtime is not installed on this machine.\n\n" +
+                  "Download it from microsoft.com/edge/webview2 then relaunch the tracker."
+                : $"WebView2 failed to initialise: {ex.Message}";
     }
 }

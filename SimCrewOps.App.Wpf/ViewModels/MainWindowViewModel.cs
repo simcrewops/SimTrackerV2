@@ -943,12 +943,14 @@ public sealed class MainWindowViewModel : ObservableObject
         DiagnosticsSettingsPath = snapshot.SettingsFilePath;
         DiagnosticsStoragePath = snapshot.Settings.Storage.RootDirectory;
 
-        // Build the embedded map URL from base URL + tracker API token
+        // Build the embedded map URL from base URL + tracker API token.
+        // Keep null when no token is configured — WebView2 shows a "configure your token" message
+        // rather than navigating to /tracker-map with no auth (which returns 404).
         var mapToken = snapshot.Settings.Api.PilotApiToken;
         var mapBase  = snapshot.Settings.Api.BaseUri.ToString().TrimEnd('/');
-        LiveMapUri = !string.IsNullOrWhiteSpace(mapToken)
-            ? new Uri($"{mapBase}/tracker-map?token={Uri.EscapeDataString(mapToken)}")
-            : new Uri($"{mapBase}/tracker-map");
+        LiveMapUri = string.IsNullOrWhiteSpace(mapToken)
+            ? null
+            : new Uri($"{mapBase}/tracker-map?token={Uri.EscapeDataString(mapToken)}");
         DiagnosticsLastTelemetry = telemetry is null
             ? "No telemetry received yet"
             : $"IAS {telemetry.IndicatedAirspeedKnots:0} • VS {telemetry.VerticalSpeedFpm:0} • AGL {telemetry.AltitudeAglFeet:0}";
