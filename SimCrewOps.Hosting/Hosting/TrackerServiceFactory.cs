@@ -1,5 +1,6 @@
 using SimCrewOps.Hosting.Models;
 using SimCrewOps.Persistence.Persistence;
+using SimCrewOps.Runtime.Runtime;
 using SimCrewOps.Sync.Sync;
 
 namespace SimCrewOps.Hosting.Hosting;
@@ -11,6 +12,52 @@ public sealed class TrackerServiceFactory
     public TrackerServiceFactory(Func<HttpClient>? httpClientFactory = null)
     {
         _httpClientFactory = httpClientFactory ?? (() => new HttpClient());
+    }
+
+    /// <summary>
+    /// Creates just the active flight fetcher from the given settings.
+    /// Returns null if no API token is configured.
+    /// Used for hot-reloading after settings change without restarting the app.
+    /// </summary>
+    public IActiveFlightFetcher? CreateActiveFlightFetcher(TrackerApiSettings apiSettings)
+    {
+        ArgumentNullException.ThrowIfNull(apiSettings);
+
+        if (string.IsNullOrWhiteSpace(apiSettings.PilotApiToken))
+            return null;
+
+        return new HttpActiveFlightFetcher(
+            _httpClientFactory(),
+            new SimCrewOpsApiUploaderOptions
+            {
+                BaseUri = apiSettings.BaseUri,
+                SimSessionsPath = apiSettings.SimSessionsPath,
+                PilotApiToken = apiSettings.PilotApiToken!,
+                TrackerVersion = apiSettings.TrackerVersion,
+            });
+    }
+
+    /// <summary>
+    /// Creates just the live position uploader from the given settings.
+    /// Returns null if no API token is configured.
+    /// Used for hot-reloading after settings change without restarting the app.
+    /// </summary>
+    public ILivePositionUploader? CreateLivePositionUploader(TrackerApiSettings apiSettings)
+    {
+        ArgumentNullException.ThrowIfNull(apiSettings);
+
+        if (string.IsNullOrWhiteSpace(apiSettings.PilotApiToken))
+            return null;
+
+        return new HttpLivePositionUploader(
+            _httpClientFactory(),
+            new SimCrewOpsApiUploaderOptions
+            {
+                BaseUri = apiSettings.BaseUri,
+                SimSessionsPath = apiSettings.SimSessionsPath,
+                PilotApiToken = apiSettings.PilotApiToken!,
+                TrackerVersion = apiSettings.TrackerVersion,
+            });
     }
 
     public TrackerServiceStack Create(TrackerAppSettings settings)
@@ -36,6 +83,25 @@ public sealed class TrackerServiceFactory
                     TrackerVersion = settings.Api.TrackerVersion,
                 });
 
+        var activeFlightFetcher = string.IsNullOrWhiteSpace(settings.Api.PilotApiToken)
+            ? null
+            : new HttpActiveFlightFetcher(
+                _httpClientFactory(),
+                new SimCrewOpsApiUploaderOptions
+                {
+                    BaseUri = settings.Api.BaseUri,
+                    SimSessionsPath = settings.Api.SimSessionsPath,
+                    PilotApiToken = settings.Api.PilotApiToken!,
+                    TrackerVersion = settings.Api.TrackerVersion,
+                });
+
+        var liveMapService = string.IsNullOrWhiteSpace(settings.Api.PilotApiToken)
+            ? null
+            : new LiveMapService(
+                _httpClientFactory(),
+                settings.Api.BaseUri,
+                settings.Api.PilotApiToken);
+
         if (!settings.BackgroundSync.Enabled || string.IsNullOrWhiteSpace(settings.Api.PilotApiToken))
         {
             return new TrackerServiceStack
@@ -43,6 +109,8 @@ public sealed class TrackerServiceFactory
                 Settings = settings,
                 FlightSessionStore = flightSessionStore,
                 LivePositionUploader = livePositionUploader,
+                ActiveFlightFetcher = activeFlightFetcher,
+                LiveMapService = liveMapService,
             };
         }
 
@@ -70,6 +138,8 @@ public sealed class TrackerServiceFactory
             CompletedSessionUploader = uploader,
             CompletedSessionSyncService = syncService,
             BackgroundSyncCoordinator = backgroundSyncCoordinator,
+            ActiveFlightFetcher = activeFlightFetcher,
+            LiveMapService = liveMapService,
         };
     }
 }

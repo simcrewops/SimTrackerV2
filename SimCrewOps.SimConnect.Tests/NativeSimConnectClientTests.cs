@@ -7,6 +7,54 @@ namespace SimCrewOps.SimConnect.Tests;
 public sealed class NativeSimConnectClientTests
 {
     [Fact]
+    public void IsNoDispatchAvailable_TreatsEFailAsEmptyQueue()
+    {
+        Assert.True(NativeSimConnectBridge.IsNoDispatchAvailable(unchecked((int)0x80004005)));
+        Assert.False(NativeSimConnectBridge.IsNoDispatchAvailable(0));
+    }
+
+    [Fact]
+    public void LightStateDecoder_DecodesOperationalBitMask()
+    {
+        const int lightStates = 0x0002 | 0x0004 | 0x0010;
+
+        Assert.True(SimConnectLightStateDecoder.IsBeaconOn(lightStates));
+        Assert.False(SimConnectLightStateDecoder.IsTaxiOn(lightStates));
+        Assert.True(SimConnectLightStateDecoder.IsLandingOn(lightStates));
+        Assert.True(SimConnectLightStateDecoder.IsStrobeOn(lightStates));
+    }
+
+    [Fact]
+    public void NormalizeValueType_AlwaysUsesFloat64()
+    {
+        // All SimVars are now requested as Float64 to avoid mixed-type alignment issues
+        // on the native SimConnect DLL (Int32 fields in a mixed struct can be silently
+        // padded to 8 bytes on some MSFS builds, shifting all subsequent field reads).
+        var boolDefinition = new SimConnectVariableDefinition
+        {
+            Key = "landing_light",
+            SimVarName = "LIGHT LANDING",
+            Unit = "bool",
+            UpdateRate = SimConnectUpdateRate.Second,
+            ValueType = SimConnectValueType.Float64,
+            RequiredForScoring = true,
+        };
+
+        var maskDefinition = new SimConnectVariableDefinition
+        {
+            Key = "light_states",
+            SimVarName = "LIGHT STATES",
+            Unit = "Mask",
+            UpdateRate = SimConnectUpdateRate.Second,
+            ValueType = SimConnectValueType.Int32,
+            RequiredForScoring = true,
+        };
+
+        Assert.Equal(SimConnectDataType.Float64, NativeSimConnectBridge.NormalizeValueType(boolDefinition));
+        Assert.Equal(SimConnectDataType.Float64, NativeSimConnectBridge.NormalizeValueType(maskDefinition));
+    }
+
+    [Fact]
     public async Task OpenAsync_UsesBridgeFactoryAndReadsFrames()
     {
         if (!OperatingSystem.IsWindows())

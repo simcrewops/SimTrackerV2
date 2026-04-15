@@ -1,3 +1,4 @@
-Optional bundle location for SimConnect.dll.
+Optional bundle location for SimConnect runtime assets.
 
-If this file is present before packaging, the publish workflow will copy it next to SimTrackerV2.exe.
+If SimConnect.dll and/or Microsoft.FlightSimulator.SimConnect.dll are present before packaging,
+the publish workflow will copy them next to SimTrackerV2.exe.

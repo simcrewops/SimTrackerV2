@@ -344,8 +344,11 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
 
     private void UpdateOperational(OperationalSnapshot snapshot)
     {
+        var lightStates = snapshot.LightStates;
+
         _latestState = _latestState with
         {
+            HasOperational = true,
             HeadingMagneticDegrees = snapshot.HeadingMagneticDegrees,
             TrueAirspeedKnots = snapshot.TrueAirspeedKnots,
             HeadingTrueDegrees = snapshot.HeadingTrueDegrees,
@@ -357,10 +360,10 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             Engine2Running = snapshot.Engine2Running,
             Engine3Running = snapshot.Engine3Running,
             Engine4Running = snapshot.Engine4Running,
-            BeaconLightOn = snapshot.BeaconLightOn,
-            TaxiLightsOn = snapshot.TaxiLightsOn,
-            LandingLightsOn = snapshot.LandingLightsOn,
-            StrobesOn = snapshot.StrobesOn,
+            BeaconLightOn = SimConnectLightStateDecoder.IsBeaconOn(lightStates) ? 1 : 0,
+            TaxiLightsOn = SimConnectLightStateDecoder.IsTaxiOn(lightStates) ? 1 : 0,
+            LandingLightsOn = SimConnectLightStateDecoder.IsLandingOn(lightStates) ? 1 : 0,
+            StrobesOn = SimConnectLightStateDecoder.IsStrobeOn(lightStates) ? 1 : 0,
             StallWarning = snapshot.StallWarning,
             GpwsAlert = snapshot.GpwsAlert,
             OverspeedWarning = snapshot.OverspeedWarning,
@@ -379,6 +382,8 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         _frames.Enqueue(new SimConnectRawTelemetryFrame
         {
             TimestampUtc = DateTimeOffset.UtcNow,
+            HasFlightCriticalData = _latestState.HasFlightCritical,
+            HasOperationalData = _latestState.HasOperational,
             Latitude = _latestState.Latitude,
             Longitude = _latestState.Longitude,
             AltitudeAglFeet = _latestState.AltitudeAglFeet,
@@ -543,6 +548,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         public readonly int TaxiLightsOn;
         public readonly int LandingLightsOn;
         public readonly int StrobesOn;
+        public readonly int LightStates;
         public readonly int StallWarning;
         public readonly int GpwsAlert;
         public readonly int OverspeedWarning;
@@ -551,6 +557,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
     private sealed record LatestSimConnectState
     {
         public bool HasFlightCritical { get; init; }
+        public bool HasOperational { get; init; }
         public double Latitude { get; init; }
         public double Longitude { get; init; }
         public double AltitudeAglFeet { get; init; }

@@ -1,5 +1,8 @@
 name: .NET Tests
 
+permissions:
+  contents: write
+
 on:
   push:
     paths:
@@ -108,7 +111,7 @@ jobs:
     runs-on: windows-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      PACKAGE_VERSION: 2.0.0-alpha.${{ github.run_number }}
+      PACKAGE_VERSION: 2.0.1-alpha.${{ github.run_number }}
 
     steps:
       - name: Check out repository
@@ -159,3 +162,26 @@ jobs:
             artifacts/package/SimTrackerV2-alpha-win-x64.zip
             artifacts/package/SimTrackerV2-alpha-win-x64/**
           if-no-files-found: error
+
+      - name: Publish GitHub Release (rolling alpha)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: alpha-latest
+          name: "SimCrewOps Tracker v${{ env.PACKAGE_VERSION }}"
+          body: |
+            **Alpha build** — automatically updated on every push to `main`.
+
+            **Version:** `${{ env.PACKAGE_VERSION }}`
+            **Commit:** `${{ github.sha }}`
+
+            ### Install
+            1. Download `SimCrewOps-Tracker-alpha-win-x64.zip` below
+            2. Extract anywhere and run `SimCrewOps.App.Wpf.exe`
+
+            ### Connect your account
+            - Open **Settings** tab → click the `simcrewops.com/settings` link → copy your **API Token** → paste it in and Save
+            - The **LIVE SYNC ON** badge in the nav bar confirms you're connected
+          prerelease: true
+          make_latest: false
+          files: artifacts/package/SimTrackerV2-alpha-win-x64.zip
+          token: ${{ secrets.GITHUB_TOKEN }}

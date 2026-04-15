@@ -40,6 +40,7 @@ public static class TrackerShellBootstrapper
             SettingsStore = settingsStore,
             Settings = settings,
             SettingsFilePath = settingsFilePath,
+            LiveMapService = serviceStack.LiveMapService,
         };
     }
 
@@ -61,6 +62,10 @@ public static class TrackerShellBootstrapper
                 Enabled = true,
                 IntervalSeconds = 300,
                 MaxSessionsPerPass = 10,
+            },
+            Debug = new TrackerDebugSettings
+            {
+                EnableTelemetryDiagnostics = false,
             },
         };
 

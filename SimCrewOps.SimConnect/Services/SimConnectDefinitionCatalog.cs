@@ -23,7 +23,15 @@ public static class SimConnectDefinitionCatalog
         Define("vertical_speed", "VERTICAL SPEED", "feet per minute", SimConnectUpdateRate.SimFrame),
         Define("bank", "PLANE BANK DEGREES", "degrees", SimConnectUpdateRate.SimFrame),
         Define("pitch", "PLANE PITCH DEGREES", "degrees", SimConnectUpdateRate.SimFrame),
-        Define("parking_brake", "BRAKE PARKING POSITION", "bool", SimConnectUpdateRate.SimFrame),
+        // PARKING BRAKE INDICATOR reflects the cockpit indicator light — on many aircraft (Fenix,
+        // PMDG, etc.) it stays lit even when the brake is released, so it always reads 1.
+        // BRAKE PARKING POSITION returns 0–100 (0 = fully released, 100 = fully set) and is
+        // universally reliable. We treat any value > 50 as "set".
+        Define("parking_brake", "BRAKE PARKING POSITION", "percent", SimConnectUpdateRate.SimFrame),
+        // SIM ON GROUND is requested as Float64 (all SimVars use uniform Float64 now).
+        // The earlier mixed Int32/Float64 struct had alignment issues that caused it to
+        // always read 0. If the SimVar is still broken on a given MSFS build, the
+        // AGL + VS heuristic in UpdateFlightCritical acts as a fallback.
         Define("on_ground", "SIM ON GROUND", "bool", SimConnectUpdateRate.SimFrame),
         Define("crash_flag", "CRASH FLAG", "bool", SimConnectUpdateRate.SimFrame),
     ];
@@ -36,7 +44,11 @@ public static class SimConnectDefinitionCatalog
         Define("mach", "AIRSPEED MACH", "mach", SimConnectUpdateRate.Second),
         Define("g_force", "G FORCE", "gforce", SimConnectUpdateRate.Second),
         Define("flaps_index", "FLAPS HANDLE INDEX", "number", SimConnectUpdateRate.Second, SimConnectValueType.Int32),
-        Define("gear_position", "GEAR POSITION:1", "percent", SimConnectUpdateRate.Second),
+        // GEAR POSITION:1 was an indexed SimVar that threw SIMCONNECT_EXCEPTION_UNIMPLEMENTED on
+        // MSFS 2024 XGP, silently shifting every subsequent field in the operational struct by one
+        // slot (GearPosition read engine combustion = 1.0, lights read wrong fields).
+        // GEAR HANDLE POSITION is non-indexed, universally supported, and returns 0 (up) or 1 (down).
+        Define("gear_position", "GEAR HANDLE POSITION", "bool", SimConnectUpdateRate.Second),
         Define("engine1", "ENG COMBUSTION:1", "bool", SimConnectUpdateRate.Second),
         Define("engine2", "ENG COMBUSTION:2", "bool", SimConnectUpdateRate.Second),
         Define("engine3", "ENG COMBUSTION:3", "bool", SimConnectUpdateRate.Second, requiredForScoring: false),
@@ -45,6 +57,7 @@ public static class SimConnectDefinitionCatalog
         Define("taxi_light", "LIGHT TAXI", "bool", SimConnectUpdateRate.Second),
         Define("landing_light", "LIGHT LANDING", "bool", SimConnectUpdateRate.Second),
         Define("strobe_light", "LIGHT STROBE", "bool", SimConnectUpdateRate.Second),
+        Define("light_states", "LIGHT STATES", "Mask", SimConnectUpdateRate.Second, SimConnectValueType.Int32),
         Define("stall_warning", "STALL WARNING", "bool", SimConnectUpdateRate.Second),
         Define("gpws_warning", "GPWS SYSTEM ACTIVE", "bool", SimConnectUpdateRate.Second, requiredForScoring: false),
         Define("overspeed_warning", "OVERSPEED WARNING", "bool", SimConnectUpdateRate.Second, requiredForScoring: false),

@@ -1,10 +1,11 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using SimCrewOps.SimConnect.Models;
+using SimCrewOps.SimConnect.Services.Aircraft;
 
 namespace SimCrewOps.SimConnect.Services;
 
-public sealed class NativeSimConnectClient : ISimConnectClient
+public sealed class NativeSimConnectClient : ISimConnectClient, ISimConnectClientDiagnostics
 {
     private readonly NativeSimConnectLibraryLocator _libraryLocator;
     private readonly INativeSimConnectBridgeFactory _bridgeFactory;
@@ -27,6 +28,7 @@ public sealed class NativeSimConnectClient : ISimConnectClient
     }
 
     public bool IsConnected => _bridge?.IsConnected == true;
+    public string DiagnosticsClientName => "Native SimConnect";
 
     public async Task OpenAsync(SimConnectHostOptions options, CancellationToken cancellationToken = default)
     {
@@ -82,7 +84,7 @@ public sealed class NativeSimConnectClient : ISimConnectClient
     }
 }
 
-public sealed class AdaptiveSimConnectClient : ISimConnectClient
+public sealed class AdaptiveSimConnectClient : ISimConnectClient, ISimConnectClientDiagnostics
 {
     private readonly ISimConnectClient _primaryClient;
     private readonly ISimConnectClient _fallbackClient;
@@ -103,6 +105,10 @@ public sealed class AdaptiveSimConnectClient : ISimConnectClient
     }
 
     public bool IsConnected => _activeClient?.IsConnected == true;
+    public string DiagnosticsClientName =>
+        _activeClient is ISimConnectClientDiagnostics diagnostics
+            ? diagnostics.DiagnosticsClientName
+            : _activeClient?.GetType().Name ?? "Adaptive SimConnect (native first)";
 
     public async Task OpenAsync(SimConnectHostOptions options, CancellationToken cancellationToken = default)
     {
@@ -185,9 +191,10 @@ internal sealed class NativeSimConnectBridgeFactory : INativeSimConnectBridgeFac
 internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 {
     private const uint FlightCriticalRequestId = 1;
-    private const uint OperationalRequestId = 2;
+    private const uint OperationalRequestId    = 2;
+    private const uint AircraftStateRequestId  = 3;    // for RequestSystemState("AircraftLoaded")
     private const uint FlightCriticalDefinitionId = 11;
-    private const uint OperationalDefinitionId = 12;
+    private const uint OperationalDefinitionId    = 12;
     private const uint UserObjectId = 0;
 
     private readonly nint _nativeLibraryHandle;
@@ -197,6 +204,8 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
     private nint _simConnectHandle;
     private LatestSimConnectState _latestState = new();
+    private AircraftProfile _activeProfile = AircraftProfile.Default;
+    private readonly MobiFlightBridge _mobiFlightBridge = new();
     private bool _disposed;
 
     public NativeSimConnectBridge(nint nativeLibraryHandle, SimConnectHostOptions options)
@@ -209,6 +218,8 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
         OpenConnection();
         RegisterDefinitions();
+        RequestAircraftState();
+        _mobiFlightBridge.Initialize(_simConnectHandle, _exports);
     }
 
     public bool IsConnected => !_disposed && _simConnectHandle != nint.Zero;
@@ -217,26 +228,82 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     {
         ThrowIfDisposed();
 
-        if (_frames.TryDequeue(out var bufferedFrame))
-        {
-            return bufferedFrame;
-        }
-
         var started = DateTimeOffset.UtcNow;
-        while (DateTimeOffset.UtcNow - started < _options.FrameReadTimeout)
+        do
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var frame = TryDispatchNextMessage();
-            if (frame is not null)
+            // Drain ALL available SimConnect messages in one pass.
+            // SIMCONNECT_PERIOD_SIM_FRAME queues 30–60 messages per second; if we only
+            // dequeue one message per poll the queue grows without bound and the data
+            // shown becomes increasingly stale (effectively "frozen" after ~30 seconds).
+            DrainAllAvailableMessages();
+
+            // Discard intermediate frames — keep only the most recent snapshot so the
+            // UI always reflects the current sim state, not data from seconds ago.
+            SimConnectRawTelemetryFrame? latest = null;
+            while (_frames.TryDequeue(out var f))
             {
-                return frame;
+                latest = f;
+            }
+
+            if (latest is not null)
+            {
+                return latest;
             }
 
             await Task.Delay(15, cancellationToken).ConfigureAwait(false);
         }
+        while (DateTimeOffset.UtcNow - started < _options.FrameReadTimeout);
 
         return null;
+    }
+
+    private void DrainAllAvailableMessages()
+    {
+        while (true)
+        {
+            var result = _exports.GetNextDispatch(_simConnectHandle, out var dispatchPointer, out _);
+            if (IsNoDispatchAvailable(result))
+            {
+                return;
+            }
+
+            ThrowIfFailed(result, "SimConnect_GetNextDispatch");
+
+            if (dispatchPointer == nint.Zero)
+            {
+                return;
+            }
+
+            var header = Marshal.PtrToStructure<SimConnectRecv>(dispatchPointer);
+            switch ((SimConnectRecvId)header.RecvId)
+            {
+                case SimConnectRecvId.Null:
+                    break;
+                case SimConnectRecvId.Open:
+                    System.Diagnostics.Debug.WriteLine("[SimConnect] SIMCONNECT_RECV_OPEN received — handshake complete, SimVars registered.");
+                    break;
+                case SimConnectRecvId.Exception:
+                    var exception = Marshal.PtrToStructure<SimConnectRecvException>(dispatchPointer);
+                    // Non-fatal: log and continue. A single bad SimVar name causes
+                    // SIMCONNECT_EXCEPTION_UNIMPLEMENTED (13) or DATA_ERROR (7).
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[SimConnect] SIMCONNECT_RECV_EXCEPTION code={exception.ExceptionCode} sendId={exception.SendId} index={exception.Index}");
+                    break;
+                case SimConnectRecvId.Quit:
+                    throw new InvalidOperationException("Microsoft Flight Simulator closed the SimConnect session.");
+                case SimConnectRecvId.SimObjectData:
+                    HandleSimObjectData(dispatchPointer);
+                    break;
+                case SimConnectRecvId.ClientData:
+                    _mobiFlightBridge.HandleClientData(dispatchPointer);
+                    break;
+                case SimConnectRecvId.SystemState:
+                    HandleSystemState(dispatchPointer);
+                    break;
+            }
+        }
     }
 
     public Task CloseAsync(CancellationToken cancellationToken = default)
@@ -295,6 +362,22 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             SimConnectPeriod.Second);
     }
 
+    private void RequestAircraftState()
+    {
+        // Ask SimConnect which aircraft is currently loaded.
+        // The response arrives as SIMCONNECT_RECV_SYSTEM_STATE (RecvId 15) with
+        // szString = path to the aircraft .air / .cfg file, e.g.:
+        //   "Community\fenix-a319\SimObjects\Airplanes\fenix_a319\fenix_a319.air"
+        // We match this path against AircraftProfileCatalog to select the right
+        // variable-mapping profile for lights etc.
+        var result = _exports.RequestSystemState(_simConnectHandle, AircraftStateRequestId, "AircraftLoaded");
+        if (result < 0)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[SimConnect] RequestSystemState(AircraftLoaded) failed: 0x{result:X8} — defaulting to standard SimVar profile.");
+        }
+    }
+
     private void RegisterDefinition(
         uint definitionId,
         uint requestId,
@@ -330,35 +413,6 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             $"SimConnect_RequestDataOnSimObject({requestId})");
     }
 
-    private SimConnectRawTelemetryFrame? TryDispatchNextMessage()
-    {
-        ThrowIfFailed(
-            _exports.GetNextDispatch(_simConnectHandle, out var dispatchPointer, out _),
-            "SimConnect_GetNextDispatch");
-
-        if (dispatchPointer == nint.Zero)
-        {
-            return _frames.TryDequeue(out var emptyFrame) ? emptyFrame : null;
-        }
-
-        var header = Marshal.PtrToStructure<SimConnectRecv>(dispatchPointer);
-        switch ((SimConnectRecvId)header.RecvId)
-        {
-            case SimConnectRecvId.Null:
-                break;
-            case SimConnectRecvId.Exception:
-                var exception = Marshal.PtrToStructure<SimConnectRecvException>(dispatchPointer);
-                throw new InvalidOperationException($"SimConnect exception received: {exception.ExceptionCode}.");
-            case SimConnectRecvId.Quit:
-                throw new InvalidOperationException("Microsoft Flight Simulator closed the SimConnect session.");
-            case SimConnectRecvId.SimObjectData:
-                HandleSimObjectData(dispatchPointer);
-                break;
-        }
-
-        return _frames.TryDequeue(out var frame) ? frame : null;
-    }
-
     private void HandleSimObjectData(nint dispatchPointer)
     {
         var data = Marshal.PtrToStructure<SimConnectRecvSimObjectData>(dispatchPointer);
@@ -375,8 +429,40 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         }
     }
 
+    private void HandleSystemState(nint dispatchPointer)
+    {
+        var state = Marshal.PtrToStructure<SimConnectRecvSystemState>(dispatchPointer);
+
+        if (state.RequestId != AircraftStateRequestId)
+        {
+            return;
+        }
+
+        var aircraftPath = state.StringValue ?? string.Empty;
+        _activeProfile = AircraftProfileCatalog.MatchOrDefault(aircraftPath);
+
+        System.Diagnostics.Debug.WriteLine($"[SimConnect] Aircraft loaded: {aircraftPath}");
+        System.Diagnostics.Debug.WriteLine($"[SimConnect] Active profile : {_activeProfile.Name}" +
+            (_activeProfile.RequiresLvarBridge ? " (LVAR bridge required)" : string.Empty));
+
+        // Subscribe to profile LVARs via MobiFlight (deferred if bridge not yet Active).
+        _mobiFlightBridge.SubscribeToProfile(_activeProfile);
+    }
+
     private void UpdateFlightCritical(FlightCriticalSnapshot snapshot)
     {
+        // Primary: SIM ON GROUND SimVar — now reliable because we request it as Float64.
+        // The previous Int32 mixed-type struct had alignment issues that made it always read 0.
+        // Fallback: AGL + VS heuristic for any MSFS build where the SimVar is still broken:
+        //   AGL < 30 ft AND VS > -500 fpm distinguishes ground from approach:
+        //   • Taxiing / landing roll: AGL 3-15 ft, VS ≈ 0          → true
+        //   • ILS approach at 30 ft: VS ≈ -700 fpm                 → false
+        //   • Post-touchdown: AGL → 0, VS recovers above -500       → true
+        //   • Cruise / climb: AGL is thousands of feet              → false
+        var onGroundSimVar = snapshot.OnGround >= 0.5;
+        var onGroundHeuristic = snapshot.AltitudeAglFeet < 30.0 && snapshot.VerticalSpeedFpm > -500.0;
+        var onGround = onGroundSimVar || onGroundHeuristic ? 1 : 0;
+
         _latestState = _latestState with
         {
             HasFlightCritical = true,
@@ -391,7 +477,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             BankAngleDegrees = snapshot.BankAngleDegrees,
             PitchAngleDegrees = snapshot.PitchAngleDegrees,
             ParkingBrakePosition = snapshot.ParkingBrakePosition,
-            OnGround = snapshot.OnGround,
+            OnGround = onGround,
             CrashFlag = snapshot.CrashFlag,
         };
 
@@ -400,8 +486,51 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
     private void UpdateOperational(OperationalSnapshot snapshot)
     {
+        // Primary source: individual LIGHT_ bool SimVars (one per channel).
+        // Supplementary source: LIGHT STATES bitmask OR'd in per-bit.
+        //
+        // History:
+        //   • The old "use bitmask if all individual vars are zero" fallback was removed because
+        //     LIGHT STATES was always 0x0000 on MSFS 2024 XGP (the SimVar was registered as Int32
+        //     in a mixed Int32/Float64 struct, which caused struct alignment padding to corrupt it).
+        //   • With the all-Float64 struct fix, LIGHT STATES is now requested as Float64 and returns
+        //     the correct integer bitmask cast to a double (e.g. 0x000A → 10.0). It is now safe to
+        //     OR the bitmask bits in: if either source says a light is on, it is on.
+        //   • This matters for LIGHT TAXI: some MSFS 2024 builds return 0 for the individual
+        //     LIGHT TAXI SimVar even when the taxi light is on. The bitmask bit 0x0008 fills the gap.
+        //
+        // All snapshot fields are double (uniform Float64 struct).
+        // Cast to int only for the diagnostic Raw fields.
+        var rawBeacon  = snapshot.BeaconLightOn;
+        var rawTaxi    = snapshot.TaxiLightsOn;
+        var rawLanding = snapshot.LandingLightsOn;
+        var rawStrobe  = snapshot.StrobesOn;
+        var lightStates = snapshot.LightStates;
+        var bitmaskInt  = (int)lightStates;
+
+        // OR individual SimVar with corresponding bitmask bit — whichever source is authoritative wins.
+        var beacon  = rawBeacon  >= 0.5 || SimConnectLightStateDecoder.IsBeaconOn(bitmaskInt)  ? 1.0 : 0.0;
+        var taxi    = rawTaxi    >= 0.5 || SimConnectLightStateDecoder.IsTaxiOn(bitmaskInt)    ? 1.0 : 0.0;
+        var landing = rawLanding >= 0.5 || SimConnectLightStateDecoder.IsLandingOn(bitmaskInt) ? 1.0 : 0.0;
+        var strobe  = rawStrobe  >= 0.5 || SimConnectLightStateDecoder.IsStrobeOn(bitmaskInt)  ? 1.0 : 0.0;
+
+        // When the MobiFlight WASM bridge is active and the aircraft profile maps a light
+        // channel to an LVAR, the LVAR value is authoritative — it replaces the SimVar read.
+        // This covers aircraft like Fenix A319/A320 and Aerosoft CRJ where the standard
+        // LIGHT TAXI / LIGHT LANDING SimVars are unconnected.
+        if (_mobiFlightBridge.IsActive)
+        {
+            beacon  = ResolveLvar(_activeProfile.BeaconLight,  beacon);
+            taxi    = ResolveLvar(_activeProfile.TaxiLight,    taxi);
+            landing = ResolveLvar(_activeProfile.LandingLight, landing);
+            strobe  = ResolveLvar(_activeProfile.StrobeLight,  strobe);
+        }
+
+        var usedIndividual = true;
+
         _latestState = _latestState with
         {
+            HasOperational = true,
             HeadingMagneticDegrees = snapshot.HeadingMagneticDegrees,
             HeadingTrueDegrees = snapshot.HeadingTrueDegrees,
             TrueAirspeedKnots = snapshot.TrueAirspeedKnots,
@@ -413,10 +542,16 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             Engine2Running = snapshot.Engine2Running,
             Engine3Running = snapshot.Engine3Running,
             Engine4Running = snapshot.Engine4Running,
-            BeaconLightOn = snapshot.BeaconLightOn,
-            TaxiLightsOn = snapshot.TaxiLightsOn,
-            LandingLightsOn = snapshot.LandingLightsOn,
-            StrobesOn = snapshot.StrobesOn,
+            BeaconLightOn  = beacon,
+            TaxiLightsOn   = taxi,
+            LandingLightsOn = landing,
+            StrobesOn      = strobe,
+            LightStatesRaw = bitmaskInt,
+            LightBeaconRaw = (int)rawBeacon,
+            LightTaxiRaw   = (int)rawTaxi,
+            LightLandingRaw = (int)rawLanding,
+            LightStrobeRaw = (int)rawStrobe,
+            LightSourceIsIndividual = usedIndividual,
             StallWarning = snapshot.StallWarning,
             GpwsAlert = snapshot.GpwsAlert,
             OverspeedWarning = snapshot.OverspeedWarning,
@@ -435,6 +570,8 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         _frames.Enqueue(new SimConnectRawTelemetryFrame
         {
             TimestampUtc = DateTimeOffset.UtcNow,
+            HasFlightCriticalData = _latestState.HasFlightCritical,
+            HasOperationalData = _latestState.HasOperational,
             Latitude = _latestState.Latitude,
             Longitude = _latestState.Longitude,
             AltitudeAglFeet = _latestState.AltitudeAglFeet,
@@ -459,6 +596,12 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             TaxiLightsOn = _latestState.TaxiLightsOn,
             LandingLightsOn = _latestState.LandingLightsOn,
             StrobesOn = _latestState.StrobesOn,
+            LightStatesRaw = _latestState.LightStatesRaw,
+            LightBeaconRaw = _latestState.LightBeaconRaw,
+            LightTaxiRaw = _latestState.LightTaxiRaw,
+            LightLandingRaw = _latestState.LightLandingRaw,
+            LightStrobeRaw = _latestState.LightStrobeRaw,
+            LightSourceIsIndividual = _latestState.LightSourceIsIndividual,
             StallWarning = _latestState.StallWarning,
             GpwsAlert = _latestState.GpwsAlert,
             OverspeedWarning = _latestState.OverspeedWarning,
@@ -466,16 +609,35 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             Engine2Running = _latestState.Engine2Running,
             Engine3Running = _latestState.Engine3Running,
             Engine4Running = _latestState.Engine4Running,
+            ActiveProfileName   = _activeProfile.Name,
+            LvarBridgeRequired  = _activeProfile.RequiresLvarBridge,
+            LvarBridgeConnected = _mobiFlightBridge.IsActive,
         });
     }
 
-    private static SimConnectDataType NormalizeValueType(SimConnectVariableDefinition definition) =>
-        definition.ValueType switch
+    /// <summary>
+    /// Returns the LVAR-sourced value when the mapping points to an LVAR and the bridge
+    /// is active; otherwise returns the existing SimVar-derived value unchanged.
+    /// </summary>
+    private double ResolveLvar(LightVariableMapping mapping, double simVarValue)
+    {
+        if (mapping.Source != LightVariableSource.LVar || string.IsNullOrEmpty(mapping.LvarName))
         {
-            SimConnectValueType.Int32 => SimConnectDataType.Int32,
-            SimConnectValueType.Float32 => SimConnectDataType.Float32,
-            _ => SimConnectDataType.Float64,
-        };
+            return simVarValue;
+        }
+
+        var lvarFloat = _mobiFlightBridge.GetValue(mapping.LvarName);
+        return lvarFloat >= (float)mapping.OnThreshold ? 1.0 : 0.0;
+    }
+
+    internal static SimConnectDataType NormalizeValueType(SimConnectVariableDefinition definition) =>
+        // Always request Float64 regardless of logical type.
+        // Mixed Int32/Float64 definitions cause struct alignment problems on the native
+        // SimConnect DLL — some MSFS builds pad Int32 fields to 8 bytes in the data packet,
+        // shifting all subsequent fields and causing bool SimVars to read wrong (always 0).
+        // Float64 structs are uniform in size and have no alignment ambiguity.
+        // Values ≤ 2^53 (covers all bool/int fields we use) are exactly representable.
+        SimConnectDataType.Float64;
 
     private static string? NormalizeUnit(string? unit) => unit switch
     {
@@ -483,6 +645,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         "number" => "Number",
         "percent" => "Percent Over 100",
         "gforce" => "GForce",
+        "mach" => "Mach",
         _ => unit,
     };
 
@@ -496,6 +659,8 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         throw new InvalidOperationException($"{operation} failed with HRESULT 0x{hresult:X8}.", Marshal.GetExceptionForHR(hresult));
     }
 
+    internal static bool IsNoDispatchAvailable(int hresult) => hresult == unchecked((int)0x80004005);
+
     private void ThrowIfDisposed()
     {
         if (_disposed)
@@ -504,6 +669,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         }
     }
 
+    // All fields are double — uniform 8-byte layout, no mixed-type alignment issues.
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private readonly struct FlightCriticalSnapshot
     {
@@ -517,11 +683,12 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly double VerticalSpeedFpm;
         public readonly double BankAngleDegrees;
         public readonly double PitchAngleDegrees;
-        public readonly int ParkingBrakePosition;
-        public readonly int OnGround;
-        public readonly int CrashFlag;
+        public readonly double ParkingBrakePosition;  // bool SimVar → 0.0 or 1.0
+        public readonly double OnGround;              // SIM ON GROUND → 0.0 or 1.0
+        public readonly double CrashFlag;             // bool SimVar → 0.0 or 1.0
     }
 
+    // All fields are double — uniform 8-byte layout, no mixed-type alignment issues.
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private readonly struct OperationalSnapshot
     {
@@ -530,19 +697,20 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly double TrueAirspeedKnots;
         public readonly double Mach;
         public readonly double GForce;
-        public readonly int FlapsHandleIndex;
+        public readonly double FlapsHandleIndex;  // int SimVar → exact double (values 0-8)
         public readonly double GearPosition;
-        public readonly int Engine1Running;
-        public readonly int Engine2Running;
-        public readonly int Engine3Running;
-        public readonly int Engine4Running;
-        public readonly int BeaconLightOn;
-        public readonly int TaxiLightsOn;
-        public readonly int LandingLightsOn;
-        public readonly int StrobesOn;
-        public readonly int StallWarning;
-        public readonly int GpwsAlert;
-        public readonly int OverspeedWarning;
+        public readonly double Engine1Running;    // bool SimVar → 0.0 or 1.0
+        public readonly double Engine2Running;
+        public readonly double Engine3Running;
+        public readonly double Engine4Running;
+        public readonly double BeaconLightOn;
+        public readonly double TaxiLightsOn;
+        public readonly double LandingLightsOn;
+        public readonly double StrobesOn;
+        public readonly double LightStates;       // int bitmask → exact double (32-bit mask, ≤ 2^53)
+        public readonly double StallWarning;
+        public readonly double GpwsAlert;
+        public readonly double OverspeedWarning;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -564,6 +732,22 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly uint Index;
     }
 
+    // SIMCONNECT_RECV_SYSTEM_STATE — returned by SimConnect_RequestSystemState.
+    // szString is MAX_PATH (260) chars; contains the aircraft .air file path when
+    // state = "AircraftLoaded", e.g. "Community\fenix-a319\...\fenix_a319.air".
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    private readonly struct SimConnectRecvSystemState
+    {
+        public readonly uint Size;
+        public readonly uint Version;
+        public readonly uint RecvId;
+        public readonly uint RequestId;
+        public readonly int  IValue;
+        public readonly float FValue;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public readonly string StringValue;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private readonly struct SimConnectRecvSimObjectData
     {
@@ -582,6 +766,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private sealed record LatestSimConnectState
     {
         public bool HasFlightCritical { get; init; }
+        public bool HasOperational { get; init; }
         public double Latitude { get; init; }
         public double Longitude { get; init; }
         public double AltitudeAglFeet { get; init; }
@@ -606,6 +791,12 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public double TaxiLightsOn { get; init; }
         public double LandingLightsOn { get; init; }
         public double StrobesOn { get; init; }
+        public int LightStatesRaw { get; init; }
+        public int LightBeaconRaw { get; init; }
+        public int LightTaxiRaw { get; init; }
+        public int LightLandingRaw { get; init; }
+        public int LightStrobeRaw { get; init; }
+        public bool LightSourceIsIndividual { get; init; }
         public double StallWarning { get; init; }
         public double GpwsAlert { get; init; }
         public double OverspeedWarning { get; init; }
@@ -623,12 +814,22 @@ internal sealed class NativeSimConnectExports
         CloseDelegate close,
         AddToDataDefinitionDelegate addToDataDefinition,
         RequestDataOnSimObjectDelegate requestDataOnSimObject,
+        RequestSystemStateDelegate requestSystemState,
+        MapClientDataNameToIdDelegate mapClientDataNameToId,
+        AddToClientDataDefinitionDelegate addToClientDataDefinition,
+        RequestClientDataDelegate requestClientData,
+        SetClientDataDelegate setClientData,
         GetNextDispatchDelegate getNextDispatch)
     {
         Open = open;
         Close = close;
         AddToDataDefinition = addToDataDefinition;
         RequestDataOnSimObject = requestDataOnSimObject;
+        RequestSystemState = requestSystemState;
+        MapClientDataNameToId = mapClientDataNameToId;
+        AddToClientDataDefinition = addToClientDataDefinition;
+        RequestClientData = requestClientData;
+        SetClientData = setClientData;
         GetNextDispatch = getNextDispatch;
     }
 
@@ -636,6 +837,11 @@ internal sealed class NativeSimConnectExports
     public CloseDelegate Close { get; }
     public AddToDataDefinitionDelegate AddToDataDefinition { get; }
     public RequestDataOnSimObjectDelegate RequestDataOnSimObject { get; }
+    public RequestSystemStateDelegate RequestSystemState { get; }
+    public MapClientDataNameToIdDelegate MapClientDataNameToId { get; }
+    public AddToClientDataDefinitionDelegate AddToClientDataDefinition { get; }
+    public RequestClientDataDelegate RequestClientData { get; }
+    public SetClientDataDelegate SetClientData { get; }
     public GetNextDispatchDelegate GetNextDispatch { get; }
 
     public static NativeSimConnectExports Load(nint libraryHandle) =>
@@ -644,6 +850,11 @@ internal sealed class NativeSimConnectExports
             GetExport<CloseDelegate>(libraryHandle, "SimConnect_Close"),
             GetExport<AddToDataDefinitionDelegate>(libraryHandle, "SimConnect_AddToDataDefinition"),
             GetExport<RequestDataOnSimObjectDelegate>(libraryHandle, "SimConnect_RequestDataOnSimObject"),
+            GetExport<RequestSystemStateDelegate>(libraryHandle, "SimConnect_RequestSystemState"),
+            GetExport<MapClientDataNameToIdDelegate>(libraryHandle, "SimConnect_MapClientDataNameToID"),
+            GetExport<AddToClientDataDefinitionDelegate>(libraryHandle, "SimConnect_AddToClientDataDefinition"),
+            GetExport<RequestClientDataDelegate>(libraryHandle, "SimConnect_RequestClientData"),
+            GetExport<SetClientDataDelegate>(libraryHandle, "SimConnect_SetClientData"),
             GetExport<GetNextDispatchDelegate>(libraryHandle, "SimConnect_GetNextDispatch"));
 
     private static TDelegate GetExport<TDelegate>(nint libraryHandle, string exportName)
@@ -686,6 +897,56 @@ internal sealed class NativeSimConnectExports
         uint origin,
         uint interval,
         uint limit);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Ansi)]
+    public delegate int RequestSystemStateDelegate(
+        nint simConnectHandle,
+        uint requestId,
+        string stateName);
+
+    // ── MobiFlight WASM / client-data P/Invoke ───────────────────────────────────
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Ansi)]
+    public delegate int MapClientDataNameToIdDelegate(
+        nint simConnectHandle,
+        string clientDataName,
+        uint clientDataId);
+
+    /// <summary>
+    /// dwSizeOrType: positive = byte count; 4 = 4-byte raw block (float32 slot).
+    /// Special SDK type constants (-1 to -6) are also accepted but use 4 for floats.
+    /// </summary>
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate int AddToClientDataDefinitionDelegate(
+        nint simConnectHandle,
+        uint defineId,
+        uint offset,
+        uint sizeOrType,
+        float epsilon,
+        uint datumId);
+
+    /// <summary>period: 2 = ON_SET. dwFlags: 1 = CHANGED.</summary>
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate int RequestClientDataDelegate(
+        nint simConnectHandle,
+        uint clientDataId,
+        uint requestId,
+        uint defineId,
+        uint period,
+        uint dwFlags,
+        uint dwOrigin,
+        uint dwInterval,
+        uint dwLimit);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate int SetClientDataDelegate(
+        nint simConnectHandle,
+        uint clientDataId,
+        uint defineId,
+        uint dwFlags,
+        uint dwReserved,
+        uint cbUnitSize,
+        nint pDataSet);
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     public delegate int GetNextDispatchDelegate(
@@ -736,4 +997,6 @@ internal enum SimConnectRecvId : uint
     EventFilename = 6,
     EventFrame = 7,
     SimObjectData = 8,
+    ClientData    = 14,
+    SystemState   = 15,
 }

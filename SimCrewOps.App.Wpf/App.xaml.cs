@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Windows;
 using SimCrewOps.App.Wpf.Services;
 using SimCrewOps.App.Wpf.ViewModels;
@@ -16,30 +17,47 @@ public partial class App : WpfApplication
 
     protected override async void OnStartup(StartupEventArgs e)
     {
-        base.OnStartup(e);
-        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        // Catch anything that escapes — async void swallows exceptions otherwise.
+        AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+        TaskScheduler.UnobservedTaskException     += OnUnobservedTaskException;
 
-        var bootstrap = await TrackerShellBootstrapper.BootstrapAsync();
-        _shellHost = bootstrap.ShellHost;
-
-        _mainWindowViewModel = new MainWindowViewModel(bootstrap);
-        _mainWindow = new MainWindow
+        try
         {
-            DataContext = _mainWindowViewModel,
-        };
+            base.OnStartup(e);
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-        _trayIconService = new TrayIconService();
-        _trayIconService.OpenRequested += TrayIconService_OpenRequested;
-        _trayIconService.SyncRequested += TrayIconService_SyncRequested;
-        _trayIconService.ExitRequested += TrayIconService_ExitRequested;
+            var bootstrap = await TrackerShellBootstrapper.BootstrapAsync();
+            _shellHost = bootstrap.ShellHost;
 
-        _mainWindow.StateChanged += MainWindow_StateChanged;
-        _mainWindow.Closing += MainWindow_Closing;
-        _mainWindowViewModel.PropertyChanged += MainWindowViewModel_PropertyChanged;
+            _mainWindowViewModel = new MainWindowViewModel(bootstrap);
+            _mainWindow = new MainWindow
+            {
+                DataContext = _mainWindowViewModel,
+            };
 
-        _mainWindow.Show();
-        await _mainWindowViewModel.InitializeAsync(_mainWindow);
-        UpdateTrayTooltip();
+            _trayIconService = new TrayIconService();
+            _trayIconService.OpenRequested += TrayIconService_OpenRequested;
+            _trayIconService.SyncRequested += TrayIconService_SyncRequested;
+            _trayIconService.ExitRequested += TrayIconService_ExitRequested;
+
+            _mainWindow.StateChanged += MainWindow_StateChanged;
+            _mainWindow.Closing += MainWindow_Closing;
+            _mainWindowViewModel.PropertyChanged += MainWindowViewModel_PropertyChanged;
+
+            _mainWindow.Show();
+            await _mainWindowViewModel.InitializeAsync(_mainWindow);
+            UpdateTrayTooltip();
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog(ex);
+            System.Windows.MessageBox.Show(
+                $"SimCrewOps Tracker failed to start.\n\n{ex.GetType().Name}: {ex.Message}\n\nA crash log has been written to:\n{CrashLogPath}",
+                "SimCrewOps Tracker — Startup Error",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+            Shutdown(1);
+        }
     }
 
     protected override async void OnExit(ExitEventArgs e)
@@ -161,5 +179,39 @@ public partial class App : WpfApplication
         }
 
         _trayIconService.UpdateTooltip(_mainWindowViewModel.BuildTrayTooltip());
+    }
+
+    // ── Crash logging ────────────────────────────────────────────────────
+
+    private static string CrashLogPath { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "SimCrewOps", "SimTrackerV2", "crash.log");
+
+    private static void WriteCrashLog(Exception ex)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(CrashLogPath)!;
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(CrashLogPath,
+                $"[{DateTime.UtcNow:u}] SimTrackerV2 crash\n" +
+                $"{ex}\n");
+        }
+        catch
+        {
+            // If we can't write the log, don't compound the problem.
+        }
+    }
+
+    private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        if (e.ExceptionObject is Exception ex)
+            WriteCrashLog(ex);
+    }
+
+    private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        WriteCrashLog(e.Exception);
+        e.SetObserved();
     }
 }

@@ -26,6 +26,10 @@ public sealed record TelemetryFrame
     public bool OnGround { get; init; }
     public bool ParkingBrakeSet { get; init; }
     public bool GearDown { get; init; }
+    // Gear handle position: 0.0 = handle up, 1.0 = handle down.
+    // Source is GEAR HANDLE POSITION (non-indexed bool SimVar).
+    // Used for gear LED: dim = up, green = down.
+    public double GearPosition { get; init; }
     public int FlapsHandleIndex { get; init; }
 
     public bool BeaconLightOn { get; init; }

@@ -182,8 +182,11 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
-    public async Task RuntimeCoordinator_SendsLivePositionDuringActiveFlight()
+    public async Task RuntimeCoordinator_SendsLivePositionFromFirstFrame()
     {
+        // Position upload is no longer gated on IsActiveFlight() — it fires from the
+        // very first frame so pilots appear on the world map even if the tracker started
+        // mid-flight (e.g. after an auto-update restart) and BlocksOff was never captured.
         var uploader = new SpyLivePositionUploader();
         var coordinator = new RuntimeCoordinator(
             new FlightSessionContext
@@ -196,11 +199,13 @@ public sealed class RuntimeCoordinatorTests
 
         var t0 = new DateTimeOffset(2026, 4, 13, 16, 0, 0, TimeSpan.Zero);
 
+        // Frame 1: still at the gate (Preflight) — upload fires immediately.
         await coordinator.ProcessFrameAsync(Frame(t0, onGround: true, parkingBrake: true));
+        // Frame 2: pushing back (TaxiOut) — same position, only 1 s later → throttled (< 4 s, no movement).
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(1), onGround: true, parkingBrake: false, groundSpeed: 2));
 
         Assert.Single(uploader.Payloads);
-        Assert.Equal("TaxiOut", uploader.Payloads[0].Phase);
+        Assert.Equal("Preflight", uploader.Payloads[0].Phase);   // fires on first frame, not gated on TaxiOut
         Assert.Equal("career", uploader.Payloads[0].FlightMode);
         Assert.Equal("48291", uploader.Payloads[0].BidId);
     }

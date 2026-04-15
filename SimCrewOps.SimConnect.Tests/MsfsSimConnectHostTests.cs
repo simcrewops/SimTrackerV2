@@ -48,6 +48,8 @@ public sealed class MsfsSimConnectHostTests
                 GearPosition = 1,
                 Engine1Running = 1,
                 Engine2Running = 1,
+                HasFlightCriticalData = true,
+                HasOperationalData = true,
             },
         };
 
@@ -66,6 +68,11 @@ public sealed class MsfsSimConnectHostTests
         Assert.True(result.HasTelemetry);
         Assert.Equal(132, result.TelemetryFrame!.IndicatedAirspeedKnots);
         Assert.Equal(result.RawFrame!.TimestampUtc, result.Status.LastTelemetryUtc);
+        Assert.Equal(1, result.Status.PollCount);
+        Assert.Equal(1, result.Status.RawFrameCount);
+        Assert.Equal(1, result.Status.TelemetryFrameCount);
+        Assert.True(result.Status.HasReceivedFlightCriticalData);
+        Assert.True(result.Status.HasReceivedOperationalData);
     }
 
     [Fact]
@@ -88,6 +95,7 @@ public sealed class MsfsSimConnectHostTests
 
         Assert.Equal(SimConnectConnectionState.Faulted, result.Status.ConnectionState);
         Assert.Equal("read failed", result.Status.LastErrorMessage);
+        Assert.Equal(1, result.Status.PollCount);
         Assert.True(client.CloseCalled);
     }
 
@@ -99,6 +107,7 @@ public sealed class MsfsSimConnectHostTests
         Assert.Contains(SimConnectDefinitionCatalog.FlightCriticalVariables, variable => variable.SimVarName == "PLANE ALT ABOVE GROUND");
         Assert.Contains(SimConnectDefinitionCatalog.FlightCriticalVariables, variable => variable.SimVarName == "PLANE ALTITUDE");
         Assert.Contains(SimConnectDefinitionCatalog.ScoringAndOperationalVariables, variable => variable.SimVarName == "PLANE HEADING DEGREES MAGNETIC");
+        Assert.Contains(SimConnectDefinitionCatalog.ScoringAndOperationalVariables, variable => variable.SimVarName == "LIGHT STATES");
         Assert.Contains(SimConnectDefinitionCatalog.ScoringAndOperationalVariables, variable => variable.SimVarName == "LIGHT BEACON");
         Assert.Contains(SimConnectDefinitionCatalog.ScoringAndOperationalVariables, variable => variable.SimVarName == "ENG COMBUSTION:1");
     }

@@ -30,6 +30,7 @@ public sealed class MsfsSimConnectHost
 
     public async Task<SimConnectHostStatus> ConnectAsync(CancellationToken cancellationToken = default)
     {
+        var clientPath = ResolveClientPath();
         var simulatorProcess = _simulatorProcessDetector.FindRunningSimulator(_options.SimulatorProcessNames);
         if (simulatorProcess is null)
         {
@@ -38,6 +39,7 @@ public sealed class MsfsSimConnectHost
                 ConnectionState = SimConnectConnectionState.WaitingForSimulatorProcess,
                 SimulatorProcess = null,
                 LastErrorMessage = null,
+                ClientPath = clientPath,
             };
 
             return _status;
@@ -50,6 +52,7 @@ public sealed class MsfsSimConnectHost
                 ConnectionState = SimConnectConnectionState.Connecting,
                 SimulatorProcess = simulatorProcess,
                 LastErrorMessage = null,
+                ClientPath = clientPath,
             };
 
             await _simConnectClient.OpenAsync(_options, cancellationToken).ConfigureAwait(false);
@@ -60,6 +63,7 @@ public sealed class MsfsSimConnectHost
                 SimulatorProcess = simulatorProcess,
                 ConnectedUtc = DateTimeOffset.UtcNow,
                 LastErrorMessage = null,
+                ClientPath = ResolveClientPath(),
             };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -69,6 +73,7 @@ public sealed class MsfsSimConnectHost
                 ConnectionState = SimConnectConnectionState.Faulted,
                 SimulatorProcess = simulatorProcess,
                 LastErrorMessage = ex.Message,
+                ClientPath = clientPath,
             };
         }
 
@@ -86,14 +91,17 @@ public sealed class MsfsSimConnectHost
 
     public async Task<SimConnectPollResult> PollAsync(CancellationToken cancellationToken = default)
     {
+        var pollCount = _status.PollCount + 1;
+
         if (!_simConnectClient.IsConnected)
         {
             var status = await ConnectAsync(cancellationToken).ConfigureAwait(false);
             if (status.ConnectionState != SimConnectConnectionState.Connected)
             {
+                _status = status with { PollCount = pollCount };
                 return new SimConnectPollResult
                 {
-                    Status = status,
+                    Status = _status,
                 };
             }
         }
@@ -103,6 +111,13 @@ public sealed class MsfsSimConnectHost
             var rawFrame = await _simConnectClient.ReadNextFrameAsync(cancellationToken).ConfigureAwait(false);
             if (rawFrame is null)
             {
+                _status = _status with
+                {
+                    PollCount = pollCount,
+                    NullPollCount = _status.NullPollCount + 1,
+                    ClientPath = ResolveClientPath(),
+                };
+
                 return new SimConnectPollResult
                 {
                     Status = _status,
@@ -113,7 +128,14 @@ public sealed class MsfsSimConnectHost
             _status = _status with
             {
                 ConnectionState = SimConnectConnectionState.Connected,
+                PollCount = pollCount,
+                RawFrameCount = _status.RawFrameCount + 1,
+                TelemetryFrameCount = _status.TelemetryFrameCount + 1,
+                LastRawFrameUtc = rawFrame.TimestampUtc,
                 LastTelemetryUtc = rawFrame.TimestampUtc,
+                HasReceivedFlightCriticalData = _status.HasReceivedFlightCriticalData || rawFrame.HasFlightCriticalData,
+                HasReceivedOperationalData = _status.HasReceivedOperationalData || rawFrame.HasOperationalData,
+                ClientPath = ResolveClientPath(),
                 LastErrorMessage = null,
             };
 
@@ -130,7 +152,9 @@ public sealed class MsfsSimConnectHost
             _status = _status with
             {
                 ConnectionState = SimConnectConnectionState.Faulted,
+                PollCount = pollCount,
                 LastErrorMessage = ex.Message,
+                ClientPath = ResolveClientPath(),
             };
 
             return new SimConnectPollResult
@@ -139,4 +163,9 @@ public sealed class MsfsSimConnectHost
             };
         }
     }
+
+    private string ResolveClientPath() =>
+        _simConnectClient is ISimConnectClientDiagnostics diagnostics
+            ? diagnostics.DiagnosticsClientName
+            : _simConnectClient.GetType().Name;
 }

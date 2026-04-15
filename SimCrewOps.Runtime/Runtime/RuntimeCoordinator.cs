@@ -17,7 +17,7 @@ public sealed class RuntimeCoordinator
     private readonly FlightSessionScoringTracker _scoringTracker;
     private readonly ScoringEngine _scoringEngine;
     private readonly RunwayResolver _runwayResolver;
-    private readonly ILivePositionUploader? _livePositionUploader;
+    private ILivePositionUploader? _livePositionUploader;
 
     private FlightSessionBlockTimes _blockTimes = new();
     private RunwayResolutionResult? _landingRunwayResolution;
@@ -25,6 +25,12 @@ public sealed class RuntimeCoordinator
     private DateTimeOffset? _lastLivePositionSentUtc;
     private double? _lastLivePositionLatitude;
     private double? _lastLivePositionLongitude;
+
+    /// <summary>
+    /// UTC timestamp of the most recent live-position upload that the server accepted (HTTP 200).
+    /// Null until the first successful upload.
+    /// </summary>
+    public DateTimeOffset? LastSuccessfulUploadUtc { get; private set; }
 
     public RuntimeCoordinator(
         FlightSessionContext context,
@@ -43,6 +49,32 @@ public sealed class RuntimeCoordinator
         _phaseEngine = phaseEngine ?? new FlightPhaseEngine();
         _scoringTracker = scoringTracker ?? new FlightSessionScoringTracker(context.Profile);
         _scoringEngine = scoringEngine ?? new ScoringEngine();
+    }
+
+    /// <summary>
+    /// Hot-swaps the live position uploader. Safe to call at any time — the next telemetry
+    /// frame will use the new uploader (or send nothing if <paramref name="uploader"/> is null).
+    /// </summary>
+    public void UpdateLivePositionUploader(ILivePositionUploader? uploader)
+    {
+        _livePositionUploader = uploader;
+    }
+
+    /// <summary>
+    /// Updates the flight session context (departure, arrival, flight mode, etc.).
+    /// Only applies when no session is in progress — if blocks-off has already fired
+    /// the context is preserved to keep the current flight's data intact.
+    /// </summary>
+    public void UpdateContext(FlightSessionContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        // Don't overwrite context mid-flight — blocks-off already fired means
+        // the session is in progress and changing context would corrupt its records.
+        if (_blockTimes.BlocksOffUtc is null)
+        {
+            _context = context;
+        }
     }
 
     public void Restore(FlightSessionRuntimeState state)
@@ -158,7 +190,11 @@ public sealed class RuntimeCoordinator
 
     private void TryDispatchLivePosition(TelemetryFrame telemetryFrame, CancellationToken cancellationToken)
     {
-        if (_livePositionUploader is null || !IsActiveFlight())
+        // Upload whenever we have a valid uploader and GPS data — no longer gated on
+        // IsActiveFlight().  The previous gate required BlocksOffUtc to be set, which
+        // meant position never uploaded if the tracker started mid-flight (e.g. after
+        // an auto-update restart) or if blocks-off was missed.
+        if (_livePositionUploader is null)
         {
             return;
         }
@@ -194,6 +230,11 @@ public sealed class RuntimeCoordinator
             Phase = telemetryFrame.Phase.ToString(),
             FlightMode = _context.FlightMode,
             BidId = string.IsNullOrWhiteSpace(_context.BidId) ? null : _context.BidId,
+            Departure      = _context.DepartureAirportIcao,
+            Arrival        = _context.ArrivalAirportIcao,
+            FlightNumber   = _context.FlightNumber,
+            Aircraft       = _context.AircraftType,
+            AircraftCategory = _context.AircraftCategory,
         };
 
         _ = SendLivePositionAsync(payload, cancellationToken);
@@ -208,7 +249,9 @@ public sealed class RuntimeCoordinator
 
         try
         {
-            await _livePositionUploader.SendPositionAsync(payload, cancellationToken).ConfigureAwait(false);
+            var ok = await _livePositionUploader.SendPositionAsync(payload, cancellationToken).ConfigureAwait(false);
+            if (ok)
+                LastSuccessfulUploadUtc = DateTimeOffset.UtcNow;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
