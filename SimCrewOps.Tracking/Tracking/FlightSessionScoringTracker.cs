@@ -109,6 +109,10 @@ public sealed class FlightSessionScoringTracker
     public FlightSessionScoringTracker(FlightSessionProfile? profile = null)
     {
         _profile = profile ?? new FlightSessionProfile();
+        // Give fresh sessions the same startup grace period as restored ones.
+        // The first few SimConnect frames can carry stale boolean SimVar values
+        // (all false) before MSFS has fully populated the aircraft state.
+        _postRestoreGraceFrames = 10;
     }
 
     public void Restore(
@@ -364,7 +368,11 @@ public sealed class FlightSessionScoringTracker
 
     private void UpdatePreflight(TelemetryFrame frame)
     {
-        if (!_taxiOutSeen && frame.BeaconLightOn)
+        // Keep the beacon window open if taxi hasn't started yet, OR if we're still
+        // within the startup grace period.  The grace period prevents stale SimVar
+        // false-values on the first frames from permanently closing the window before
+        // the pilot has had a chance to turn the beacon on.
+        if ((!_taxiOutSeen || _postRestoreGraceFrames > 0) && frame.BeaconLightOn)
         {
             _preflightBeaconSeen = true;
         }
