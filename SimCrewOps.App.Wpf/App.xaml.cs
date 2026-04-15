@@ -51,11 +51,11 @@ public partial class App : WpfApplication
         catch (Exception ex)
         {
             WriteCrashLog(ex);
-            MessageBox.Show(
+            System.Windows.MessageBox.Show(
                 $"SimCrewOps Tracker failed to start.\n\n{ex.GetType().Name}: {ex.Message}\n\nA crash log has been written to:\n{CrashLogPath}",
                 "SimCrewOps Tracker — Startup Error",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
             Shutdown(1);
         }
     }
