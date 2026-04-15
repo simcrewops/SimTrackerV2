@@ -14,6 +14,9 @@ public sealed class FlightSessionScoringTracker
     private bool _preflightBeaconSeen;
 
     private bool _taxiOutSeen;
+    // Set when ground speed first exceeds 6 kt (forward taxi under own power).
+    // Distinct from _taxiOutSeen which fires on phase transition during pushback.
+    private bool _forwardTaxiStarted;
     private bool _taxiOutTaxiLightsValid = true;
     private double _taxiOutMaxGroundSpeed;
     private int _taxiOutTurnSpeedEvents;
@@ -136,6 +139,7 @@ public sealed class FlightSessionScoringTracker
         _preflightBeaconSeen = input.Preflight.BeaconOnBeforeTaxi;
 
         _taxiOutSeen = HasReachedPhase(currentPhase, FlightPhase.TaxiOut);
+        _forwardTaxiStarted = _taxiOutSeen;
         _taxiOutTaxiLightsValid = !_taxiOutSeen || input.TaxiOut.TaxiLightsOn;
         _taxiOutMaxGroundSpeed = input.TaxiOut.MaxGroundSpeedKnots;
         _taxiOutTurnSpeedEvents = input.TaxiOut.ExcessiveTurnSpeedEvents;
@@ -368,11 +372,11 @@ public sealed class FlightSessionScoringTracker
 
     private void UpdatePreflight(TelemetryFrame frame)
     {
-        // Keep the beacon window open if taxi hasn't started yet, OR if we're still
-        // within the startup grace period.  The grace period prevents stale SimVar
-        // false-values on the first frames from permanently closing the window before
-        // the pilot has had a chance to turn the beacon on.
-        if ((!_taxiOutSeen || _postRestoreGraceFrames > 0) && frame.BeaconLightOn)
+        // Beacon must be on before forward taxi starts (GS > 6 kt, own-power movement).
+        // Pushback counts as preflight — the beacon should already be on during pushback.
+        // Keep the window open while we're still within the startup grace period to avoid
+        // stale SimVar false-values permanently closing the window on first-frame reconnect.
+        if ((!_forwardTaxiStarted || _postRestoreGraceFrames > 0) && frame.BeaconLightOn)
         {
             _preflightBeaconSeen = true;
         }
@@ -388,12 +392,22 @@ public sealed class FlightSessionScoringTracker
         _taxiOutSeen = true;
         _taxiOutMaxGroundSpeed = Math.Max(_taxiOutMaxGroundSpeed, frame.GroundSpeedKnots);
 
-        // Only evaluate taxi lights once the aircraft is clearly moving under its own power
-        // (ground speed ≥ 4 kt).  Pushback by tug typically runs at 1–2 kt, so this guard
-        // prevents a false deduction for lights being off during pushback while the phase
-        // has already transitioned to TaxiOut (parking brake released + GS > 0.5 kt).
+        // Forward taxi = aircraft moving under its own power at ≥ 6 kt.
+        // Pushback by tug is typically 1–3 kt; 6 kt is safely above any realistic pushback speed.
+        // The beacon window closes at this point (pilot should have had beacon on since pushback).
+        // Taxi lights must already be on when forward taxi begins.
+        if (!_forwardTaxiStarted && frame.GroundSpeedKnots >= 6.0)
+        {
+            _forwardTaxiStarted = true;
+            if (_postRestoreGraceFrames <= 0 && !frame.TaxiLightsOn)
+            {
+                _taxiOutTaxiLightsValid = false;
+            }
+        }
+
+        // Also enforce taxi lights throughout the taxi roll (once forward taxi is underway).
         // Also skip during the post-restore grace window to avoid stale SimVar false positives.
-        if (_postRestoreGraceFrames <= 0 && frame.GroundSpeedKnots >= 4.0 && !frame.TaxiLightsOn)
+        if (_forwardTaxiStarted && _postRestoreGraceFrames <= 0 && !frame.TaxiLightsOn)
         {
             _taxiOutTaxiLightsValid = false;
         }
