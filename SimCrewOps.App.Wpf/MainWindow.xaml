@@ -919,7 +919,30 @@
                             Background="{StaticResource SurfaceBrush}" CornerRadius="8"
                             BorderBrush="{StaticResource DividerBrush}" BorderThickness="1"
                             ClipToBounds="True">
-                        <wv2:WebView2 Source="{Binding LiveMapUri}" />
+                        <Grid>
+                            <!-- WebView2: Source is set from code-behind on first tab open to avoid
+                                 startup crashes when the WebView2 Runtime is not yet installed. -->
+                            <wv2:WebView2 x:Name="LiveMapWebView" />
+
+                            <!-- Fallback shown if WebView2 runtime is missing or fails to init -->
+                            <StackPanel x:Name="LiveMapFallback"
+                                        Visibility="Collapsed"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="⚠  Live Map unavailable"
+                                           FontSize="16" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock x:Name="LiveMapFallbackDetail"
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextSubtleBrush}"
+                                           HorizontalAlignment="Center"
+                                           Margin="0,8,0,0"
+                                           TextWrapping="Wrap"
+                                           MaxWidth="400"
+                                           TextAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
                     </Border>
 
                     <!-- ── POST-FLIGHT REVIEW (Option 4 — Split Panel) ─── -->
