@@ -368,7 +368,11 @@ public sealed class FlightSessionScoringTracker
         _taxiOutSeen = true;
         _taxiOutMaxGroundSpeed = Math.Max(_taxiOutMaxGroundSpeed, frame.GroundSpeedKnots);
 
-        if (!frame.TaxiLightsOn)
+        // Only evaluate taxi lights once the aircraft is clearly moving under its own power
+        // (ground speed ≥ 4 kt).  Pushback by tug typically runs at 1–2 kt, so this guard
+        // prevents a false deduction for lights being off during pushback while the phase
+        // has already transitioned to TaxiOut (parking brake released + GS > 0.5 kt).
+        if (frame.GroundSpeedKnots >= 4.0 && !frame.TaxiLightsOn)
         {
             _taxiOutTaxiLightsValid = false;
         }
@@ -458,7 +462,16 @@ public sealed class FlightSessionScoringTracker
 
         var currentAltitude = Math.Round(frame.IndicatedAltitudeFeet / 100.0) * 100.0;
         _cruiseTargetAltitudeFeet ??= currentAltitude;
-        _cruiseMaxAltitudeDeviation = Math.Max(_cruiseMaxAltitudeDeviation, Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value));
+
+        // Only accumulate altitude deviation while the aircraft is in level flight.
+        // During a step climb (or descent to a lower cruise level) the VS will be well
+        // above 300 fpm; counting that deviation would penalise an intentional level
+        // change.  The target-altitude adoption logic below handles updating the
+        // reference once the new level is captured.
+        if (Math.Abs(frame.VerticalSpeedFpm) < 300)
+        {
+            _cruiseMaxAltitudeDeviation = Math.Max(_cruiseMaxAltitudeDeviation, Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value));
+        }
 
         if (Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value) > 300)
         {
