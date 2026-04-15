@@ -56,10 +56,11 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _careerTier = "Standard Profile";
     private string _bidDisplay = "Free Flight";
     private string _reputationDisplay = "Free Flight";
-    private string _outTime = "--:--";
-    private string _offTime = "--:--";
-    private string _onTime = "--:--";
-    private string _inTime = "--:--";
+    private string _outTime = "--:--z";
+    private string _offTime = "--:--z";
+    private string _onTime = "--:--z";
+    private string _inTime = "--:--z";
+    private string _blockTime = "--:--";
     private string _scoreText = "--";
     private string _gradeText = "Grade --";
     private string _scoreSummary = "No score available until a live session is in progress.";
@@ -335,6 +336,12 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         get => _inTime;
         private set => SetProperty(ref _inTime, value);
+    }
+
+    public string BlockTime
+    {
+        get => _blockTime;
+        private set => SetProperty(ref _blockTime, value);
     }
 
     public string ScoreText
@@ -859,10 +866,11 @@ public sealed class MainWindowViewModel : ObservableObject
         BidDisplay = BuildBidDisplay(activeState, snapshot.ActiveFlight);
         ReputationDisplay = BuildModeDisplay(activeState);
 
-        OutTime = FormatTime(activeState?.BlockTimes.BlocksOffUtc, "19:45");
-        OffTime = FormatTime(activeState?.BlockTimes.WheelsOffUtc, "19:58");
-        OnTime = FormatTime(activeState?.BlockTimes.WheelsOnUtc, "--:--");
-        InTime = FormatTime(activeState?.BlockTimes.BlocksOnUtc, "--:--");
+        OutTime = FormatTimeUtc(activeState?.BlockTimes.BlocksOffUtc, "--:--z");
+        OffTime = FormatTimeUtc(activeState?.BlockTimes.WheelsOffUtc, "--:--z");
+        OnTime  = FormatTimeUtc(activeState?.BlockTimes.WheelsOnUtc,  "--:--z");
+        InTime  = FormatTimeUtc(activeState?.BlockTimes.BlocksOnUtc,  "--:--z");
+        BlockTime = FormatBlockElapsed(activeState?.BlockTimes.BlocksOffUtc, activeState?.BlockTimes.BlocksOnUtc);
 
         UpdatePersistentInstruments(telemetry);
         PopulatePhasePills(phase);
@@ -1417,8 +1425,23 @@ public sealed class MainWindowViewModel : ObservableObject
             : "Free Flight";
     }
 
+    // Legacy local-time formatter — kept for non-block-time uses.
     private static string FormatTime(DateTimeOffset? value, string fallback) =>
         value?.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture) ?? fallback;
+
+    // Block times are shown as Zulu/UTC (HH:mmz) to match real-world OOOI reporting.
+    // The sim's Zulu clock matches real-world UTC in real-time mode.
+    private static string FormatTimeUtc(DateTimeOffset? value, string fallback) =>
+        value is null ? fallback : value.Value.UtcDateTime.ToString("HH:mm", CultureInfo.InvariantCulture) + "z";
+
+    // Block elapsed time: formatted as H:MM (e.g. "5:23" or "0:47").
+    private static string FormatBlockElapsed(DateTimeOffset? blocksOff, DateTimeOffset? blocksOn)
+    {
+        if (blocksOff is null) return "--:--";
+        var elapsed = (blocksOn ?? DateTimeOffset.UtcNow) - blocksOff.Value;
+        if (elapsed < TimeSpan.Zero) return "--:--";
+        return $"{(int)elapsed.TotalHours}:{elapsed.Minutes:D2}";
+    }
 
     private static string ToYesNo(bool value) => value ? "yes" : "no";
 
