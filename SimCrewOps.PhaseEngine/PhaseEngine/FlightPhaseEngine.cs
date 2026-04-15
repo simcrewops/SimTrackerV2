@@ -98,25 +98,29 @@ public sealed class FlightPhaseEngine
         // ----- 0. Fast-path: arrived at destination gate -----
 
         // If BlocksOff has already been captured (we departed), BlocksOn has NOT yet fired,
-        // and the aircraft is now on the ground, stationary, with the parking brake set,
+        // and the aircraft is now stationary on the ground and either:
+        //   • the parking brake is set, OR
+        //   • both primary engines are off  (handles complex aircraft whose BRAKE PARKING
+        //     POSITION SimVar does not reflect the actual parking brake state)
         // fire BlocksOn immediately regardless of the current phase.
         //
-        // This handles two real-world scenarios:
-        //  (a) Normal: TaxiIn phase + PB set → the switch-case below would handle it,
-        //              but this fast-path runs first and is identical in behaviour.
-        //  (b) Recovery: tracker restarted mid-flight; phase was restored as Cruise/Descent/
-        //               etc.; by the time it reconnects the aircraft is already parked.
-        //               Without this path the state machine has no way forward because every
-        //               intermediate transition (Cruise→Descent→Approach→Landing→TaxiIn) needs
-        //               frames that were never observed by this engine instance.
+        // This covers three real-world scenarios:
+        //  (a) Normal:    TaxiIn + PB set → same as the switch-case below but fires first.
+        //  (b) Recovery:  tracker restarted mid-flight; phase restored as Cruise/Descent/etc.
+        //                 while the aircraft is already parked — the sequential transitions
+        //                 can never catch up so we skip straight to Arrival.
+        //  (c) SimVar gap: aircraft (Fenix, PMDG, etc.) where BRAKE PARKING POSITION
+        //                 returns 0 even with the cockpit brake lever pulled — engines off
+        //                 is the fallback "parked" signal.
         //
-        // Guard: exclude Preflight / TaxiOut / Takeoff to avoid triggering on the departure
-        // gate before the aircraft has even pushed back.
+        // Guard: exclude Preflight / TaxiOut / Takeoff so this never fires at the departure
+        // gate before the aircraft has pushed back.
+        var enginesOff = !frame.Engine1Running && !frame.Engine2Running;
         if (_blockEvents.Any(static e => e.Type == BlockEventType.BlocksOff)
             && !_blockEvents.Any(static e => e.Type == BlockEventType.BlocksOn)
             && frame.OnGround
-            && frame.ParkingBrakeSet
             && frame.GroundSpeedKnots < 0.5
+            && (frame.ParkingBrakeSet || enginesOff)
             && _currentPhase is not FlightPhase.Preflight
                              and not FlightPhase.TaxiOut
                              and not FlightPhase.Takeoff)
@@ -295,8 +299,10 @@ public sealed class FlightPhaseEngine
                 break;
 
             case FlightPhase.TaxiIn:
-                // Parking brake set and essentially stationary → Arrival + BlocksOn
-                if (frame.ParkingBrakeSet && frame.GroundSpeedKnots < 0.5)
+                // Stationary + parking brake set OR engines off → Arrival + BlocksOn.
+                // The engines-off fallback handles complex aircraft (Fenix, PMDG, etc.)
+                // where BRAKE PARKING POSITION returns 0 even with the brake lever set.
+                if (frame.GroundSpeedKnots < 0.5 && (frame.ParkingBrakeSet || enginesOff))
                 {
                     _currentPhase = FlightPhase.Arrival;
                     blockEvent = MakeBlockEvent(BlockEventType.BlocksOn, frame);
