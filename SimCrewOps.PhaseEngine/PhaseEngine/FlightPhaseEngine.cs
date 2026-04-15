@@ -95,6 +95,38 @@ public sealed class FlightPhaseEngine
 
     private BlockEvent? Advance(TelemetryFrame frame)
     {
+        // ----- 0. Fast-path: arrived at destination gate -----
+
+        // If BlocksOff has already been captured (we departed), BlocksOn has NOT yet fired,
+        // and the aircraft is now on the ground, stationary, with the parking brake set,
+        // fire BlocksOn immediately regardless of the current phase.
+        //
+        // This handles two real-world scenarios:
+        //  (a) Normal: TaxiIn phase + PB set → the switch-case below would handle it,
+        //              but this fast-path runs first and is identical in behaviour.
+        //  (b) Recovery: tracker restarted mid-flight; phase was restored as Cruise/Descent/
+        //               etc.; by the time it reconnects the aircraft is already parked.
+        //               Without this path the state machine has no way forward because every
+        //               intermediate transition (Cruise→Descent→Approach→Landing→TaxiIn) needs
+        //               frames that were never observed by this engine instance.
+        //
+        // Guard: exclude Preflight / TaxiOut / Takeoff to avoid triggering on the departure
+        // gate before the aircraft has even pushed back.
+        if (_blockEvents.Any(static e => e.Type == BlockEventType.BlocksOff)
+            && !_blockEvents.Any(static e => e.Type == BlockEventType.BlocksOn)
+            && frame.OnGround
+            && frame.ParkingBrakeSet
+            && frame.GroundSpeedKnots < 0.5
+            && _currentPhase is not FlightPhase.Preflight
+                             and not FlightPhase.TaxiOut
+                             and not FlightPhase.Takeoff)
+        {
+            _currentPhase = FlightPhase.Arrival;
+            var blocksOnEvent = MakeBlockEvent(BlockEventType.BlocksOn, frame);
+            _blockEvents.Add(blocksOnEvent);
+            return blocksOnEvent;
+        }
+
         // ----- 1. Edge-case backward / lateral transitions -----
 
         // Go-around: while established on final/landing, aircraft climbs back through 400 ft AGL.
