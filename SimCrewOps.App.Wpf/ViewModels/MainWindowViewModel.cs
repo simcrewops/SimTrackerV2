@@ -74,7 +74,28 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _sessionHealthLine2 = "Last sync --:--";
     private string _sessionHealthLine3 = "Runtime healthy";
     private string _reviewSummary = "Landing metrics will populate once a real touchdown is captured.";
+    private string _reviewHeaderRoute = "POST-FLIGHT DEBRIEF";
+    private Uri? _liveMapUri;
     private string _reviewLandingMetrics = "VS --   G --   Bank --   Pitch --   TZ Excess --";
+
+    // ── Landing card ─────────────────────────────────────────────────────
+    private string _gradeLetter = "--";
+    private Brush _gradeBrush = new SolidColorBrush(MediaColor.FromRgb(56, 91, 105));
+    private string _landingFpm = "--";
+    private Brush _landingFpmBrush = new SolidColorBrush(MediaColor.FromRgb(125, 133, 144));
+    private string _landingGForce = "--";
+    private Brush _landingGForceBrush = new SolidColorBrush(MediaColor.FromRgb(125, 133, 144));
+    private string _landingIas = "--";
+    private string _landingBounces = "--";
+    private Brush _landingBouncesBrush = new SolidColorBrush(MediaColor.FromRgb(125, 133, 144));
+    private string _landingBankAngle = "--";
+    private string _landingPitchAngle = "--";
+    private string _landingTzExcess = "--";
+    private bool _autoFailBannerVisible;
+    private Brush _runwayMarkerBrush = new SolidColorBrush(MediaColor.FromRgb(63, 185, 80));
+    private Thickness _runwayMarkerMargin = new Thickness(40, 2, 0, 2);
+    private double _runwayTdzWidth = 60.0;
+    private double _runwayMarkerLeft = 40.0;
     private string _diagnosticsSimState = "Waiting for simulator process";
     private string _diagnosticsSyncState = "Background sync not yet initialized";
     private string _diagnosticsRecoveryState = "No recoverable session";
@@ -132,9 +153,11 @@ public sealed class MainWindowViewModel : ObservableObject
         ReviewScoreRows = new ObservableCollection<ScoreRowModel>();
         PhasePills = new ObservableCollection<PhasePillModel>();
         PlaneMarkers = new ObservableCollection<PlaneMarkerModel>();
+        AcarsMessages = new ObservableCollection<AcarsMessageModel>();
 
         ShowDashboardCommand = new RelayCommand(() => SelectedPage = NavPage.Dashboard);
         ShowLiveMapCommand   = new RelayCommand(() => SelectedPage = NavPage.LiveMap);
+        ShowAcarsCommand     = new RelayCommand(() => SelectedPage = NavPage.Acars);
         ShowReviewCommand = new RelayCommand(() => SelectedPage = NavPage.Review);
         ShowDiagnosticsCommand = new RelayCommand(() => SelectedPage = NavPage.Diagnostics);
         ShowSettingsCommand = new RelayCommand(() => SelectedPage = NavPage.Settings);
@@ -168,12 +191,16 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public RelayCommand ShowDashboardCommand { get; }
     public RelayCommand ShowLiveMapCommand   { get; }
+    public RelayCommand ShowAcarsCommand     { get; }
     public RelayCommand ShowReviewCommand { get; }
     public RelayCommand ShowDiagnosticsCommand { get; }
     public RelayCommand ShowSettingsCommand { get; }
 
     /// <summary>Live-updated collection of aircraft markers for the map canvas.</summary>
     public ObservableCollection<PlaneMarkerModel> PlaneMarkers { get; }
+
+    /// <summary>ACARS / Comms message thread (inbound dispatch + outbound pilot messages).</summary>
+    public ObservableCollection<AcarsMessageModel> AcarsMessages { get; }
 
     /// <summary>True when the live map service is running (API token configured).</summary>
     public bool LiveMapAvailable => _liveMapService is not null;
@@ -394,10 +421,131 @@ public sealed class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _reviewSummary, value);
     }
 
+    public string ReviewHeaderRoute
+    {
+        get => _reviewHeaderRoute;
+        private set => SetProperty(ref _reviewHeaderRoute, value);
+    }
+
+    /// <summary>
+    /// URL for the WebView2 embedded live map.
+    /// Points to simcrewops.com/tracker-map?token={trackerApiKey}.
+    /// Null until settings are loaded (WebView2 stays blank).
+    /// </summary>
+    public Uri? LiveMapUri
+    {
+        get => _liveMapUri;
+        private set => SetProperty(ref _liveMapUri, value);
+    }
+
     public string ReviewLandingMetrics
     {
         get => _reviewLandingMetrics;
         private set => SetProperty(ref _reviewLandingMetrics, value);
+    }
+
+    // ── Landing card properties ───────────────────────────────────────────
+    public string GradeLetter
+    {
+        get => _gradeLetter;
+        private set => SetProperty(ref _gradeLetter, value);
+    }
+
+    public Brush GradeBrush
+    {
+        get => _gradeBrush;
+        private set => SetProperty(ref _gradeBrush, value);
+    }
+
+    public string LandingFpm
+    {
+        get => _landingFpm;
+        private set => SetProperty(ref _landingFpm, value);
+    }
+
+    public Brush LandingFpmBrush
+    {
+        get => _landingFpmBrush;
+        private set => SetProperty(ref _landingFpmBrush, value);
+    }
+
+    public string LandingGForce
+    {
+        get => _landingGForce;
+        private set => SetProperty(ref _landingGForce, value);
+    }
+
+    public Brush LandingGForceBrush
+    {
+        get => _landingGForceBrush;
+        private set => SetProperty(ref _landingGForceBrush, value);
+    }
+
+    public string LandingIas
+    {
+        get => _landingIas;
+        private set => SetProperty(ref _landingIas, value);
+    }
+
+    public string LandingBounces
+    {
+        get => _landingBounces;
+        private set => SetProperty(ref _landingBounces, value);
+    }
+
+    public Brush LandingBouncesBrush
+    {
+        get => _landingBouncesBrush;
+        private set => SetProperty(ref _landingBouncesBrush, value);
+    }
+
+    public string LandingBankAngle
+    {
+        get => _landingBankAngle;
+        private set => SetProperty(ref _landingBankAngle, value);
+    }
+
+    public string LandingPitchAngle
+    {
+        get => _landingPitchAngle;
+        private set => SetProperty(ref _landingPitchAngle, value);
+    }
+
+    public string LandingTzExcess
+    {
+        get => _landingTzExcess;
+        private set => SetProperty(ref _landingTzExcess, value);
+    }
+
+    public bool AutoFailBannerVisible
+    {
+        get => _autoFailBannerVisible;
+        private set => SetProperty(ref _autoFailBannerVisible, value);
+    }
+
+    public Brush RunwayMarkerBrush
+    {
+        get => _runwayMarkerBrush;
+        private set => SetProperty(ref _runwayMarkerBrush, value);
+    }
+
+    public Thickness RunwayMarkerMargin
+    {
+        get => _runwayMarkerMargin;
+        private set => SetProperty(ref _runwayMarkerMargin, value);
+    }
+
+    public double RunwayTdzWidth
+    {
+        get => _runwayTdzWidth;
+        private set => SetProperty(ref _runwayTdzWidth, value);
+    }
+
+    /// <summary>Pixel left offset (0-237) for the touchdown marker on the 240-px runway canvas.</summary>
+    public double RunwayMarkerLeft
+    {
+        get => _runwayMarkerLeft;
+        private set => SetProperty(ref _runwayMarkerLeft, value);
     }
 
     public string DiagnosticsSimState
@@ -508,11 +656,13 @@ public sealed class MainWindowViewModel : ObservableObject
 
             RaisePropertyChanged(nameof(IsDashboardVisible));
             RaisePropertyChanged(nameof(IsLiveMapVisible));
+            RaisePropertyChanged(nameof(IsAcarsVisible));
             RaisePropertyChanged(nameof(IsReviewVisible));
             RaisePropertyChanged(nameof(IsDiagnosticsVisible));
             RaisePropertyChanged(nameof(IsSettingsVisible));
             RaisePropertyChanged(nameof(DashboardNavUnderlineVisibility));
             RaisePropertyChanged(nameof(LiveMapNavUnderlineVisibility));
+            RaisePropertyChanged(nameof(AcarsNavUnderlineVisibility));
             RaisePropertyChanged(nameof(ReviewNavUnderlineVisibility));
             RaisePropertyChanged(nameof(DiagnosticsNavUnderlineVisibility));
             RaisePropertyChanged(nameof(SettingsNavUnderlineVisibility));
@@ -530,12 +680,14 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public bool IsDashboardVisible => SelectedPage == NavPage.Dashboard;
     public bool IsLiveMapVisible   => SelectedPage == NavPage.LiveMap;
+    public bool IsAcarsVisible     => SelectedPage == NavPage.Acars;
     public bool IsReviewVisible => SelectedPage == NavPage.Review;
     public bool IsDiagnosticsVisible => SelectedPage == NavPage.Diagnostics;
     public bool IsSettingsVisible => SelectedPage == NavPage.Settings;
 
     public Visibility DashboardNavUnderlineVisibility => IsDashboardVisible ? Visibility.Visible : Visibility.Hidden;
     public Visibility LiveMapNavUnderlineVisibility   => IsLiveMapVisible   ? Visibility.Visible : Visibility.Hidden;
+    public Visibility AcarsNavUnderlineVisibility     => IsAcarsVisible     ? Visibility.Visible : Visibility.Hidden;
     public Visibility ReviewNavUnderlineVisibility => IsReviewVisible ? Visibility.Visible : Visibility.Hidden;
     public Visibility DiagnosticsNavUnderlineVisibility => IsDiagnosticsVisible ? Visibility.Visible : Visibility.Hidden;
     public Visibility SettingsNavUnderlineVisibility => IsSettingsVisible ? Visibility.Visible : Visibility.Hidden;
@@ -758,7 +910,26 @@ public sealed class MainWindowViewModel : ObservableObject
         ReviewSummary = activeState?.IsComplete == true
             ? "Completed session ready for review."
             : "Live review reflects the current runtime snapshot.";
+
+        // Top bar route string for the review panel header
+        if (activeState is not null)
+        {
+            var dep = string.IsNullOrWhiteSpace(activeState.Context.DepartureAirportIcao) ? "----" : activeState.Context.DepartureAirportIcao.ToUpperInvariant();
+            var arr = string.IsNullOrWhiteSpace(activeState.Context.ArrivalAirportIcao)   ? "----" : activeState.Context.ArrivalAirportIcao.ToUpperInvariant();
+            ReviewHeaderRoute = $"POST-FLIGHT DEBRIEF  ·  {dep} → {arr}";
+        }
+        else if (snapshot.ActiveFlight is not null)
+        {
+            var dep = (snapshot.ActiveFlight.Departure ?? "----").ToUpperInvariant();
+            var arr = (snapshot.ActiveFlight.Arrival   ?? "----").ToUpperInvariant();
+            ReviewHeaderRoute = $"POST-FLIGHT DEBRIEF  ·  {dep} → {arr}";
+        }
+        else
+        {
+            ReviewHeaderRoute = "POST-FLIGHT DEBRIEF";
+        }
         ReviewLandingMetrics = BuildLandingMetrics(activeState);
+        ApplyLandingCard(activeState);
 
         DiagnosticsSimState = $"{snapshot.SimConnectStatus.ConnectionState} {(snapshot.SimConnectStatus.LastErrorMessage is { Length: > 0 } err ? $"• {err}" : string.Empty)}".Trim();
         DiagnosticsSyncState = snapshot.BackgroundSyncStatus is null
@@ -771,6 +942,13 @@ public sealed class MainWindowViewModel : ObservableObject
             : "No recoverable session";
         DiagnosticsSettingsPath = snapshot.SettingsFilePath;
         DiagnosticsStoragePath = snapshot.Settings.Storage.RootDirectory;
+
+        // Build the embedded map URL from base URL + tracker API token
+        var mapToken = snapshot.Settings.Api.PilotApiToken;
+        var mapBase  = snapshot.Settings.Api.BaseUri.ToString().TrimEnd('/');
+        LiveMapUri = !string.IsNullOrWhiteSpace(mapToken)
+            ? new Uri($"{mapBase}/tracker-map?token={Uri.EscapeDataString(mapToken)}")
+            : new Uri($"{mapBase}/tracker-map");
         DiagnosticsLastTelemetry = telemetry is null
             ? "No telemetry received yet"
             : $"IAS {telemetry.IndicatedAirspeedKnots:0} • VS {telemetry.VerticalSpeedFpm:0} • AGL {telemetry.AltitudeAglFeet:0}";
@@ -801,6 +979,15 @@ public sealed class MainWindowViewModel : ObservableObject
         PopulateMetricTiles(FlightPhase.Preflight, null);
         PopulateStatusChips(FlightPhase.Preflight, null);
         PopulateScoreRows(null);
+        PopulateSampleAcarsMessages();
+    }
+
+    private void PopulateSampleAcarsMessages()
+    {
+        AcarsMessages.Clear();
+        AcarsMessages.Add(new AcarsMessageModel("DISPATCH", "Clearance delivered. Squawk 2341. Initial climb FL180, expect FL360 10 min after departure.", "22:31 UTC", IsOutbound: false));
+        AcarsMessages.Add(new AcarsMessageModel("YOU", "CLRD FL360 SQUAWK 2341. WILCO.", "22:32 UTC", IsOutbound: true));
+        AcarsMessages.Add(new AcarsMessageModel("DISPATCH", "Winds updated: 270/18G24 at destination. Expect ILS 28R arrival. ATIS Kilo.", "22:43 UTC", IsOutbound: false));
     }
 
     private void PopulateMetricTiles(FlightPhase phase, TelemetryFrame? telemetry)
@@ -828,7 +1015,7 @@ public sealed class MainWindowViewModel : ObservableObject
             new MetricTileModel("VS", telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm"),
             new MetricTileModel("PITCH", telemetry is null ? "--°" : $"{telemetry.PitchAngleDegrees:0.#}°"),
             new MetricTileModel("BANK", telemetry is null ? "--°" : $"{telemetry.BankAngleDegrees:0.#}°"),
-            new MetricTileModel("G", telemetry is null ? "--" : $"{telemetry.GForce:0.00}"),
+            new MetricTileModel("G", telemetry is null || telemetry.OnGround ? "--" : $"{telemetry.GForce:0.00}"),
         },
         FlightPhase.Climb or FlightPhase.Cruise or FlightPhase.Descent => new[]
         {
@@ -840,7 +1027,7 @@ public sealed class MainWindowViewModel : ObservableObject
         FlightPhase.Landing => new[]
         {
             new MetricTileModel("TD VS", telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm", telemetry is { VerticalSpeedFpm: < -600 }),
-            new MetricTileModel("G", telemetry is null ? "--" : $"{telemetry.GForce:0.00}", telemetry is { GForce: > 1.5 }),
+            new MetricTileModel("G", telemetry is null || telemetry.OnGround ? "--" : $"{telemetry.GForce:0.00}", telemetry is { OnGround: false, GForce: > 1.5 }),
             new MetricTileModel("BANK", telemetry is null ? "--°" : $"{telemetry.BankAngleDegrees:0.#}°"),
             new MetricTileModel("PITCH", telemetry is null ? "--°" : $"{telemetry.PitchAngleDegrees:0.#}°"),
         },
@@ -925,34 +1112,54 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private static ScoreRowModel CreateScoreRow(PhaseScoreResult phaseScore)
     {
-        var accentBrush = phaseScore.Phase == FlightPhase.Approach
-            ? new SolidColorBrush(MediaColor.FromRgb(243, 169, 106))
-            : new SolidColorBrush(MediaColor.FromRgb(54, 130, 139));
-        var fillWidth = phaseScore.MaxPoints <= 0
-            ? 0
-            : 112 * (phaseScore.AwardedPoints / phaseScore.MaxPoints);
+        var pct = phaseScore.MaxPoints <= 0
+            ? 1.0
+            : phaseScore.AwardedPoints / phaseScore.MaxPoints;
+
+        // Colour-grade the bar: green ≥ 90 %, blue ≥ 70 %, amber ≥ 50 %, red < 50 %
+        var fillBrush = pct >= 0.90
+            ? new SolidColorBrush(MediaColor.FromRgb(63,  185, 80))   // green
+            : pct >= 0.70
+            ? new SolidColorBrush(MediaColor.FromRgb(88,  166, 255))  // blue
+            : pct >= 0.50
+            ? new SolidColorBrush(MediaColor.FromRgb(210, 153, 34))   // amber
+            : new SolidColorBrush(MediaColor.FromRgb(248, 81,  73));  // red
+
+        // Bar fills a 200 px track (used in both the phase-bar column and the review right panel)
+        var fillWidth = phaseScore.MaxPoints <= 0 ? 0.0 : 200.0 * pct;
+
+        // Surface the first non-trivial finding as a single line under the bar
+        var finding = phaseScore.Findings.FirstOrDefault(f => f.PointsDeducted > 0 || f.IsAutomaticFail);
 
         return new ScoreRowModel(
             phaseScore.Phase switch
             {
-                FlightPhase.TaxiOut => "Taxi Out",
-                _ => phaseScore.Phase.ToString(),
+                FlightPhase.TaxiOut  => "Taxi Out",
+                FlightPhase.TaxiIn   => "Taxi In",
+                _                    => phaseScore.Phase.ToString(),
             },
             phaseScore.MaxPoints <= 0
                 ? "--"
-                : $"{phaseScore.AwardedPoints:0.#}/{phaseScore.MaxPoints:0.#}",
+                : $"{phaseScore.AwardedPoints:0.#} / {phaseScore.MaxPoints:0.#}",
             fillWidth,
-            accentBrush);
+            fillBrush,
+            finding is not null ? $"↳ {finding.Description}" : string.Empty);
     }
 
-    private static List<ScoreRowModel> CreateSampleScoreRows() =>
-        new()
+    private static List<ScoreRowModel> CreateSampleScoreRows()
+    {
+        var muted = new SolidColorBrush(MediaColor.FromRgb(56, 91, 105));
+        return new List<ScoreRowModel>
         {
-            new ScoreRowModel("Preflight", "--", 0, new SolidColorBrush(MediaColor.FromRgb(54, 130, 139))),
-            new ScoreRowModel("Taxi Out", "--", 0, new SolidColorBrush(MediaColor.FromRgb(54, 130, 139))),
-            new ScoreRowModel("Approach", "--", 0, new SolidColorBrush(MediaColor.FromRgb(243, 169, 106))),
-            new ScoreRowModel("Landing", "--", 0, new SolidColorBrush(MediaColor.FromRgb(217, 223, 214))),
+            new("Preflight", "--", 0, muted),
+            new("Taxi Out",  "--", 0, muted),
+            new("Takeoff",   "--", 0, muted),
+            new("Approach",  "--", 0, muted),
+            new("Landing",   "--", 0, muted),
+            new("Taxi In",   "--", 0, muted),
+            new("Arrival",   "--", 0, muted),
         };
+    }
 
     private void PopulatePhasePills(FlightPhase currentPhase)
     {
@@ -1005,6 +1212,115 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         return $"VS {landing.TouchdownVerticalSpeedFpm:0}   G {landing.TouchdownGForce:0.00}   Bank {landing.TouchdownBankAngleDegrees:0.#}   Pitch {landing.TouchdownPitchAngleDegrees:0.#}   TZ Excess {landing.TouchdownZoneExcessDistanceFeet:0}";
+    }
+
+    /// <summary>
+    /// Populates all landing card ViewModel properties from the current active state.
+    /// Called on every ApplySnapshot cycle so the UI stays live during approach/landing.
+    /// </summary>
+    private void ApplyLandingCard(FlightSessionRuntimeState? activeState)
+    {
+        var scoreResult = activeState?.ScoreResult;
+        var landing     = activeState?.ScoreInput.Landing;
+
+        // ── Grade badge ──────────────────────────────────────────────────
+        var grade = scoreResult?.Grade ?? "--";
+        GradeLetter = grade;
+        GradeBrush  = GradeToColor(grade, scoreResult?.AutomaticFail ?? false);
+        AutoFailBannerVisible = scoreResult?.AutomaticFail == true;
+
+        // ── Landing metrics ──────────────────────────────────────────────
+        // Treat zero g-force as "no data yet" — MSFS always reports some g
+        // after a real touchdown, so this only fires pre-landing.
+        var hasData = landing is not null && landing.TouchdownGForce > 0.01;
+
+        if (!hasData)
+        {
+            var muted = new SolidColorBrush(MediaColor.FromRgb(125, 133, 144));
+            LandingFpm        = "--";
+            LandingFpmBrush   = muted;
+            LandingGForce     = "--";
+            LandingGForceBrush = muted;
+            LandingIas        = "--";
+            LandingBounces    = "--";
+            LandingBouncesBrush = muted;
+            LandingBankAngle  = "--";
+            LandingPitchAngle = "--";
+            LandingTzExcess   = "--";
+            RunwayMarkerBrush  = new SolidColorBrush(MediaColor.FromRgb(63, 185, 80));
+            RunwayMarkerMargin = new Thickness(40, 2, 0, 2);
+            RunwayMarkerLeft   = 40.0;
+            RunwayTdzWidth     = 60.0;
+            return;
+        }
+
+        // FPM — thresholds: ≥ -600 good, ≥ -800 firm/amber, < -800 hard/red
+        var fpm = landing!.TouchdownVerticalSpeedFpm;
+        LandingFpm      = $"{fpm:0}";
+        LandingFpmBrush = fpm >= -600
+            ? new SolidColorBrush(MediaColor.FromRgb(63, 185, 80))
+            : fpm >= -800
+            ? new SolidColorBrush(MediaColor.FromRgb(210, 153, 34))
+            : new SolidColorBrush(MediaColor.FromRgb(248, 81, 73));
+
+        // G-force — thresholds: ≤ 1.5 good, ≤ 2.0 firm, > 2.0 hard
+        var g = landing.TouchdownGForce;
+        LandingGForce      = $"{g:0.00}";
+        LandingGForceBrush = g <= 1.5
+            ? new SolidColorBrush(MediaColor.FromRgb(63, 185, 80))
+            : g <= 2.0
+            ? new SolidColorBrush(MediaColor.FromRgb(210, 153, 34))
+            : new SolidColorBrush(MediaColor.FromRgb(248, 81, 73));
+
+        LandingIas = $"{landing.TouchdownIndicatedAirspeedKnots:0}";
+
+        // Bounces
+        var bounces = landing.BounceCount;
+        LandingBounces      = bounces.ToString(CultureInfo.InvariantCulture);
+        LandingBouncesBrush = bounces == 0
+            ? new SolidColorBrush(MediaColor.FromRgb(63, 185, 80))
+            : bounces == 1
+            ? new SolidColorBrush(MediaColor.FromRgb(210, 153, 34))
+            : new SolidColorBrush(MediaColor.FromRgb(248, 81, 73));
+
+        LandingBankAngle  = $"{landing.TouchdownBankAngleDegrees:0.#}°";
+        LandingPitchAngle = $"{landing.TouchdownPitchAngleDegrees:0.#}°";
+
+        // Runway TDZ diagram — canvas is 240 px wide; TDZ zone = first 60 px
+        var tzExcess = landing.TouchdownZoneExcessDistanceFeet;
+        RunwayTdzWidth = 60.0;
+        if (tzExcess <= 0)
+        {
+            LandingTzExcess    = "IN ZONE";
+            RunwayMarkerBrush  = new SolidColorBrush(MediaColor.FromRgb(63, 185, 80));
+            RunwayMarkerMargin = new Thickness(40, 2, 0, 2);
+            RunwayMarkerLeft   = 40.0;
+        }
+        else
+        {
+            LandingTzExcess    = $"+{tzExcess:0} ft past TDZ";
+            RunwayMarkerBrush  = tzExcess > 500
+                ? new SolidColorBrush(MediaColor.FromRgb(248, 81, 73))
+                : new SolidColorBrush(MediaColor.FromRgb(210, 153, 34));
+            // Each 25 ft of excess = 1 pixel beyond the 60-px TDZ block; max 178 px
+            var markerLeft = Math.Min(178, 60.0 + tzExcess / 25.0);
+            RunwayMarkerMargin = new Thickness(markerLeft, 2, 0, 2);
+            RunwayMarkerLeft   = markerLeft;
+        }
+    }
+
+    private static Brush GradeToColor(string grade, bool autoFail)
+    {
+        if (autoFail) return new SolidColorBrush(MediaColor.FromRgb(248, 81, 73));
+        return grade switch
+        {
+            "A" => new SolidColorBrush(MediaColor.FromRgb(63, 185, 80)),
+            "B" => new SolidColorBrush(MediaColor.FromRgb(88, 166, 255)),
+            "C" => new SolidColorBrush(MediaColor.FromRgb(210, 153, 34)),
+            "D" => new SolidColorBrush(MediaColor.FromRgb(227, 135, 75)),
+            "F" => new SolidColorBrush(MediaColor.FromRgb(248, 81, 73)),
+            _   => new SolidColorBrush(MediaColor.FromRgb(56, 91, 105)),
+        };
     }
 
     private static string BuildHeaderFlightText(
@@ -1167,10 +1483,10 @@ public sealed class MainWindowViewModel : ObservableObject
             ? $"+{telemetry.VerticalSpeedFpm:0}"
             : $"{telemetry.VerticalSpeedFpm:0}";
         LiveHdg = $"{telemetry.HeadingMagneticDegrees:0}°";
-        LiveGForce = $"{telemetry.GForce:0.00}";
-
-        LiveVsAlert = telemetry.VerticalSpeedFpm < -1500;
-        LiveGForceAlert = telemetry.GForce > 2.0 || telemetry.GForce < 0.5;
+        // Suppress G-force while on the ground — MSFS always reports ~1 G due to gravity,
+        // which is physically correct but misleading on the instruments panel.
+        LiveGForce      = telemetry.OnGround ? "--" : $"{telemetry.GForce:0.00}";
+        LiveGForceAlert = !telemetry.OnGround && (telemetry.GForce > 2.0 || telemetry.GForce < 0.5);
         LiveAglAlert = !telemetry.OnGround && telemetry.AltitudeAglFeet < 50 && telemetry.VerticalSpeedFpm < -200;
 
         LedBeaconBrush = LedOnBrush(telemetry.BeaconLightOn);

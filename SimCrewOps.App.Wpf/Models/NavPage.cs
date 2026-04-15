@@ -4,6 +4,7 @@ public enum NavPage
 {
     Dashboard,
     LiveMap,
+    Acars,
     Review,
     Diagnostics,
     Settings,

@@ -37,6 +37,9 @@
         <SolidColorBrush x:Key="AmberBrush"        Color="#d29922" />
         <SolidColorBrush x:Key="DangerBrush"       Color="#f85149" />
         <SolidColorBrush x:Key="DangerSoftBrush"   Color="#3d1a19" />
+        <SolidColorBrush x:Key="SuccessBrush"      Color="#3fb950" />
+        <!-- SurfaceBrush: slightly lighter than the background, used for inset bar backgrounds -->
+        <SolidColorBrush x:Key="SurfaceBrush"      Color="#161b22" />
 
         <!-- Instrument tile colours (kept teal for avionics feel) -->
         <SolidColorBrush x:Key="InstrumentTileBrush"  Color="#16303D" />
