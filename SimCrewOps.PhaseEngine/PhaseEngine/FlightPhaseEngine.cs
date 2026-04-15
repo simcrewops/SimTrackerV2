@@ -20,6 +20,7 @@ public sealed class FlightPhaseEngine
     private DateTimeOffset? _levelFlightConditionStart;  // CLIMB → CRUISE  (VS in [-200, +200])
     private DateTimeOffset? _descentConditionStart;       // CRUISE → DESCENT (VS < -200)
     private DateTimeOffset? _slowOnGroundStart;           // LANDING → TAXI IN (GS < 40)
+    private DateTimeOffset? _enginesOffGroundStart;       // engines-off + stationary → BlocksOn fallback
 
     // WheelsOn timestamp — used to detect touch-and-go within 3 s
     private DateTimeOffset? _wheelsOnAt;
@@ -97,38 +98,61 @@ public sealed class FlightPhaseEngine
     {
         // ----- 0. Fast-path: arrived at destination gate -----
 
-        // If BlocksOff has already been captured (we departed), BlocksOn has NOT yet fired,
-        // and the aircraft is now stationary on the ground and either:
-        //   • the parking brake is set, OR
-        //   • both primary engines are off  (handles complex aircraft whose BRAKE PARKING
-        //     POSITION SimVar does not reflect the actual parking brake state)
-        // fire BlocksOn immediately regardless of the current phase.
+        // If BlocksOff has already been captured (we departed) and BlocksOn has NOT yet
+        // fired, evaluate two "parked at gate" signals:
         //
-        // This covers three real-world scenarios:
-        //  (a) Normal:    TaxiIn + PB set → same as the switch-case below but fires first.
-        //  (b) Recovery:  tracker restarted mid-flight; phase restored as Cruise/Descent/etc.
-        //                 while the aircraft is already parked — the sequential transitions
-        //                 can never catch up so we skip straight to Arrival.
-        //  (c) SimVar gap: aircraft (Fenix, PMDG, etc.) where BRAKE PARKING POSITION
-        //                 returns 0 even with the cockpit brake lever pulled — engines off
-        //                 is the fallback "parked" signal.
+        //   A. Parking brake set + stationary — fires immediately.
+        //      With the mapper now treating any non-zero BRAKE PARKING POSITION as "set",
+        //      this works for both normal aircraft (0/100) and complex aircraft like the
+        //      Fenix A320 that report 0 or 1.
         //
-        // Guard: exclude Preflight / TaxiOut / Takeoff so this never fires at the departure
-        // gate before the aircraft has pushed back.
+        //   B. Both primary engines off + stationary — fires after 2 minutes.
+        //      Fallback for aircraft where the parking brake SimVar is completely broken.
+        //      The 2-minute delay prevents false triggers while holding on the taxiway
+        //      with engines shut down (e.g. noise abatement hold, ACARS delay, etc.).
+        //
+        // Guard: exclude Preflight / TaxiOut / Takeoff so neither path fires at the
+        // departure gate before the aircraft has pushed back.
         var enginesOff = !frame.Engine1Running && !frame.Engine2Running;
-        if (_blockEvents.Any(static e => e.Type == BlockEventType.BlocksOff)
-            && !_blockEvents.Any(static e => e.Type == BlockEventType.BlocksOn)
-            && frame.OnGround
-            && frame.GroundSpeedKnots < 0.5
-            && (frame.ParkingBrakeSet || enginesOff)
-            && _currentPhase is not FlightPhase.Preflight
-                             and not FlightPhase.TaxiOut
-                             and not FlightPhase.Takeoff)
+        var blocksOffFired   = _blockEvents.Any(static e => e.Type == BlockEventType.BlocksOff);
+        var blocksOnNotFired = !_blockEvents.Any(static e => e.Type == BlockEventType.BlocksOn);
+        var postDeparturePhase = _currentPhase is not FlightPhase.Preflight
+                                              and not FlightPhase.TaxiOut
+                                              and not FlightPhase.Takeoff;
+
+        if (blocksOffFired && blocksOnNotFired && postDeparturePhase
+            && frame.OnGround && frame.GroundSpeedKnots < 0.5)
         {
-            _currentPhase = FlightPhase.Arrival;
-            var blocksOnEvent = MakeBlockEvent(BlockEventType.BlocksOn, frame);
-            _blockEvents.Add(blocksOnEvent);
-            return blocksOnEvent;
+            // Path A: parking brake
+            if (frame.ParkingBrakeSet)
+            {
+                _enginesOffGroundStart = null;
+                _currentPhase = FlightPhase.Arrival;
+                var blocksOnEvent = MakeBlockEvent(BlockEventType.BlocksOn, frame);
+                _blockEvents.Add(blocksOnEvent);
+                return blocksOnEvent;
+            }
+
+            // Path B: engines off sustained ≥ 2 minutes
+            if (enginesOff)
+            {
+                _enginesOffGroundStart ??= frame.TimestampUtc;
+                if (frame.TimestampUtc - _enginesOffGroundStart.Value >= TimeSpan.FromMinutes(2))
+                {
+                    _currentPhase = FlightPhase.Arrival;
+                    var blocksOnEvent = MakeBlockEvent(BlockEventType.BlocksOn, frame);
+                    _blockEvents.Add(blocksOnEvent);
+                    return blocksOnEvent;
+                }
+            }
+            else
+            {
+                _enginesOffGroundStart = null;   // engine restarted — reset timer
+            }
+        }
+        else
+        {
+            _enginesOffGroundStart = null;   // not in gate-arrival state — keep timer clear
         }
 
         // ----- 1. Edge-case backward / lateral transitions -----
@@ -299,10 +323,11 @@ public sealed class FlightPhaseEngine
                 break;
 
             case FlightPhase.TaxiIn:
-                // Stationary + parking brake set OR engines off → Arrival + BlocksOn.
-                // The engines-off fallback handles complex aircraft (Fenix, PMDG, etc.)
-                // where BRAKE PARKING POSITION returns 0 even with the brake lever set.
-                if (frame.GroundSpeedKnots < 0.5 && (frame.ParkingBrakeSet || enginesOff))
+                // Stationary + parking brake set → Arrival + BlocksOn.
+                // The fast-path above (section 0) also handles the engines-off fallback
+                // (2-minute timer) and the phase-recovery case, so we only need the
+                // parking-brake check here for the normal in-sequence path.
+                if (frame.GroundSpeedKnots < 0.5 && frame.ParkingBrakeSet)
                 {
                     _currentPhase = FlightPhase.Arrival;
                     blockEvent = MakeBlockEvent(BlockEventType.BlocksOn, frame);
