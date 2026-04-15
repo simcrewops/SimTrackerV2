@@ -302,6 +302,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
             RuntimeState = _runtimeState,
             BackgroundSyncStatus = _serviceStack.BackgroundSyncCoordinator?.Status,
             LivePositionEnabled = !string.IsNullOrWhiteSpace(Settings.Api.PilotApiToken),
+            LivePositionLastUploadUtc = _persistentRuntimeCoordinator.LastSuccessfulUploadUtc,
             ActiveFlight = _activeFlight,
         };
 }

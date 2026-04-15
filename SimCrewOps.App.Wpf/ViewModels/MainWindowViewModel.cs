@@ -851,10 +851,20 @@ public sealed class MainWindowViewModel : ObservableObject
             ? new SolidColorBrush(MediaColor.FromRgb(56, 91, 105))
             : new SolidColorBrush(MediaColor.FromRgb(212, 98, 90));
 
-        LiveSyncStatusText = snapshot.LivePositionEnabled ? "LIVE SYNC ON" : "NOT CONNECTED";
-        LiveSyncStatusBrush = snapshot.LivePositionEnabled
-            ? new SolidColorBrush(MediaColor.FromRgb(44, 122, 125))
-            : new SolidColorBrush(MediaColor.FromRgb(90, 106, 112));
+        // Show actual last-upload time rather than just "token is configured".
+        // Stale = no successful upload in the last 30 seconds while token is set.
+        var lastUpload = snapshot.LivePositionLastUploadUtc;
+        var sinceLast  = lastUpload is null ? (TimeSpan?)null : DateTimeOffset.UtcNow - lastUpload.Value;
+        var uploadStale = snapshot.LivePositionEnabled && lastUpload is not null && sinceLast > TimeSpan.FromSeconds(30);
+
+        LiveSyncStatusText = lastUpload is null
+            ? (snapshot.LivePositionEnabled ? "LIVE SYNC READY" : "NOT CONNECTED")
+            : $"LIVE SYNC  {(int)sinceLast!.Value.TotalSeconds}s ago";
+        LiveSyncStatusBrush = uploadStale
+            ? new SolidColorBrush(MediaColor.FromRgb(212, 98, 90))   // red — uploads stalled
+            : lastUpload is not null
+                ? new SolidColorBrush(MediaColor.FromRgb(44, 122, 125))  // teal — actively uploading
+                : new SolidColorBrush(MediaColor.FromRgb(90, 106, 112)); // grey — no upload yet
 
         PhaseTitle = phase.ToString().ToUpperInvariant();
         HeaderFlightText = BuildHeaderFlightText(activeState, snapshot.ActiveFlight);

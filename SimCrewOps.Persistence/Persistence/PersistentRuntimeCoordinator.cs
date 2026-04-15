@@ -59,6 +59,9 @@ public sealed class PersistentRuntimeCoordinator
     public void UpdateLivePositionUploader(ILivePositionUploader? uploader)
         => _runtimeCoordinator.UpdateLivePositionUploader(uploader);
 
+    /// <summary>UTC timestamp of the last live-position upload that the server accepted.</summary>
+    public DateTimeOffset? LastSuccessfulUploadUtc => _runtimeCoordinator.LastSuccessfulUploadUtc;
+
     /// <summary>
     /// Updates the flight session context with data fetched from the web app
     /// (departure/arrival ICAO, flight number, etc.). No-op if a flight is already in progress.

@@ -26,6 +26,12 @@ public sealed class RuntimeCoordinator
     private double? _lastLivePositionLatitude;
     private double? _lastLivePositionLongitude;
 
+    /// <summary>
+    /// UTC timestamp of the most recent live-position upload that the server accepted (HTTP 200).
+    /// Null until the first successful upload.
+    /// </summary>
+    public DateTimeOffset? LastSuccessfulUploadUtc { get; private set; }
+
     public RuntimeCoordinator(
         FlightSessionContext context,
         RunwayResolver runwayResolver,
@@ -184,7 +190,11 @@ public sealed class RuntimeCoordinator
 
     private void TryDispatchLivePosition(TelemetryFrame telemetryFrame, CancellationToken cancellationToken)
     {
-        if (_livePositionUploader is null || !IsActiveFlight())
+        // Upload whenever we have a valid uploader and GPS data — no longer gated on
+        // IsActiveFlight().  The previous gate required BlocksOffUtc to be set, which
+        // meant position never uploaded if the tracker started mid-flight (e.g. after
+        // an auto-update restart) or if blocks-off was missed.
+        if (_livePositionUploader is null)
         {
             return;
         }
@@ -239,7 +249,9 @@ public sealed class RuntimeCoordinator
 
         try
         {
-            await _livePositionUploader.SendPositionAsync(payload, cancellationToken).ConfigureAwait(false);
+            var ok = await _livePositionUploader.SendPositionAsync(payload, cancellationToken).ConfigureAwait(false);
+            if (ok)
+                LastSuccessfulUploadUtc = DateTimeOffset.UtcNow;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

@@ -22,6 +22,12 @@ public sealed record TrackerShellSnapshot
     public bool LivePositionEnabled { get; init; }
 
     /// <summary>
+    /// UTC timestamp of the last live-position upload that the server accepted (HTTP 200).
+    /// Null until the first successful upload this session.
+    /// </summary>
+    public DateTimeOffset? LivePositionLastUploadUtc { get; init; }
+
+    /// <summary>
     /// The pilot's next assigned flight fetched from the SimCrewOps web app.
     /// Null when no token is configured, the fetch failed, or no flight is queued.
     /// </summary>
