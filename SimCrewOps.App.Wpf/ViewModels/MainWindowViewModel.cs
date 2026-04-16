@@ -250,6 +250,13 @@ public sealed class MainWindowViewModel : ObservableObject
             UseShellExecute = true,
         }));
 
+    public RelayCommand OpenLogbookCommand { get; } = new RelayCommand(() =>
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "https://simcrewops.com/logbook",
+            UseShellExecute = true,
+        }));
+
     public string LiveSyncStatusText
     {
         get => _liveSyncStatusText;
@@ -981,7 +988,7 @@ public sealed class MainWindowViewModel : ObservableObject
             }
             else
             {
-                SettingsSaveStatus = "Connected ✓  No scheduled flight found — check My Flights on simcrewops.com.";
+                SettingsSaveStatus = "Connected ✓  No scheduled flight found — check your Logbook on simcrewops.com/logbook.";
             }
         }
         catch (Exception ex)

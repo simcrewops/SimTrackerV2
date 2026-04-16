@@ -903,35 +903,47 @@
                     <TextBlock Grid.Row="1" Text="{Binding ReviewLandingMetrics}"
                                Margin="0,40,0,0" FontSize="13"
                                Foreground="{StaticResource TextSecondaryBrush}" />
-                    <ItemsControl Grid.Row="2" ItemsSource="{Binding ReviewScoreRows}" Margin="0,24,0,0">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate DataType="{x:Type model:ScoreRowModel}">
-                                <Grid Margin="0,0,0,14">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="140" />
-                                        <ColumnDefinition Width="220" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding Label}"
-                                               FontSize="15" FontWeight="Bold"
-                                               Foreground="{StaticResource TextPrimaryBrush}" />
-                                    <Border Grid.Column="1" Height="6" CornerRadius="3"
-                                            Background="{StaticResource BgMutedBrush}"
-                                            VerticalAlignment="Center" Margin="12,0,0,0">
-                                        <Border Height="6" CornerRadius="3"
-                                                Background="{Binding FillBrush}"
-                                                Width="{Binding FillWidth}"
-                                                HorizontalAlignment="Left" />
-                                    </Border>
-                                    <TextBlock Grid.Column="2"
-                                               Text="{Binding ScoreText}"
-                                               HorizontalAlignment="Right"
-                                               FontSize="14" FontWeight="Bold"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                    <Grid Grid.Row="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <ItemsControl ItemsSource="{Binding ReviewScoreRows}" Margin="0,24,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type model:ScoreRowModel}">
+                                    <Grid Margin="0,0,0,14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="140" />
+                                            <ColumnDefinition Width="220" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Label}"
+                                                   FontSize="15" FontWeight="Bold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                                        <Border Grid.Column="1" Height="6" CornerRadius="3"
+                                                Background="{StaticResource BgMutedBrush}"
+                                                VerticalAlignment="Center" Margin="12,0,0,0">
+                                            <Border Height="6" CornerRadius="3"
+                                                    Background="{Binding FillBrush}"
+                                                    Width="{Binding FillWidth}"
+                                                    HorizontalAlignment="Left" />
+                                        </Border>
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding ScoreText}"
+                                                   HorizontalAlignment="Right"
+                                                   FontSize="14" FontWeight="Bold"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button Grid.Row="1"
+                                Content="Open Logbook on SimCrewOps"
+                                Command="{Binding OpenLogbookCommand}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                HorizontalAlignment="Left"
+                                Margin="0,20,0,0" />
+                    </Grid>
                 </Grid>
             </Border>
 
@@ -1004,7 +1016,8 @@
                                   Margin="0,16,0,0" />
                         <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
                             <Button Content="Save Settings" Command="{Binding SaveSettingsCommand}" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,10,0" />
-                            <Button Content="Retry Sync" Command="{Binding RetrySyncCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                            <Button Content="Retry Sync" Command="{Binding RetrySyncCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" />
+                            <Button Content="View Logbook" Command="{Binding OpenLogbookCommand}" Style="{StaticResource SecondaryButtonStyle}" />
                         </StackPanel>
                         <TextBlock Text="{Binding SettingsSaveStatus}"
                                    Margin="0,14,0,0" FontSize="12"
