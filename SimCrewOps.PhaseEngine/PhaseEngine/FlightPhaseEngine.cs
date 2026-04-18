@@ -222,8 +222,14 @@ public sealed class FlightPhaseEngine
         switch (_currentPhase)
         {
             case FlightPhase.Preflight:
-                // Transition fires as soon as the parking brake is released with motion
-                if (!frame.ParkingBrakeSet && frame.GroundSpeedKnots > 0.5)
+                // Require at least one engine running to distinguish self-powered taxi
+                // from tug pushback (parking brake released but no engine thrust).
+                // Without this guard, releasing the parking brake for the tug fires
+                // TaxiOut + BlocksOff even though the aircraft hasn't departed under
+                // its own power.
+                if (!frame.ParkingBrakeSet && frame.GroundSpeedKnots > 0.5
+                    && (frame.Engine1Running || frame.Engine2Running
+                        || frame.Engine3Running || frame.Engine4Running))
                 {
                     _currentPhase = FlightPhase.TaxiOut;
                     blockEvent = MakeBlockEvent(BlockEventType.BlocksOff, frame);

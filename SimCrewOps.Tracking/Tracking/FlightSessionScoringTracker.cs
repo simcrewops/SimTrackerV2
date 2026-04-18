@@ -18,6 +18,7 @@ public sealed class FlightSessionScoringTracker
     // Distinct from _taxiOutSeen which fires on phase transition during pushback.
     private bool _forwardTaxiStarted;
     private bool _taxiOutTaxiLightsValid = true;
+    private DateTimeOffset? _taxiOutLightsOffStart;
     private double _taxiOutMaxGroundSpeed;
     private int _taxiOutTurnSpeedEvents;
     private DateTimeOffset? _lastTaxiOutTurnEventAt;
@@ -81,6 +82,7 @@ public sealed class FlightSessionScoringTracker
     private bool _taxiInLandingLightsOff = true;
     private bool _taxiInStrobesOff = true;
     private bool _taxiInTaxiLightsValid = true;
+    private DateTimeOffset? _taxiInLightsOffStart;
     private double _taxiInMaxGroundSpeed;
     private int _taxiInTurnSpeedEvents;
     private DateTimeOffset? _lastTaxiInTurnEventAt;
@@ -141,6 +143,7 @@ public sealed class FlightSessionScoringTracker
         _taxiOutSeen = HasReachedPhase(currentPhase, FlightPhase.TaxiOut);
         _forwardTaxiStarted = _taxiOutSeen;
         _taxiOutTaxiLightsValid = !_taxiOutSeen || input.TaxiOut.TaxiLightsOn;
+        _taxiOutLightsOffStart = null;
         _taxiOutMaxGroundSpeed = input.TaxiOut.MaxGroundSpeedKnots;
         _taxiOutTurnSpeedEvents = input.TaxiOut.ExcessiveTurnSpeedEvents;
         _lastTaxiOutTurnEventAt = null;
@@ -214,6 +217,7 @@ public sealed class FlightSessionScoringTracker
         _taxiInLandingLightsOff = !_taxiInSeen || input.TaxiIn.LandingLightsOff;
         _taxiInStrobesOff = !_taxiInSeen || input.TaxiIn.StrobesOff;
         _taxiInTaxiLightsValid = !_taxiInSeen || input.TaxiIn.TaxiLightsOn;
+        _taxiInLightsOffStart = null;
         _taxiInMaxGroundSpeed = input.TaxiIn.MaxGroundSpeedKnots;
         _taxiInTurnSpeedEvents = input.TaxiIn.ExcessiveTurnSpeedEvents;
         _lastTaxiInTurnEventAt = null;
@@ -396,21 +400,26 @@ public sealed class FlightSessionScoringTracker
         // Forward taxi = aircraft moving under its own power at ≥ 6 kt.
         // Pushback by tug is typically 1–3 kt; 6 kt is safely above any realistic pushback speed.
         // The beacon window closes at this point (pilot should have had beacon on since pushback).
-        // Taxi lights must already be on when forward taxi begins.
         if (!_forwardTaxiStarted && frame.GroundSpeedKnots >= 6.0)
         {
             _forwardTaxiStarted = true;
-            if (_postRestoreGraceFrames <= 0 && !frame.TaxiLightsOn)
-            {
-                _taxiOutTaxiLightsValid = false;
-            }
         }
 
-        // Also enforce taxi lights throughout the taxi roll (once forward taxi is underway).
-        // Also skip during the post-restore grace window to avoid stale SimVar false positives.
-        if (_forwardTaxiStarted && _postRestoreGraceFrames <= 0 && !frame.TaxiLightsOn)
+        // Enforce taxi lights throughout the taxi roll (once forward taxi is underway).
+        // Require 3 consecutive seconds of lights-off before recording a deduction so that
+        // an accidental switch toggle doesn't cause a permanent penalty.
+        if (_forwardTaxiStarted && _postRestoreGraceFrames <= 0)
         {
-            _taxiOutTaxiLightsValid = false;
+            if (!frame.TaxiLightsOn)
+            {
+                _taxiOutLightsOffStart ??= frame.TimestampUtc;
+                if (frame.TimestampUtc - _taxiOutLightsOffStart.Value >= TimeSpan.FromSeconds(3))
+                    _taxiOutTaxiLightsValid = false;
+            }
+            else
+            {
+                _taxiOutLightsOffStart = null;
+            }
         }
 
         CountTurnSpeedEvent(frame, ref _taxiOutTurnSpeedEvents, ref _lastTaxiOutTurnEventAt);
@@ -700,9 +709,19 @@ public sealed class FlightSessionScoringTracker
             _taxiInStrobesOff = false;
         }
 
-        if (!frame.TaxiLightsOn)
+        // 3-second debounce: an accidental light toggle doesn't cause a permanent penalty.
+        if (_postRestoreGraceFrames <= 0)
         {
-            _taxiInTaxiLightsValid = false;
+            if (!frame.TaxiLightsOn)
+            {
+                _taxiInLightsOffStart ??= frame.TimestampUtc;
+                if (frame.TimestampUtc - _taxiInLightsOffStart.Value >= TimeSpan.FromSeconds(3))
+                    _taxiInTaxiLightsValid = false;
+            }
+            else
+            {
+                _taxiInLightsOffStart = null;
+            }
         }
 
         CountTurnSpeedEvent(frame, ref _taxiInTurnSpeedEvents, ref _lastTaxiInTurnEventAt);
