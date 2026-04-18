@@ -312,22 +312,20 @@ public sealed class FlightPhaseEngineTests
         var engine = new FlightPhaseEngine();
         var t0 = new DateTimeOffset(2026, 4, 12, 16, 0, 0, TimeSpan.Zero);
 
-        // At gate, brake on
+        // At gate, brake on, engines off
         engine.Process(Frame(t0, onGround: true, parkingBrake: true, engine1Running: false));
 
-        // Tug connects: brake released and aircraft moves — but no engine running
+        // Tug pushback: brake released and aircraft moving — but no engine running.
+        // Should stay Preflight; no BlocksOff should fire.
         var pushbackFrame1 = engine.Process(Frame(t0.AddSeconds(1), onGround: true, parkingBrake: false, gs: 1.5, engine1Running: false));
         Assert.Equal(FlightPhase.Preflight, pushbackFrame1.Phase);
-        Assert.Null(pushbackFrame1.BlockEvent);  // no BlocksOff
+        Assert.Null(pushbackFrame1.BlockEvent);
 
         var pushbackFrame2 = engine.Process(Frame(t0.AddSeconds(5), onGround: true, parkingBrake: false, gs: 2, engine1Running: false));
         Assert.Equal(FlightPhase.Preflight, pushbackFrame2.Phase);
+        Assert.Empty(engine.BlockEvents);  // still no block events at all
 
-        // Pilot starts engine 1 during pushback — still Preflight (no self-taxi yet)
-        engine.Process(Frame(t0.AddSeconds(10), onGround: true, parkingBrake: false, gs: 1, engine1Running: true));
-        Assert.Equal(FlightPhase.Preflight, engine.CurrentPhase);
-
-        // Pushback complete; tug disconnects; pilot releases brakes and taxis under own power
+        // Pilot starts engine and taxis under own power → TaxiOut + BlocksOff fire
         var taxiOutFrame = engine.Process(Frame(t0.AddSeconds(20), onGround: true, parkingBrake: false, gs: 3, engine1Running: true));
         Assert.Equal(FlightPhase.TaxiOut, taxiOutFrame.Phase);
         Assert.NotNull(taxiOutFrame.BlockEvent);
