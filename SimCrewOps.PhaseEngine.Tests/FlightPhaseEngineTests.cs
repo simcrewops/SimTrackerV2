@@ -282,7 +282,8 @@ public sealed class FlightPhaseEngineTests
         double agl = 0,
         double vs = 0,
         double lat = 0,
-        double lon = 0)
+        double lon = 0,
+        bool engine1Running = true)   // default true: engine running during normal taxi/flight
     {
         return new TelemetryFrame
         {
@@ -297,6 +298,39 @@ public sealed class FlightPhaseEngineTests
             VerticalSpeedFpm = vs,
             Latitude = lat,
             Longitude = lon,
+            Engine1Running = engine1Running,
         };
+    }
+
+    // -------------------------------------------------------------------------
+    //  Test 6 — Pushback: no engine → stays Preflight; engine start → TaxiOut
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Pushback_WithEnginesOff_DoesNotTransitionToTaxiOut()
+    {
+        var engine = new FlightPhaseEngine();
+        var t0 = new DateTimeOffset(2026, 4, 12, 16, 0, 0, TimeSpan.Zero);
+
+        // At gate, brake on
+        engine.Process(Frame(t0, onGround: true, parkingBrake: true, engine1Running: false));
+
+        // Tug connects: brake released and aircraft moves — but no engine running
+        var pushbackFrame1 = engine.Process(Frame(t0.AddSeconds(1), onGround: true, parkingBrake: false, gs: 1.5, engine1Running: false));
+        Assert.Equal(FlightPhase.Preflight, pushbackFrame1.Phase);
+        Assert.Null(pushbackFrame1.BlockEvent);  // no BlocksOff
+
+        var pushbackFrame2 = engine.Process(Frame(t0.AddSeconds(5), onGround: true, parkingBrake: false, gs: 2, engine1Running: false));
+        Assert.Equal(FlightPhase.Preflight, pushbackFrame2.Phase);
+
+        // Pilot starts engine 1 during pushback — still Preflight (no self-taxi yet)
+        engine.Process(Frame(t0.AddSeconds(10), onGround: true, parkingBrake: false, gs: 1, engine1Running: true));
+        Assert.Equal(FlightPhase.Preflight, engine.CurrentPhase);
+
+        // Pushback complete; tug disconnects; pilot releases brakes and taxis under own power
+        var taxiOutFrame = engine.Process(Frame(t0.AddSeconds(20), onGround: true, parkingBrake: false, gs: 3, engine1Running: true));
+        Assert.Equal(FlightPhase.TaxiOut, taxiOutFrame.Phase);
+        Assert.NotNull(taxiOutFrame.BlockEvent);
+        Assert.Equal(BlockEventType.BlocksOff, taxiOutFrame.BlockEvent!.Type);
     }
 }
