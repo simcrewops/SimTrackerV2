@@ -842,24 +842,47 @@
 
                     <!-- OOOI strip -->
                     <Border Grid.Row="6" Style="{StaticResource CardStyle}" Padding="14,12">
-                        <UniformGrid Columns="4">
-                            <StackPanel HorizontalAlignment="Center">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="1" />   <!-- divider -->
+                                <ColumnDefinition Width="Auto" /> <!-- BLK -->
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" HorizontalAlignment="Center">
                                 <TextBlock Text="OUT" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
                                 <TextBlock Text="{Binding OutTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
                             </StackPanel>
-                            <StackPanel HorizontalAlignment="Center">
+                            <StackPanel Grid.Column="1" HorizontalAlignment="Center">
                                 <TextBlock Text="OFF" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
                                 <TextBlock Text="{Binding OffTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
                             </StackPanel>
-                            <StackPanel HorizontalAlignment="Center">
+                            <StackPanel Grid.Column="2" HorizontalAlignment="Center">
                                 <TextBlock Text="ON" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
                                 <TextBlock Text="{Binding OnTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
                             </StackPanel>
-                            <StackPanel HorizontalAlignment="Center">
+                            <StackPanel Grid.Column="3" HorizontalAlignment="Center">
                                 <TextBlock Text="IN" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
                                 <TextBlock Text="{Binding InTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
                             </StackPanel>
-                        </UniformGrid>
+
+                            <!-- Divider -->
+                            <Border Grid.Column="4" Background="{StaticResource BorderDefaultBrush}" Margin="10,4" />
+
+                            <!-- Block time elapsed -->
+                            <StackPanel Grid.Column="5" HorizontalAlignment="Center" Margin="10,0,0,0">
+                                <TextBlock Text="BLK" Style="{StaticResource SectionLabelStyle}"
+                                           Foreground="{StaticResource AccentOrangeBrush}"
+                                           HorizontalAlignment="Center" Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding BlockTime}"
+                                           FontFamily="Consolas" FontSize="14" FontWeight="Bold"
+                                           Foreground="{StaticResource AccentOrangeBrush}"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
                     </Border>
 
                     <!-- Sync health -->
