@@ -269,7 +269,8 @@ public sealed class FlightSessionScoringTracker
         {
             Preflight = new PreflightMetrics
             {
-                BeaconOnBeforeTaxi = _preflightBeaconSeen,
+                // Pass until forward taxi begins — only penalise once the window has closed.
+                BeaconOnBeforeTaxi = !_forwardTaxiStarted || _preflightBeaconSeen,
             },
             TaxiOut = new TaxiMetrics
             {
