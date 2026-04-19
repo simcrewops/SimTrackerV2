@@ -241,8 +241,7 @@ public sealed class RuntimeCoordinatorTests
         double altitudeAgl = 0,
         double groundSpeed = 0,
         double verticalSpeed = 0,
-        double heading = 0,
-        bool engine1Running = true)   // default true: engine running during normal taxi/flight
+        double heading = 0)
     {
         return new TelemetryFrame
         {
@@ -260,7 +259,6 @@ public sealed class RuntimeCoordinatorTests
             VerticalSpeedFpm = verticalSpeed,
             HeadingMagneticDegrees = heading,
             HeadingTrueDegrees = heading,
-            Engine1Running = engine1Running,
         };
     }
 

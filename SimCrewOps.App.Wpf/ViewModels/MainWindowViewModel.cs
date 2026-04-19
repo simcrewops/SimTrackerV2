@@ -250,13 +250,6 @@ public sealed class MainWindowViewModel : ObservableObject
             UseShellExecute = true,
         }));
 
-    public RelayCommand OpenLogbookCommand { get; } = new RelayCommand(() =>
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = "https://simcrewops.com/logbook",
-            UseShellExecute = true,
-        }));
-
     public string LiveSyncStatusText
     {
         get => _liveSyncStatusText;
@@ -936,20 +929,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private async Task RetrySyncAsync()
     {
-        SyncStatusText = "SYNCING…";
-        SyncStatusBrush = new SolidColorBrush(MediaColor.FromRgb(56, 91, 105));
-        try
-        {
-            await _shellHost.SyncNowAsync();
-        }
-        catch (Exception ex)
-        {
-            SyncStatusText  = "SYNC ERROR";
-            SyncStatusBrush = new SolidColorBrush(MediaColor.FromRgb(212, 98, 90));
-            DiagnosticsSyncState = $"Retry failed: {ex.Message}";
-            return;
-        }
-
+        await _shellHost.SyncNowAsync();
         if (_latestSnapshot is not null)
         {
             ApplySnapshot(await _shellHost.PollAsync());
@@ -1001,7 +981,7 @@ public sealed class MainWindowViewModel : ObservableObject
             }
             else
             {
-                SettingsSaveStatus = "Connected ✓  No scheduled flight found — check your Logbook on simcrewops.com/logbook.";
+                SettingsSaveStatus = "Connected ✓  No scheduled flight found — check My Flights on simcrewops.com.";
             }
         }
         catch (Exception ex)
@@ -1032,16 +1012,12 @@ public sealed class MainWindowViewModel : ObservableObject
             _ => new SolidColorBrush(MediaColor.FromRgb(56, 91, 105)),
         };
 
-        var syncEnabled = snapshot.BackgroundSyncStatus?.Enabled == true;
-        var syncError   = snapshot.BackgroundSyncStatus?.LastErrorMessage;
-        SyncStatusText = syncEnabled
-            ? (syncError is null ? "SYNCED" : "SYNC RETRY")
+        SyncStatusText = snapshot.BackgroundSyncStatus?.Enabled == true
+            ? (snapshot.BackgroundSyncStatus.LastErrorMessage is null ? "SYNCED" : "SYNC RETRY")
             : "SYNC READY";
-        SyncStatusBrush = syncEnabled && syncError is null
-            ? new SolidColorBrush(MediaColor.FromRgb(44, 122, 125))   // teal-green  — SYNCED
-            : syncError is not null
-                ? new SolidColorBrush(MediaColor.FromRgb(212, 98, 90)) // red         — SYNC RETRY
-                : new SolidColorBrush(MediaColor.FromRgb(56, 91, 105)); // grey        — SYNC READY
+        SyncStatusBrush = snapshot.BackgroundSyncStatus?.LastErrorMessage is null
+            ? new SolidColorBrush(MediaColor.FromRgb(56, 91, 105))
+            : new SolidColorBrush(MediaColor.FromRgb(212, 98, 90));
 
         // Show actual last-upload time rather than just "token is configured".
         // Stale = no successful upload in the last 30 seconds while token is set.
@@ -1184,13 +1160,13 @@ public sealed class MainWindowViewModel : ObservableObject
         ApplyLandingCard(activeState);
 
         DiagnosticsSimState = $"{snapshot.SimConnectStatus.ConnectionState} {(snapshot.SimConnectStatus.LastErrorMessage is { Length: > 0 } err ? $"• {err}" : string.Empty)}".Trim();
-        DiagnosticsSyncState = BuildSyncDiagnosticLine(snapshot.BackgroundSyncStatus);
-        var pendingCount = snapshot.RecoverySnapshot.PendingCompletedSessions.Count;
+        DiagnosticsSyncState = snapshot.BackgroundSyncStatus is null
+            ? "Background sync disabled"
+            : $"{snapshot.BackgroundSyncStatus.LastTrigger ?? "idle"} • failures {snapshot.BackgroundSyncStatus.ConsecutiveFailureCount}";
         DiagnosticsRecoveryState = activeState is not null && snapshot.RecoverySnapshot.HasRecoverableCurrentSession
-            ? $"Resumed session active • autosave {snapshot.RecoverySnapshot.CurrentSession!.SavedUtc.ToLocalTime():HH:mm:ss}{(pendingCount > 0 ? $" • {pendingCount} pending upload" : string.Empty)}"
+            ? $"Resumed session active • last autosave {snapshot.RecoverySnapshot.CurrentSession!.SavedUtc.ToLocalTime():g}"
             : snapshot.RecoverySnapshot.HasRecoverableCurrentSession
-            ? $"Recoverable session saved {snapshot.RecoverySnapshot.CurrentSession!.SavedUtc.ToLocalTime():HH:mm:ss}{(pendingCount > 0 ? $" • {pendingCount} pending upload" : string.Empty)}"
-            : pendingCount > 0 ? $"{pendingCount} session(s) pending upload"
+            ? $"Recoverable current session saved {snapshot.RecoverySnapshot.CurrentSession!.SavedUtc.ToLocalTime():g}"
             : "No recoverable session";
         DiagnosticsSettingsPath = snapshot.SettingsFilePath;
         DiagnosticsStoragePath = snapshot.Settings.Storage.RootDirectory;
@@ -1205,7 +1181,7 @@ public sealed class MainWindowViewModel : ObservableObject
             : new Uri($"{mapBase}/tracker-map?token={Uri.EscapeDataString(mapToken)}");
         DiagnosticsLastTelemetry = telemetry is null
             ? "No telemetry received yet"
-            : $"{telemetry.Phase} • IAS {telemetry.IndicatedAirspeedKnots:0} kts • VS {telemetry.VerticalSpeedFpm:0} fpm • AGL {telemetry.AltitudeAglFeet:0} ft • HDG {telemetry.HeadingMagneticDegrees:0}° • {telemetry.Latitude:F4},{telemetry.Longitude:F4}";
+            : $"IAS {telemetry.IndicatedAirspeedKnots:0} • VS {telemetry.VerticalSpeedFpm:0} • AGL {telemetry.AltitudeAglFeet:0}";
 
         TelemetryDiagnosticsEnabled = snapshot.Settings.Debug.EnableTelemetryDiagnostics;
         if (TelemetryDiagnosticsEnabled)
@@ -1703,29 +1679,6 @@ public sealed class MainWindowViewModel : ObservableObject
         var elapsed = (blocksOn ?? DateTimeOffset.UtcNow) - blocksOff.Value;
         if (elapsed < TimeSpan.Zero) return "--:--";
         return $"{(int)elapsed.TotalHours}:{elapsed.Minutes:D2}";
-    }
-
-    private static string BuildSyncDiagnosticLine(SimCrewOps.Hosting.Models.BackgroundSyncStatus? sync)
-    {
-        if (sync is null) return "Background sync disabled";
-        if (sync.IsRunning) return "Running…";
-
-        var parts = new System.Collections.Generic.List<string>();
-
-        parts.Add(sync.LastRunCompletedUtc is { } completed
-            ? $"Last run {completed.ToLocalTime():HH:mm:ss}"
-            : "Never run");
-
-        if (sync.LastSummary is { SucceededCount: > 0 } s)
-            parts.Add($"{s.SucceededCount} uploaded");
-
-        if (sync.ConsecutiveFailureCount > 0)
-            parts.Add($"{sync.ConsecutiveFailureCount} consecutive failure(s)");
-
-        if (sync.LastErrorMessage is { Length: > 0 } err)
-            parts.Add($"Error: {err}");
-
-        return string.Join(" • ", parts);
     }
 
     private static string ToYesNo(bool value) => value ? "yes" : "no";

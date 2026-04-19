@@ -14,11 +14,7 @@ public sealed class FlightSessionScoringTracker
     private bool _preflightBeaconSeen;
 
     private bool _taxiOutSeen;
-    // Set when ground speed first exceeds 6 kt (forward taxi under own power).
-    // Distinct from _taxiOutSeen which fires on phase transition during pushback.
-    private bool _forwardTaxiStarted;
     private bool _taxiOutTaxiLightsValid = true;
-    private DateTimeOffset? _taxiOutLightsOffStart;
     private double _taxiOutMaxGroundSpeed;
     private int _taxiOutTurnSpeedEvents;
     private DateTimeOffset? _lastTaxiOutTurnEventAt;
@@ -82,9 +78,6 @@ public sealed class FlightSessionScoringTracker
     private bool _taxiInLandingLightsOff = true;
     private bool _taxiInStrobesOff = true;
     private bool _taxiInTaxiLightsValid = true;
-    private DateTimeOffset? _taxiInLightsOffStart;
-    private DateTimeOffset? _taxiInLandingLightsOnStart;   // debounce: 20 s sustained on → penalty
-    private DateTimeOffset? _taxiInStrobesOnStart;          // debounce: 20 s sustained on → penalty
     private double _taxiInMaxGroundSpeed;
     private int _taxiInTurnSpeedEvents;
     private DateTimeOffset? _lastTaxiInTurnEventAt;
@@ -116,10 +109,6 @@ public sealed class FlightSessionScoringTracker
     public FlightSessionScoringTracker(FlightSessionProfile? profile = null)
     {
         _profile = profile ?? new FlightSessionProfile();
-        // Give fresh sessions the same startup grace period as restored ones.
-        // The first few SimConnect frames can carry stale boolean SimVar values
-        // (all false) before MSFS has fully populated the aircraft state.
-        _postRestoreGraceFrames = 10;
     }
 
     public void Restore(
@@ -143,9 +132,7 @@ public sealed class FlightSessionScoringTracker
         _preflightBeaconSeen = input.Preflight.BeaconOnBeforeTaxi;
 
         _taxiOutSeen = HasReachedPhase(currentPhase, FlightPhase.TaxiOut);
-        _forwardTaxiStarted = _taxiOutSeen;
         _taxiOutTaxiLightsValid = !_taxiOutSeen || input.TaxiOut.TaxiLightsOn;
-        _taxiOutLightsOffStart = null;
         _taxiOutMaxGroundSpeed = input.TaxiOut.MaxGroundSpeedKnots;
         _taxiOutTurnSpeedEvents = input.TaxiOut.ExcessiveTurnSpeedEvents;
         _lastTaxiOutTurnEventAt = null;
@@ -219,9 +206,6 @@ public sealed class FlightSessionScoringTracker
         _taxiInLandingLightsOff = !_taxiInSeen || input.TaxiIn.LandingLightsOff;
         _taxiInStrobesOff = !_taxiInSeen || input.TaxiIn.StrobesOff;
         _taxiInTaxiLightsValid = !_taxiInSeen || input.TaxiIn.TaxiLightsOn;
-        _taxiInLightsOffStart = null;
-        _taxiInLandingLightsOnStart = null;
-        _taxiInStrobesOnStart = null;
         _taxiInMaxGroundSpeed = input.TaxiIn.MaxGroundSpeedKnots;
         _taxiInTurnSpeedEvents = input.TaxiIn.ExcessiveTurnSpeedEvents;
         _lastTaxiInTurnEventAt = null;
@@ -277,8 +261,7 @@ public sealed class FlightSessionScoringTracker
         {
             Preflight = new PreflightMetrics
             {
-                // Pass until forward taxi begins — only penalise once the window has closed.
-                BeaconOnBeforeTaxi = !_forwardTaxiStarted || _preflightBeaconSeen,
+                BeaconOnBeforeTaxi = _preflightBeaconSeen,
             },
             TaxiOut = new TaxiMetrics
             {
@@ -381,11 +364,7 @@ public sealed class FlightSessionScoringTracker
 
     private void UpdatePreflight(TelemetryFrame frame)
     {
-        // Beacon must be on before forward taxi starts (GS > 6 kt, own-power movement).
-        // Pushback counts as preflight — the beacon should already be on during pushback.
-        // Keep the window open while we're still within the startup grace period to avoid
-        // stale SimVar false-values permanently closing the window on first-frame reconnect.
-        if ((!_forwardTaxiStarted || _postRestoreGraceFrames > 0) && frame.BeaconLightOn)
+        if (!_taxiOutSeen && frame.BeaconLightOn)
         {
             _preflightBeaconSeen = true;
         }
@@ -401,29 +380,14 @@ public sealed class FlightSessionScoringTracker
         _taxiOutSeen = true;
         _taxiOutMaxGroundSpeed = Math.Max(_taxiOutMaxGroundSpeed, frame.GroundSpeedKnots);
 
-        // Forward taxi = aircraft moving under its own power at ≥ 6 kt.
-        // Pushback by tug is typically 1–3 kt; 6 kt is safely above any realistic pushback speed.
-        // The beacon window closes at this point (pilot should have had beacon on since pushback).
-        if (!_forwardTaxiStarted && frame.GroundSpeedKnots >= 6.0)
+        // Only evaluate taxi lights once the aircraft is clearly moving under its own power
+        // (ground speed ≥ 4 kt).  Pushback by tug typically runs at 1–2 kt, so this guard
+        // prevents a false deduction for lights being off during pushback while the phase
+        // has already transitioned to TaxiOut (parking brake released + GS > 0.5 kt).
+        // Also skip during the post-restore grace window to avoid stale SimVar false positives.
+        if (_postRestoreGraceFrames <= 0 && frame.GroundSpeedKnots >= 4.0 && !frame.TaxiLightsOn)
         {
-            _forwardTaxiStarted = true;
-        }
-
-        // Enforce taxi lights throughout the taxi roll (once forward taxi is underway).
-        // Require 3 consecutive seconds of lights-off before recording a deduction so that
-        // an accidental switch toggle doesn't cause a permanent penalty.
-        if (_forwardTaxiStarted && _postRestoreGraceFrames <= 0)
-        {
-            if (!frame.TaxiLightsOn)
-            {
-                _taxiOutLightsOffStart ??= frame.TimestampUtc;
-                if (frame.TimestampUtc - _taxiOutLightsOffStart.Value >= TimeSpan.FromSeconds(3))
-                    _taxiOutTaxiLightsValid = false;
-            }
-            else
-            {
-                _taxiOutLightsOffStart = null;
-            }
+            _taxiOutTaxiLightsValid = false;
         }
 
         CountTurnSpeedEvent(frame, ref _taxiOutTurnSpeedEvents, ref _lastTaxiOutTurnEventAt);
@@ -703,49 +667,19 @@ public sealed class FlightSessionScoringTracker
         _taxiInSeen = true;
         _taxiInMaxGroundSpeed = Math.Max(_taxiInMaxGroundSpeed, frame.GroundSpeedKnots);
 
-        // Landing lights — must be off within 60 s of TaxiIn (1 minute after runway vacate).
-        if (_postRestoreGraceFrames <= 0)
+        if (frame.LandingLightsOn)
         {
-            if (frame.LandingLightsOn)
-            {
-                _taxiInLandingLightsOnStart ??= frame.TimestampUtc;
-                if (frame.TimestampUtc - _taxiInLandingLightsOnStart.Value >= TimeSpan.FromSeconds(60))
-                    _taxiInLandingLightsOff = false;
-            }
-            else
-            {
-                _taxiInLandingLightsOnStart = null;
-            }
+            _taxiInLandingLightsOff = false;
         }
 
-        // Strobes — same 60-second window.
-        if (_postRestoreGraceFrames <= 0)
+        if (frame.StrobesOn)
         {
-            if (frame.StrobesOn)
-            {
-                _taxiInStrobesOnStart ??= frame.TimestampUtc;
-                if (frame.TimestampUtc - _taxiInStrobesOnStart.Value >= TimeSpan.FromSeconds(60))
-                    _taxiInStrobesOff = false;
-            }
-            else
-            {
-                _taxiInStrobesOnStart = null;
-            }
+            _taxiInStrobesOff = false;
         }
 
-        // 3-second debounce: an accidental light toggle doesn't cause a permanent penalty.
-        if (_postRestoreGraceFrames <= 0)
+        if (!frame.TaxiLightsOn)
         {
-            if (!frame.TaxiLightsOn)
-            {
-                _taxiInLightsOffStart ??= frame.TimestampUtc;
-                if (frame.TimestampUtc - _taxiInLightsOffStart.Value >= TimeSpan.FromSeconds(3))
-                    _taxiInTaxiLightsValid = false;
-            }
-            else
-            {
-                _taxiInLightsOffStart = null;
-            }
+            _taxiInTaxiLightsValid = false;
         }
 
         CountTurnSpeedEvent(frame, ref _taxiInTurnSpeedEvents, ref _lastTaxiInTurnEventAt);
@@ -775,8 +709,8 @@ public sealed class FlightSessionScoringTracker
         {
             if (!frame.ParkingBrakeSet)
             {
-                // Track whether taxi lights are off on the approach to the gate.
-                // Lights should be extinguished while pulling up, before the brake is set.
+                // This tracks the last known taxi-light state before the parking brake was set.
+                // A same-frame brake+lights-off update does not prove the required order.
                 _arrivalTaxiLightsOffBeforeParkingBrakeSet = !frame.TaxiLightsOn;
 
                 if (!AnyEngineRunning(frame))
