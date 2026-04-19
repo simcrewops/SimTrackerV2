@@ -1061,13 +1061,21 @@
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Retry sync — right aligned -->
-                <Button Content="↻ Retry Sync"
-                        Command="{Binding RetrySyncCommand}"
-                        Style="{StaticResource SecondaryButtonStyle}"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center"
-                        Margin="0,0,14,0" />
+                <!-- Version + Retry sync — right aligned -->
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Margin="0,0,14,0">
+                    <TextBlock Text="{x:Static vm:MainWindowViewModel.AppVersion}"
+                               FontSize="10"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,12,0"
+                               Opacity="0.6" />
+                    <Button Content="↻ Retry Sync"
+                            Command="{Binding RetrySyncCommand}"
+                            Style="{StaticResource SecondaryButtonStyle}" />
+                </StackPanel>
             </Grid>
         </Border>
 

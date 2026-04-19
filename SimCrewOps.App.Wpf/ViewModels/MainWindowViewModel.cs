@@ -33,7 +33,11 @@ public sealed class MainWindowViewModel : ObservableObject
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion;
         if (!string.IsNullOrWhiteSpace(informational))
-            return informational;
+        {
+            // Strip the +commitsha suffix baked in by the CI (keep e.g. "2.1.0-beta.134")
+            var plusIdx = informational.IndexOf('+');
+            return plusIdx >= 0 ? informational[..plusIdx] : informational;
+        }
         return assembly.GetName().Version?.ToString(3) ?? "2.0.0-dev";
     }
 
