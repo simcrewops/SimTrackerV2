@@ -702,9 +702,9 @@ public sealed class FlightSessionScoringTracker
             }
         }
 
-        // Only require lights on while actively moving — turning them off when
-        // slowing to a stop approaching the gate (~1 min before brake) is correct procedure.
-        if (frame.GroundSpeedKnots >= 2.0 && !frame.TaxiLightsOn)
+        // Only require lights on while actively taxiing — below 8 kts (slowing
+        // to gate) lights off is correct procedure, ~1 min before parking brake.
+        if (frame.GroundSpeedKnots >= 8.0 && !frame.TaxiLightsOn)
         {
             _taxiInTaxiLightsValid = false;
         }
