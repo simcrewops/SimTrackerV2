@@ -878,7 +878,7 @@
                             <TextBlock Grid.Column="1"
                                        Text="{Binding SyncStatusText}"
                                        FontSize="11" FontWeight="SemiBold"
-                                       Foreground="{StaticResource AccentGreenBrush}"
+                                       Foreground="{Binding SyncStatusBrush}"
                                        VerticalAlignment="Center" />
                         </Grid>
                     </Border>
@@ -959,24 +959,48 @@
                         <ColumnDefinition Width="20" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
+                    <!-- Left column: sim + telemetry + recovery -->
                     <Border Style="{StaticResource InnerCardStyle}" Padding="20">
                         <StackPanel>
-                            <TextBlock Text="SIM STATUS" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Text="{Binding DiagnosticsSimState}" Margin="0,12,0,0" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" />
-                            <TextBlock Text="LAST TELEMETRY" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Text="{Binding DiagnosticsLastTelemetry}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                            <TextBlock Text="RECOVERY" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Text="{Binding DiagnosticsRecoveryState}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                            <TextBlock Text="SIM CONNECTION" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Text="{Binding DiagnosticsSimState}"
+                                       Margin="0,10,0,0" FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" />
+
+                            <TextBlock Text="LAST TELEMETRY FRAME" Margin="0,18,0,0" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Text="{Binding DiagnosticsLastTelemetry}"
+                                       Margin="0,10,0,0" FontSize="12"
+                                       Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+
+                            <TextBlock Text="SESSION RECOVERY" Margin="0,18,0,0" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Text="{Binding DiagnosticsRecoveryState}"
+                                       Margin="0,10,0,0" FontSize="12"
+                                       Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
+
+                    <!-- Right column: sync + paths + version -->
                     <Border Grid.Column="2" Style="{StaticResource InnerCardStyle}" Padding="20">
                         <StackPanel>
-                            <TextBlock Text="SYNC" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Text="{Binding DiagnosticsSyncState}" Margin="0,12,0,0" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" />
-                            <TextBlock Text="SETTINGS FILE" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Text="{Binding DiagnosticsSettingsPath}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                            <TextBlock Text="STORAGE ROOT" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Text="{Binding DiagnosticsStoragePath}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                            <TextBlock Text="API SYNC" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Text="{Binding DiagnosticsSyncState}"
+                                       Margin="0,10,0,0" FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" />
+
+                            <TextBlock Text="SETTINGS FILE" Margin="0,18,0,0" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Text="{Binding DiagnosticsSettingsPath}"
+                                       Margin="0,10,0,0" FontSize="12"
+                                       Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+
+                            <TextBlock Text="STORAGE ROOT" Margin="0,18,0,0" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Text="{Binding DiagnosticsStoragePath}"
+                                       Margin="0,10,0,0" FontSize="12"
+                                       Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+
+                            <TextBlock Text="BUILD" Margin="0,18,0,0" Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Text="{x:Static vm:MainWindowViewModel.AppVersion}"
+                                       Margin="0,10,0,0" FontSize="12"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
                         </StackPanel>
                     </Border>
                 </Grid>
