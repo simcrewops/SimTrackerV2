@@ -830,40 +830,32 @@ public sealed class FlightSessionScoringTracker
 
     private double CalculateTouchdownVerticalSpeed(TelemetryFrame touchdownFrame)
     {
-        // Primary: AGL rate-of-change between the last airborne frame and the touchdown frame.
-        // This gives the true sink rate at wheel contact rather than the barometric VS, which
-        // can spike at gear compression.
+        // Primary: barometric VS on the last airborne frame, sampled just before wheel contact.
         //
-        // Guard: only use this path when the previous airborne frame was ≤ 15 ft AGL.
-        // At 1 Hz a smooth 120-fpm flare puts the last airborne frame at ~2 ft; even a firm
-        // 700-fpm touch only reaches ~12 ft.  If the gap is larger (e.g. the test skips from
-        // 480 ft straight to on-ground, or the tracker reconnects mid-air) the AGL delta would
-        // be wildly overstated — skip to the barometric fallback instead.
+        // The VERTICAL SPEED SimVar reports the instantaneous rate of altitude change.  On the
+        // first on-ground frame the gear physically compresses and the SimVar spikes (sometimes
+        // 2–3× the actual sink rate).  The frame immediately before OnGround flips is free of
+        // this artefact and gives the true approach/flare sink rate.
+        //
+        // The adjacent-frame AGL-delta method (previous primary) amplifies badly at high frame
+        // rates: a 2 ft AGL drop in 0.125 s (8 Hz) = 960 fpm even for a smooth landing, which
+        // consistently reads heavier than the cockpit indication or other trackers.
         if (_previousFrame is not null
             && !_previousFrame.OnGround
-            && _previousFrame.AltitudeAglFeet <= 15
-            && _previousFrame.VerticalSpeedFpm < 0)   // must be descending, not on a bounce peak
+            && _previousFrame.AltitudeAglFeet <= 50   // must be in the flare/approach, not cruise
+            && _previousFrame.VerticalSpeedFpm < 0)   // must be descending
         {
-            var dtSeconds = (touchdownFrame.TimestampUtc - _previousFrame.TimestampUtc).TotalSeconds;
-            if (dtSeconds >= 0.05)
-            {
-                var aglSinkFpm = (_previousFrame.AltitudeAglFeet - touchdownFrame.AltitudeAglFeet) / dtSeconds * 60.0;
-                if (aglSinkFpm > 0)
-                    return aglSinkFpm;
-            }
+            return Math.Abs(_previousFrame.VerticalSpeedFpm);
         }
 
-        // Fallback A: barometric VS on the touchdown frame itself (AGL ≈ 0, just contacted).
-        // This is the sim's own reported descent rate at the moment of ground contact and is
-        // more accurate than any earlier approach-phase sample.
+        // Fallback A: barometric VS on the touchdown frame itself.
+        // Used when the previous frame is missing or the AGL guard above isn't met.
         if (touchdownFrame.VerticalSpeedFpm < 0)
             return Math.Abs(touchdownFrame.VerticalSpeedFpm);
 
-        // Fallback B: last airborne frame's barometric VS (avoids gear-compression artefact).
-        if (_previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VerticalSpeedFpm < 0)
-            return Math.Abs(_previousFrame.VerticalSpeedFpm);
-
-        // Fallback C: AGL rate-of-change from the flare window in the 2-second rolling buffer.
+        // Fallback B: AGL rate-of-change across the full flare window in the 2-second rolling
+        // buffer.  Using a wider time span (first → last sample in 0.5–30 ft range) smooths
+        // out per-frame noise and gives a stable average sink rate.
         var flareFrames = _recentSamples
             .Where(static s => s.AltitudeAglFeet >= 0.5 && s.AltitudeAglFeet <= 30)
             .OrderBy(static s => s.TimestampUtc)
@@ -881,7 +873,7 @@ public sealed class FlightSessionScoringTracker
             }
         }
 
-        // Last resort: barometric VS from the nearest-to-ground samples.
+        // Last resort: lowest barometric VS from sub-100-ft samples.
         var subHundredSamples = _recentSamples
             .Where(static s => s.AltitudeAglFeet is > 0 and <= 100)
             .ToList();
