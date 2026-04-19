@@ -702,7 +702,9 @@ public sealed class FlightSessionScoringTracker
             }
         }
 
-        if (!frame.TaxiLightsOn)
+        // Only require lights on while actively moving — turning them off when
+        // slowing to a stop approaching the gate (~1 min before brake) is correct procedure.
+        if (frame.GroundSpeedKnots >= 2.0 && !frame.TaxiLightsOn)
         {
             _taxiInTaxiLightsValid = false;
         }
@@ -734,6 +736,10 @@ public sealed class FlightSessionScoringTracker
         {
             if (!frame.ParkingBrakeSet)
             {
+                // Track whether taxi lights are already off before the brake is set.
+                // Correct procedure: turn lights off ~1 min before gate, then set brake.
+                _arrivalTaxiLightsOffBeforeParkingBrakeSet = !frame.TaxiLightsOn;
+
                 if (!AnyEngineRunning(frame))
                 {
                     _arrivalParkingBrakeSetBeforeAllEnginesShutdown = false;
@@ -743,13 +749,6 @@ public sealed class FlightSessionScoringTracker
             {
                 _arrivalParkingBrakeObserved = true;
             }
-        }
-
-        // Taxi lights must be turned off after parking brake is set (shutdown checklist).
-        // Penalty clears the moment lights go off — no timer needed.
-        if (_arrivalParkingBrakeObserved && !frame.TaxiLightsOn)
-        {
-            _arrivalTaxiLightsOffBeforeParkingBrakeSet = true;
         }
 
         _arrivalAllEnginesOffByEndOfSession = !AnyEngineRunning(frame);
