@@ -32,11 +32,20 @@ if (Test-Path -LiteralPath $packageRoot) {
 
 Ensure-Directory -Path $packageRoot
 
-# Single-file publish: the output is just SimTrackerV2.exe (plus the data dir).
+# Single-file publish: the output is SimTrackerV2.exe plus any ExcludeFromSingleFile DLLs.
 # Copy the exe directly into the package root — no sub-folder needed.
 $exeSource = Join-Path $publishRoot "SimTrackerV2.exe"
 if (Test-Path -LiteralPath $exeSource) {
     Copy-Item -LiteralPath $exeSource -Destination (Join-Path $packageRoot "SimTrackerV2.exe") -Force
+
+    # SimConnect.dll and Microsoft.FlightSimulator.SimConnect.dll are native DLLs that must
+    # sit next to the exe — they are excluded from the single-file bundle via ExcludeFromSingleFile.
+    foreach ($dll in @("SimConnect.dll", "Microsoft.FlightSimulator.SimConnect.dll")) {
+        $dllSource = Join-Path $publishRoot $dll
+        if (Test-Path -LiteralPath $dllSource) {
+            Copy-Item -LiteralPath $dllSource -Destination (Join-Path $packageRoot $dll) -Force
+        }
+    }
 } else {
     # Fallback: copy everything if single-file output isn't found (e.g. local non-single-file build)
     Copy-Item -Path (Join-Path $publishRoot '*') -Destination $packageRoot -Recurse -Force

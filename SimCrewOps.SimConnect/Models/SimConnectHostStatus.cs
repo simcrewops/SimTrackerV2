@@ -15,4 +15,10 @@ public sealed record SimConnectHostStatus
     public int TelemetryFrameCount { get; init; }
     public bool HasReceivedFlightCriticalData { get; init; }
     public bool HasReceivedOperationalData { get; init; }
+
+    /// <summary>
+    /// Friendly aircraft name parsed from the MSFS .air file path reported by AircraftLoaded.
+    /// e.g. "Community\fenix-a319\..." → "fenix-a319". Null until an aircraft is loaded.
+    /// </summary>
+    public string? DetectedAircraftTitle { get; init; }
 }

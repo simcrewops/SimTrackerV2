@@ -1059,7 +1059,11 @@ public sealed class MainWindowViewModel : ObservableObject
         DepartureName = string.Empty;
         ArrivalIcao = activeState?.Context.ArrivalAirportIcao?.ToUpperInvariant() ?? "----";
         ArrivalName = string.Empty;
-        AircraftType = BuildAircraftTypeDisplay(activeState);
+        // Prefer the aircraft title detected from MSFS (what's actually loaded in the sim).
+        // Fall back to the scheduled bid aircraft type if SimConnect hasn't reported one yet.
+        AircraftType = snapshot.SimConnectStatus.DetectedAircraftTitle
+            ?? activeState?.Context.AircraftType
+            ?? "—";
 
         BeaconLightOn = telemetry?.BeaconLightOn == true;
         TaxiLightOn = telemetry?.TaxiLightsOn == true;
@@ -1174,7 +1178,8 @@ public sealed class MainWindowViewModel : ObservableObject
         ReviewLandingMetrics = BuildLandingMetrics(activeState);
         ApplyLandingCard(activeState);
 
-        DiagnosticsSimState = $"{snapshot.SimConnectStatus.ConnectionState} {(snapshot.SimConnectStatus.LastErrorMessage is { Length: > 0 } err ? $"• {err}" : string.Empty)}".Trim();
+        var simAircraft = snapshot.SimConnectStatus.DetectedAircraftTitle is { Length: > 0 } t ? $" • {t}" : string.Empty;
+        DiagnosticsSimState = $"{snapshot.SimConnectStatus.ConnectionState}{simAircraft} {(snapshot.SimConnectStatus.LastErrorMessage is { Length: > 0 } err ? $"• {err}" : string.Empty)}".Trim();
         DiagnosticsSyncState = snapshot.BackgroundSyncStatus is null
             ? "Background sync disabled"
             : $"{snapshot.BackgroundSyncStatus.LastTrigger ?? "idle"} • failures {snapshot.BackgroundSyncStatus.ConsecutiveFailureCount}";

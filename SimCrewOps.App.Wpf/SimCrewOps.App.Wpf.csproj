@@ -16,11 +16,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- ExcludeFromSingleFile keeps these alongside the exe instead of bundling them inside.
+         SimConnect.dll is a native DLL that must be next to the executable at runtime. -->
     <None Include="..\lib\SimConnect.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
     <None Include="..\lib\Microsoft.FlightSimulator.SimConnect.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
   </ItemGroup>
 

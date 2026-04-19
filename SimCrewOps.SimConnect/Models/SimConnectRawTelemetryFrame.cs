@@ -57,4 +57,10 @@ public sealed record SimConnectRawTelemetryFrame
     public bool LvarBridgeRequired  { get; init; }
     /// <summary>True when the MobiFlight WASM bridge is connected and serving LVAR values.</summary>
     public bool LvarBridgeConnected { get; init; }
+
+    /// <summary>
+    /// Friendly aircraft title parsed from the MSFS AircraftLoaded path.
+    /// e.g. "Community\fenix-a319\..." → "fenix-a319". Null until first AircraftLoaded event.
+    /// </summary>
+    public string? AircraftTitle { get; init; }
 }
