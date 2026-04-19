@@ -16,8 +16,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- WebView2 — embeds Chromium so the Live Map page loads simcrewops.com/tracker-map -->
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
     <None Include="..\lib\SimConnect.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
