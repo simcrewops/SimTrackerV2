@@ -1018,17 +1018,22 @@ public sealed class MainWindowViewModel : ObservableObject
         };
         MsfsStatusBrush = snapshot.SimConnectStatus.ConnectionState switch
         {
-            SimConnectConnectionState.Connected => new SolidColorBrush(MediaColor.FromRgb(44, 122, 125)),
-            SimConnectConnectionState.Faulted => new SolidColorBrush(MediaColor.FromRgb(212, 98, 90)),
-            _ => new SolidColorBrush(MediaColor.FromRgb(56, 91, 105)),
+            SimConnectConnectionState.Connected    => new SolidColorBrush(MediaColor.FromRgb(52, 211, 153)),  // bright green
+            SimConnectConnectionState.Connecting   => new SolidColorBrush(MediaColor.FromRgb(251, 191, 36)),  // amber
+            SimConnectConnectionState.Faulted      => new SolidColorBrush(MediaColor.FromRgb(248, 113, 113)), // bright red
+            _                                      => new SolidColorBrush(MediaColor.FromRgb(148, 163, 184)), // light grey
         };
 
         SyncStatusText = snapshot.BackgroundSyncStatus?.Enabled == true
             ? (snapshot.BackgroundSyncStatus.LastErrorMessage is null ? "SYNCED" : "SYNC RETRY")
             : "SYNC READY";
-        SyncStatusBrush = snapshot.BackgroundSyncStatus?.LastErrorMessage is null
-            ? new SolidColorBrush(MediaColor.FromRgb(56, 91, 105))
-            : new SolidColorBrush(MediaColor.FromRgb(212, 98, 90));
+        var syncEnabled = snapshot.BackgroundSyncStatus?.Enabled == true;
+        var syncError   = snapshot.BackgroundSyncStatus?.LastErrorMessage;
+        SyncStatusBrush = syncEnabled && syncError is null
+            ? new SolidColorBrush(MediaColor.FromRgb(52, 211, 153))   // bright green — synced
+            : syncError is not null
+                ? new SolidColorBrush(MediaColor.FromRgb(248, 113, 113)) // bright red — error
+                : new SolidColorBrush(MediaColor.FromRgb(148, 163, 184)); // light grey — idle
 
         // Show actual last-upload time rather than just "token is configured".
         // Stale = no successful upload in the last 30 seconds while token is set.

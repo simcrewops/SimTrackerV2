@@ -140,14 +140,14 @@
                             Padding="12,5"
                             Margin="0,0,8,0">
                         <StackPanel Orientation="Horizontal">
-                            <Ellipse Width="7" Height="7"
+                            <Ellipse Width="8" Height="8"
                                      Fill="{Binding MsfsStatusBrush}"
                                      VerticalAlignment="Center"
-                                     Margin="0,0,6,0" />
+                                     Margin="0,0,7,0" />
                             <TextBlock Text="{Binding MsfsStatusText}"
                                        FontSize="11"
                                        FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                       Foreground="{Binding MsfsStatusBrush}" />
                         </StackPanel>
                     </Border>
                     <Border Background="{StaticResource BgElevatedBrush}"
@@ -156,14 +156,14 @@
                             CornerRadius="99"
                             Padding="12,5">
                         <StackPanel Orientation="Horizontal">
-                            <Ellipse Width="7" Height="7"
+                            <Ellipse Width="8" Height="8"
                                      Fill="{Binding SyncStatusBrush}"
                                      VerticalAlignment="Center"
-                                     Margin="0,0,6,0" />
+                                     Margin="0,0,7,0" />
                             <TextBlock Text="{Binding SyncStatusText}"
                                        FontSize="11"
                                        FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                       Foreground="{Binding SyncStatusBrush}" />
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -841,26 +841,49 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- OOOI strip -->
+                    <!-- OOOI strip + BLK -->
                     <Border Grid.Row="6" Style="{StaticResource CardStyle}" Padding="14,12">
-                        <UniformGrid Columns="4">
-                            <StackPanel HorizontalAlignment="Center">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="1.4*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" HorizontalAlignment="Center">
                                 <TextBlock Text="OUT" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
                                 <TextBlock Text="{Binding OutTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
                             </StackPanel>
-                            <StackPanel HorizontalAlignment="Center">
+                            <StackPanel Grid.Column="1" HorizontalAlignment="Center">
                                 <TextBlock Text="OFF" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
                                 <TextBlock Text="{Binding OffTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
                             </StackPanel>
-                            <StackPanel HorizontalAlignment="Center">
+                            <StackPanel Grid.Column="2" HorizontalAlignment="Center">
                                 <TextBlock Text="ON" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
                                 <TextBlock Text="{Binding OnTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
                             </StackPanel>
-                            <StackPanel HorizontalAlignment="Center">
+                            <StackPanel Grid.Column="3" HorizontalAlignment="Center">
                                 <TextBlock Text="IN" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
                                 <TextBlock Text="{Binding InTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
                             </StackPanel>
-                        </UniformGrid>
+                            <!-- BLK — wider column, accent colour so it stands out -->
+                            <Border Grid.Column="4"
+                                    Background="{StaticResource BgElevatedBrush}"
+                                    CornerRadius="8"
+                                    Margin="4,0,0,0"
+                                    Padding="8,4">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="BLK" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4"
+                                               Foreground="{StaticResource AccentOrangeBrush}" />
+                                    <TextBlock Text="{Binding BlockTime}"
+                                               Style="{StaticResource MonoValueStyle}"
+                                               HorizontalAlignment="Center"
+                                               Foreground="{StaticResource AccentOrangeBrush}"
+                                               FontSize="15" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
                     </Border>
 
                     <!-- Sync health -->
