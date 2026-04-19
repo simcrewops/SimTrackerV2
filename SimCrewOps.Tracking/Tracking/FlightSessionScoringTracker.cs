@@ -88,9 +88,6 @@ public sealed class FlightSessionScoringTracker
     private double _taxiInMaxGroundSpeed;
     private int _taxiInTurnSpeedEvents;
     private DateTimeOffset? _lastTaxiInTurnEventAt;
-    // Debounce timers — penalty only locks in after lights are on continuously for 60 s
-    private DateTimeOffset? _taxiInLandingLightsOnStart;
-    private DateTimeOffset? _taxiInStrobesOnStart;
 
     private bool _arrivalSeen;
     private bool _arrivalParkingBrakeObserved;
@@ -228,8 +225,6 @@ public sealed class FlightSessionScoringTracker
         _taxiInMaxGroundSpeed = input.TaxiIn.MaxGroundSpeedKnots;
         _taxiInTurnSpeedEvents = input.TaxiIn.ExcessiveTurnSpeedEvents;
         _lastTaxiInTurnEventAt = null;
-        _taxiInLandingLightsOnStart = null;
-        _taxiInStrobesOnStart = null;
 
         _arrivalSeen = currentPhase == FlightPhase.Arrival;
         _arrivalParkingBrakeObserved = currentPhase == FlightPhase.Arrival;
