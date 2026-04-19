@@ -598,7 +598,10 @@
                 </Grid>
 
                 <!-- ── Right column ── -->
-                <Grid Grid.Column="2">
+                <ScrollViewer Grid.Column="2"
+                              VerticalScrollBarVisibility="Hidden"
+                              HorizontalScrollBarVisibility="Disabled">
+                <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />  <!-- Alert -->
                         <RowDefinition Height="10" />
@@ -906,6 +909,7 @@
                     </Border>
 
                 </Grid>
+                </ScrollViewer>
             </Grid>
 
             <!-- ── Post-Flight Review ── -->
@@ -917,6 +921,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <TextBlock Text="POST-FLIGHT REVIEW" Style="{StaticResource SectionLabelStyle}" />
@@ -926,7 +931,48 @@
                     <TextBlock Grid.Row="1" Text="{Binding ReviewLandingMetrics}"
                                Margin="0,40,0,0" FontSize="13"
                                Foreground="{StaticResource TextSecondaryBrush}" />
-                    <ItemsControl Grid.Row="2" ItemsSource="{Binding ReviewScoreRows}" Margin="0,24,0,0">
+
+                    <!-- OOOI block times in review -->
+                    <Border Grid.Row="2" Style="{StaticResource InnerCardStyle}" Margin="0,20,0,0" Padding="14,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="1" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" HorizontalAlignment="Center">
+                                <TextBlock Text="OUT" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding OutTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+                                <TextBlock Text="OFF" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding OffTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+                                <TextBlock Text="ON" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding OnTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="3" HorizontalAlignment="Center">
+                                <TextBlock Text="IN" Style="{StaticResource SectionLabelStyle}" HorizontalAlignment="Center" Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding InTime}" Style="{StaticResource MonoValueStyle}" HorizontalAlignment="Center" />
+                            </StackPanel>
+                            <Border Grid.Column="4" Background="{StaticResource BorderDefaultBrush}" Margin="10,4" />
+                            <StackPanel Grid.Column="5" HorizontalAlignment="Center" Margin="10,0,0,0">
+                                <TextBlock Text="BLK" Style="{StaticResource SectionLabelStyle}"
+                                           Foreground="{StaticResource AccentOrangeBrush}"
+                                           HorizontalAlignment="Center" Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding BlockTime}"
+                                           FontFamily="Consolas" FontSize="14" FontWeight="Bold"
+                                           Foreground="{StaticResource AccentOrangeBrush}"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <ItemsControl Grid.Row="3" ItemsSource="{Binding ReviewScoreRows}" Margin="0,24,0,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type model:ScoreRowModel}">
                                 <Grid Margin="0,0,0,14">
