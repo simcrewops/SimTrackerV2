@@ -340,9 +340,29 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
     private static string? ParseAircraftTitle(string aircraftPath)
     {
         if (string.IsNullOrWhiteSpace(aircraftPath)) return null;
+
         var parts = aircraftPath.Replace('/', '\\')
             .Split('\\', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length >= 2) return parts[1];
+
+        // MSFS returns a full absolute path — package name follows Community/OneStore/Steam.
+        var packageRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Community", "OneStore", "Steam" };
+
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            if (packageRoots.Contains(parts[i]))
+                return parts[i + 1];
+        }
+
+        // Relative-path fallback: parent folder of the .air file.
+        if (parts.Length >= 2)
+        {
+            var last = parts[^1];
+            if (last.EndsWith(".air", StringComparison.OrdinalIgnoreCase))
+                return parts[^2];
+            return parts[0];
+        }
+
         var name = parts[0];
         return name.EndsWith(".air", StringComparison.OrdinalIgnoreCase) ? name[..^4] : name;
     }

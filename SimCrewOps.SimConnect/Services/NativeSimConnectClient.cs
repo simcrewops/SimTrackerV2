@@ -580,10 +580,31 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             .Replace('/', '\\')
             .Split('\\', StringSplitOptions.RemoveEmptyEntries);
 
-        // Path layout: [root]\[package-name]\...\[file].air
-        // "package-name" is the most useful human-readable segment (index 1).
+        // MSFS returns a full absolute path, e.g.:
+        //   C:\...\Packages\Community\fenix-a319\SimObjects\Airplanes\...\*.air
+        //   C:\...\Packages\Official\OneStore\asobo-aircraft-a320neo\...\*.air
+        //   C:\...\Packages\Official\Steam\asobo-aircraft-a320neo\...\*.air
+        //
+        // The package name sits immediately after Community / OneStore / Steam.
+        var packageRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Community", "OneStore", "Steam" };
+
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            if (packageRoots.Contains(parts[i]))
+                return parts[i + 1];
+        }
+
+        // Relative-path fallback: take the parent folder of the .air file,
+        // which is the aircraft folder name (e.g. "Asobo_A320_NEO").
         if (parts.Length >= 2)
-            return parts[1];
+        {
+            var last = parts[^1];
+            if (last.EndsWith(".air", StringComparison.OrdinalIgnoreCase))
+                return parts[^2];
+
+            return parts[0];
+        }
 
         // Single-segment fallback — strip the .air extension.
         var name = parts[0];
