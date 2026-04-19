@@ -703,14 +703,13 @@ public sealed class FlightSessionScoringTracker
         _taxiInSeen = true;
         _taxiInMaxGroundSpeed = Math.Max(_taxiInMaxGroundSpeed, frame.GroundSpeedKnots);
 
-        // Landing lights — 20-second sustained-on required before penalty locks in.
-        // Gives the pilot time to complete the after-landing checklist after runway vacate.
+        // Landing lights — must be off within 60 s of TaxiIn (1 minute after runway vacate).
         if (_postRestoreGraceFrames <= 0)
         {
             if (frame.LandingLightsOn)
             {
                 _taxiInLandingLightsOnStart ??= frame.TimestampUtc;
-                if (frame.TimestampUtc - _taxiInLandingLightsOnStart.Value >= TimeSpan.FromSeconds(20))
+                if (frame.TimestampUtc - _taxiInLandingLightsOnStart.Value >= TimeSpan.FromSeconds(60))
                     _taxiInLandingLightsOff = false;
             }
             else
@@ -719,13 +718,13 @@ public sealed class FlightSessionScoringTracker
             }
         }
 
-        // Strobes — same 20-second window.
+        // Strobes — same 60-second window.
         if (_postRestoreGraceFrames <= 0)
         {
             if (frame.StrobesOn)
             {
                 _taxiInStrobesOnStart ??= frame.TimestampUtc;
-                if (frame.TimestampUtc - _taxiInStrobesOnStart.Value >= TimeSpan.FromSeconds(20))
+                if (frame.TimestampUtc - _taxiInStrobesOnStart.Value >= TimeSpan.FromSeconds(60))
                     _taxiInStrobesOff = false;
             }
             else
@@ -776,6 +775,10 @@ public sealed class FlightSessionScoringTracker
         {
             if (!frame.ParkingBrakeSet)
             {
+                // Track whether taxi lights are off on the approach to the gate.
+                // Lights should be extinguished while pulling up, before the brake is set.
+                _arrivalTaxiLightsOffBeforeParkingBrakeSet = !frame.TaxiLightsOn;
+
                 if (!AnyEngineRunning(frame))
                 {
                     _arrivalParkingBrakeSetBeforeAllEnginesShutdown = false;
@@ -785,15 +788,6 @@ public sealed class FlightSessionScoringTracker
             {
                 _arrivalParkingBrakeObserved = true;
             }
-        }
-
-        // After the parking brake is set, mark taxi lights as compliant as soon as they
-        // are turned off (normal shutdown checklist order: park → then lights off).
-        // The field stays false until that happens, so a pilot who never turns lights off
-        // after parking retains the deduction for the full session.
-        if (_arrivalParkingBrakeObserved && !frame.TaxiLightsOn)
-        {
-            _arrivalTaxiLightsOffBeforeParkingBrakeSet = true;
         }
 
         _arrivalAllEnginesOffByEndOfSession = !AnyEngineRunning(frame);
