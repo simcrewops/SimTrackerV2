@@ -736,7 +736,7 @@
                                             </Style.Triggers>
                                         </Style>
                                     </Border.Style>
-                                    <TextBlock FontSize="9" FontWeight="Bold" LetterSpacing="1">
+                                    <TextBlock FontSize="9" FontWeight="Bold">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
                                                 <Setter Property="Text"       Value="Waiting for touchdown" />
