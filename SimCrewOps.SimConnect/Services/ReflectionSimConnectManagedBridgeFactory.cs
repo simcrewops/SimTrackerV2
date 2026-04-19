@@ -22,6 +22,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
 {
     private const uint FlightCriticalRequestId = 1;
     private const uint OperationalRequestId = 2;
+    private const uint AircraftStateRequestId = 3;
     private const uint FlightCriticalDefinitionId = 11;
     private const uint OperationalDefinitionId = 12;
 
@@ -36,6 +37,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
     private readonly uint _userObjectId;
 
     private LatestSimConnectState _latestState = new();
+    private string? _detectedAircraftTitle;
     private bool _disposed;
 
     public ReflectionSimConnectManagedBridge(Assembly managedAssembly, SimConnectHostOptions options)
@@ -58,10 +60,12 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         _userObjectId = GetUnsignedStaticValue(simConnectType, "SIMCONNECT_OBJECT_ID_USER");
 
         WireEvent(simConnectType, "OnRecvSimobjectData", HandleSimObjectData);
+        WireEvent(simConnectType, "OnRecvSystemState", HandleSystemState);
         WireEvent(simConnectType, "OnRecvException", HandleSimConnectException);
         WireEvent(simConnectType, "OnRecvQuit", HandleSimConnectQuit);
 
         RegisterDefinitions(managedAssembly, simConnectType);
+        RequestAircraftState(simConnectType);
     }
 
     public bool IsConnected => !_disposed;
@@ -308,6 +312,41 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         }
     }
 
+    private void HandleSystemState(object? data)
+    {
+        if (data is null) return;
+        var requestId = Convert.ToUInt32(GetInstanceValue(data, "dwRequestID"));
+        if (requestId != AircraftStateRequestId) return;
+
+        // szString is the aircraft .air file path, e.g. "Community\fenix-a319\..."
+        var aircraftPath = GetInstanceValue(data, "szString")?.ToString() ?? string.Empty;
+        _detectedAircraftTitle = ParseAircraftTitle(aircraftPath);
+    }
+
+    private void RequestAircraftState(Type simConnectType)
+    {
+        try
+        {
+            var method = simConnectType.GetMethod("RequestSystemState",
+                BindingFlags.Public | BindingFlags.Instance);
+            method?.Invoke(_simConnect, [AircraftStateRequestId, "AircraftLoaded"]);
+        }
+        catch
+        {
+            // Non-fatal — aircraft title will remain null if unsupported.
+        }
+    }
+
+    private static string? ParseAircraftTitle(string aircraftPath)
+    {
+        if (string.IsNullOrWhiteSpace(aircraftPath)) return null;
+        var parts = aircraftPath.Replace('/', '\\')
+            .Split('\\', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2) return parts[1];
+        var name = parts[0];
+        return name.EndsWith(".air", StringComparison.OrdinalIgnoreCase) ? name[..^4] : name;
+    }
+
     private void HandleSimConnectException(object? data)
     {
         var exceptionCode = data is null ? "unknown" : GetInstanceValue(data, "dwException")?.ToString() ?? "unknown";
@@ -415,6 +454,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             Engine2Running = _latestState.Engine2Running,
             Engine3Running = _latestState.Engine3Running,
             Engine4Running = _latestState.Engine4Running,
+            AircraftTitle  = _detectedAircraftTitle,
         });
     }
 

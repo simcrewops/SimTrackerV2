@@ -88,6 +88,9 @@ public sealed class FlightSessionScoringTracker
     private double _taxiInMaxGroundSpeed;
     private int _taxiInTurnSpeedEvents;
     private DateTimeOffset? _lastTaxiInTurnEventAt;
+    // Debounce timers — penalty only locks in after lights are on continuously for 60 s
+    private DateTimeOffset? _taxiInLandingLightsOnStart;
+    private DateTimeOffset? _taxiInStrobesOnStart;
 
     private bool _arrivalSeen;
     private bool _arrivalParkingBrakeObserved;
@@ -225,6 +228,8 @@ public sealed class FlightSessionScoringTracker
         _taxiInMaxGroundSpeed = input.TaxiIn.MaxGroundSpeedKnots;
         _taxiInTurnSpeedEvents = input.TaxiIn.ExcessiveTurnSpeedEvents;
         _lastTaxiInTurnEventAt = null;
+        _taxiInLandingLightsOnStart = null;
+        _taxiInStrobesOnStart = null;
 
         _arrivalSeen = currentPhase == FlightPhase.Arrival;
         _arrivalParkingBrakeObserved = currentPhase == FlightPhase.Arrival;
@@ -703,8 +708,7 @@ public sealed class FlightSessionScoringTracker
         _taxiInSeen = true;
         _taxiInMaxGroundSpeed = Math.Max(_taxiInMaxGroundSpeed, frame.GroundSpeedKnots);
 
-        // Landing lights — 20-second sustained-on required before penalty locks in.
-        // Gives the pilot time to complete the after-landing checklist after runway vacate.
+        // Landing lights — 60-second grace window after runway vacate before penalty locks in.
         if (_postRestoreGraceFrames <= 0)
         {
             if (frame.LandingLightsOn)
@@ -719,7 +723,7 @@ public sealed class FlightSessionScoringTracker
             }
         }
 
-        // Strobes — same 20-second window.
+        // Strobes — same 60-second window.
         if (_postRestoreGraceFrames <= 0)
         {
             if (frame.StrobesOn)
@@ -734,8 +738,10 @@ public sealed class FlightSessionScoringTracker
             }
         }
 
-        // 3-second debounce: an accidental light toggle doesn't cause a permanent penalty.
-        if (_postRestoreGraceFrames <= 0)
+        // Only require taxi lights while actively taxiing — below 8 kts (slowing to gate)
+        // lights off is correct procedure, ~1 min before parking brake.
+        // 3-second debounce: an accidental toggle doesn't cause a permanent penalty.
+        if (frame.GroundSpeedKnots >= 8.0 && _postRestoreGraceFrames <= 0)
         {
             if (!frame.TaxiLightsOn)
             {
@@ -776,8 +782,8 @@ public sealed class FlightSessionScoringTracker
         {
             if (!frame.ParkingBrakeSet)
             {
-                // Track whether taxi lights are off on the approach to the gate.
-                // Lights should be extinguished while pulling up, before the brake is set.
+                // Track whether taxi lights are already off before the brake is set.
+                // Correct procedure: turn lights off ~1 min before gate, then set brake.
                 _arrivalTaxiLightsOffBeforeParkingBrakeSet = !frame.TaxiLightsOn;
 
                 if (!AnyEngineRunning(frame))

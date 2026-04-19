@@ -154,7 +154,7 @@ jobs:
           -DestinationPath "artifacts/package/SimTrackerV2-beta-win-x64.zip"
           -Force
 
-      - name: Upload beta package
+      - name: Upload beta package artifact
         uses: actions/upload-artifact@v7
         with:
           name: simtracker-beta-win-x64
@@ -176,7 +176,7 @@ jobs:
 
             ### Install
             1. Download `SimTrackerV2-beta-win-x64.zip` below
-            2. Extract and run `SimTrackerV2.exe` — that's the only file needed
+            2. Extract and run `SimTrackerV2.exe` — no installer needed
 
             ### Connect your account
             - Open **Settings** tab → copy your **API Token** from `simcrewops.com/settings` → paste and Save

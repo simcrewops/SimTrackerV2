@@ -33,14 +33,16 @@ public sealed class MainWindowViewModel : ObservableObject
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion;
         if (!string.IsNullOrWhiteSpace(informational))
-            return informational;
+        {
+            // Strip the +commitsha suffix baked in by the CI (keep e.g. "2.1.0-beta.134")
+            var plusIdx = informational.IndexOf('+');
+            return plusIdx >= 0 ? informational[..plusIdx] : informational;
+        }
         return assembly.GetName().Version?.ToString(3) ?? "2.0.0-dev";
     }
 
     private readonly TrackerShellHost _shellHost;
     private readonly DispatcherTimer _pollingTimer;
-    private readonly SimCrewOps.Hosting.Hosting.LiveMapService? _liveMapService;
-
     private TrackerShellSnapshot? _latestSnapshot;
     private bool _isRefreshing;
     private NavPage _selectedPage = NavPage.Dashboard;
@@ -100,7 +102,6 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _alertType = "APPROACH CHECK";
     private string _reviewSummary = "Landing metrics will populate after touchdown.";
     private string _reviewHeaderRoute = "POST-FLIGHT DEBRIEF";
-    private Uri? _liveMapUri;
     private string _reviewLandingMetrics = "VS --   G --   Bank --   Pitch --   TZ Excess --";
 
     // ── Landing card ─────────────────────────────────────────────────────
@@ -122,6 +123,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private double _runwayTdzWidth = 60.0;
     private double _runwayMarkerLeft = 40.0;
     private string _diagnosticsSimState = "Waiting for simulator process";
+    private string _diagnosticsActiveFlight = "No flight assigned";
     private string _diagnosticsSyncState = "Background sync not yet initialized";
     private string _diagnosticsRecoveryState = "No recoverable session";
     private string _diagnosticsSettingsPath = string.Empty;
@@ -181,18 +183,11 @@ public sealed class MainWindowViewModel : ObservableObject
         AcarsMessages = new ObservableCollection<AcarsMessageModel>();
 
         ShowDashboardCommand = new RelayCommand(() => SelectedPage = NavPage.Dashboard);
-        ShowLiveMapCommand   = new RelayCommand(() => SelectedPage = NavPage.LiveMap);
         ShowAcarsCommand     = new RelayCommand(() => SelectedPage = NavPage.Acars);
         ShowReviewCommand = new RelayCommand(() => SelectedPage = NavPage.Review);
         ShowDiagnosticsCommand = new RelayCommand(() => SelectedPage = NavPage.Diagnostics);
         ShowSettingsCommand = new RelayCommand(() => SelectedPage = NavPage.Settings);
 
-        // Wire up the live map service if one was created for this service stack.
-        _liveMapService = bootstrap.LiveMapService;
-        if (_liveMapService is not null)
-        {
-            _liveMapService.PositionsUpdated += OnLiveMapPositionsUpdated;
-        }
         RetrySyncCommand = new RelayCommand(() => _ = RetrySyncAsync());
         SaveSettingsCommand = new RelayCommand(() => _ = SaveSettingsAsync());
 
@@ -215,7 +210,6 @@ public sealed class MainWindowViewModel : ObservableObject
     public ObservableCollection<PhasePillModel> PhasePills { get; }
 
     public RelayCommand ShowDashboardCommand { get; }
-    public RelayCommand ShowLiveMapCommand   { get; }
     public RelayCommand ShowAcarsCommand     { get; }
     public RelayCommand ShowReviewCommand { get; }
     public RelayCommand ShowDiagnosticsCommand { get; }
@@ -226,9 +220,6 @@ public sealed class MainWindowViewModel : ObservableObject
 
     /// <summary>ACARS / Comms message thread (inbound dispatch + outbound pilot messages).</summary>
     public ObservableCollection<AcarsMessageModel> AcarsMessages { get; }
-
-    /// <summary>True when the live map service is running (API token configured).</summary>
-    public bool LiveMapAvailable => _liveMapService is not null;
 
     private IReadOnlyList<SimCrewOps.Hosting.Models.LiveFlight> _liveFlights = Array.Empty<SimCrewOps.Hosting.Models.LiveFlight>();
 
@@ -458,17 +449,6 @@ public sealed class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _reviewHeaderRoute, value);
     }
 
-    /// <summary>
-    /// URL for the WebView2 embedded live map.
-    /// Points to simcrewops.com/tracker-map?token={trackerApiKey}.
-    /// Null until settings are loaded (WebView2 stays blank).
-    /// </summary>
-    public Uri? LiveMapUri
-    {
-        get => _liveMapUri;
-        private set => SetProperty(ref _liveMapUri, value);
-    }
-
     public string ReviewLandingMetrics
     {
         get => _reviewLandingMetrics;
@@ -595,6 +575,12 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         get => _diagnosticsRecoveryState;
         private set => SetProperty(ref _diagnosticsRecoveryState, value);
+    }
+
+    public string DiagnosticsActiveFlight
+    {
+        get => _diagnosticsActiveFlight;
+        private set => SetProperty(ref _diagnosticsActiveFlight, value);
     }
 
     public string DiagnosticsSettingsPath
@@ -830,38 +816,26 @@ public sealed class MainWindowViewModel : ObservableObject
             }
 
             RaisePropertyChanged(nameof(IsDashboardVisible));
-            RaisePropertyChanged(nameof(IsLiveMapVisible));
             RaisePropertyChanged(nameof(IsAcarsVisible));
             RaisePropertyChanged(nameof(IsReviewVisible));
             RaisePropertyChanged(nameof(IsDiagnosticsVisible));
             RaisePropertyChanged(nameof(IsSettingsVisible));
             RaisePropertyChanged(nameof(DashboardNavUnderlineVisibility));
-            RaisePropertyChanged(nameof(LiveMapNavUnderlineVisibility));
             RaisePropertyChanged(nameof(AcarsNavUnderlineVisibility));
             RaisePropertyChanged(nameof(ReviewNavUnderlineVisibility));
             RaisePropertyChanged(nameof(DiagnosticsNavUnderlineVisibility));
             RaisePropertyChanged(nameof(SettingsNavUnderlineVisibility));
 
-            // Start/stop the map polling based on whether the Live Map tab is visible.
-            if (_liveMapService is not null)
-            {
-                if (value == NavPage.LiveMap)
-                    _liveMapService.Start();
-                else
-                    _ = _liveMapService.StopAsync();
-            }
         }
     }
 
     public bool IsDashboardVisible => SelectedPage == NavPage.Dashboard;
-    public bool IsLiveMapVisible   => SelectedPage == NavPage.LiveMap;
     public bool IsAcarsVisible     => SelectedPage == NavPage.Acars;
     public bool IsReviewVisible => SelectedPage == NavPage.Review;
     public bool IsDiagnosticsVisible => SelectedPage == NavPage.Diagnostics;
     public bool IsSettingsVisible => SelectedPage == NavPage.Settings;
 
     public Visibility DashboardNavUnderlineVisibility => IsDashboardVisible ? Visibility.Visible : Visibility.Hidden;
-    public Visibility LiveMapNavUnderlineVisibility   => IsLiveMapVisible   ? Visibility.Visible : Visibility.Hidden;
     public Visibility AcarsNavUnderlineVisibility     => IsAcarsVisible     ? Visibility.Visible : Visibility.Hidden;
     public Visibility ReviewNavUnderlineVisibility => IsReviewVisible ? Visibility.Visible : Visibility.Hidden;
     public Visibility DiagnosticsNavUnderlineVisibility => IsDiagnosticsVisible ? Visibility.Visible : Visibility.Hidden;
@@ -949,19 +923,6 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Called on the thread-pool whenever LiveMapService delivers a new fleet snapshot.
-    /// Marshals the update onto the UI thread via LiveFlights; the view's canvas
-    /// code-behind listens for PropertyChanged and redraws using its own ActualWidth/Height.
-    /// </summary>
-    private void OnLiveMapPositionsUpdated(object? sender, IReadOnlyList<SimCrewOps.Hosting.Models.LiveFlight> flights)
-    {
-        System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
-        {
-            LiveFlights = flights;
-        });
-    }
-
     private async Task SaveSettingsAsync()
     {
         try
@@ -1020,9 +981,10 @@ public sealed class MainWindowViewModel : ObservableObject
         };
         MsfsStatusBrush = snapshot.SimConnectStatus.ConnectionState switch
         {
-            SimConnectConnectionState.Connected => new SolidColorBrush(MediaColor.FromRgb(44, 122, 125)),
-            SimConnectConnectionState.Faulted => new SolidColorBrush(MediaColor.FromRgb(212, 98, 90)),
-            _ => new SolidColorBrush(MediaColor.FromRgb(56, 91, 105)),
+            SimConnectConnectionState.Connected    => new SolidColorBrush(MediaColor.FromRgb(52, 211, 153)),  // bright green
+            SimConnectConnectionState.Connecting   => new SolidColorBrush(MediaColor.FromRgb(251, 191, 36)),  // amber
+            SimConnectConnectionState.Faulted      => new SolidColorBrush(MediaColor.FromRgb(248, 113, 113)), // bright red
+            _                                      => new SolidColorBrush(MediaColor.FromRgb(148, 163, 184)), // light grey
         };
 
         var syncEnabled = snapshot.BackgroundSyncStatus?.Enabled == true;
@@ -1031,10 +993,10 @@ public sealed class MainWindowViewModel : ObservableObject
             ? (syncError is null ? "SYNCED" : "SYNC RETRY")
             : "SYNC READY";
         SyncStatusBrush = syncEnabled && syncError is null
-            ? new SolidColorBrush(MediaColor.FromRgb(44, 122, 125))   // teal-green  — SYNCED
+            ? new SolidColorBrush(MediaColor.FromRgb(52, 211, 153))   // bright green — synced
             : syncError is not null
-                ? new SolidColorBrush(MediaColor.FromRgb(212, 98, 90)) // red         — SYNC RETRY
-                : new SolidColorBrush(MediaColor.FromRgb(56, 91, 105)); // grey        — SYNC READY
+                ? new SolidColorBrush(MediaColor.FromRgb(248, 113, 113)) // bright red — error
+                : new SolidColorBrush(MediaColor.FromRgb(148, 163, 184)); // light grey — idle
 
         // Show actual last-upload time rather than just "token is configured".
         // Stale = no successful upload in the last 30 seconds while token is set.
@@ -1065,7 +1027,11 @@ public sealed class MainWindowViewModel : ObservableObject
         DepartureName = string.Empty;
         ArrivalIcao = activeState?.Context.ArrivalAirportIcao?.ToUpperInvariant() ?? "----";
         ArrivalName = string.Empty;
-        AircraftType = BuildAircraftTypeDisplay(activeState);
+        // Prefer the aircraft title detected from MSFS (what's actually loaded in the sim).
+        // Fall back to the scheduled bid aircraft type if SimConnect hasn't reported one yet.
+        AircraftType = snapshot.SimConnectStatus.DetectedAircraftTitle
+            ?? activeState?.Context.AircraftType
+            ?? "—";
 
         BeaconLightOn = telemetry?.BeaconLightOn == true;
         TaxiLightOn = telemetry?.TaxiLightsOn == true;
@@ -1089,7 +1055,7 @@ public sealed class MainWindowViewModel : ObservableObject
             or FlightPhase.TaxiIn or FlightPhase.Arrival;
         LandingRunway = runway is not null
             ? $"{runway.AirportIcao} {runway.Runway.RunwayIdentifier}"
-            : postLanding ? "No arrival airport set" : string.Empty;
+            : postLanding ? "No flight assigned" : string.Empty;
         TdzDistanceFt   = runway is not null ? $"{runway.Projection.DistanceFromThresholdFeet:0}" : "--";
         TdzCrossTrackFt = runway is not null ? $"{Math.Abs(runway.Projection.CrossTrackDistanceFeet):0}" : "--";
         TdzExcessFt     = runway is not null && runway.Projection.TouchdownZoneExcessDistanceFeet > 0
@@ -1180,8 +1146,11 @@ public sealed class MainWindowViewModel : ObservableObject
         ReviewLandingMetrics = BuildLandingMetrics(activeState);
         ApplyLandingCard(activeState);
 
-        DiagnosticsSimState = $"{snapshot.SimConnectStatus.ConnectionState} {(snapshot.SimConnectStatus.LastErrorMessage is { Length: > 0 } err ? $"• {err}" : string.Empty)}".Trim();
-        DiagnosticsSyncState = BuildSyncDiagnosticLine(snapshot.BackgroundSyncStatus);
+        var simAircraft = snapshot.SimConnectStatus.DetectedAircraftTitle is { Length: > 0 } t ? $" • {t}" : string.Empty;
+        DiagnosticsSimState = $"{snapshot.SimConnectStatus.ConnectionState}{simAircraft} {(snapshot.SimConnectStatus.LastErrorMessage is { Length: > 0 } err ? $"• {err}" : string.Empty)}".Trim();
+        DiagnosticsSyncState = snapshot.BackgroundSyncStatus is null
+            ? "Background sync disabled"
+            : $"{snapshot.BackgroundSyncStatus.LastTrigger ?? "idle"} • failures {snapshot.BackgroundSyncStatus.ConsecutiveFailureCount}";
         var pendingCount = snapshot.RecoverySnapshot.PendingCompletedSessions.Count;
         DiagnosticsRecoveryState = activeState is not null && snapshot.RecoverySnapshot.HasRecoverableCurrentSession
             ? $"Resumed session active • autosave {snapshot.RecoverySnapshot.CurrentSession!.SavedUtc.ToLocalTime():HH:mm:ss}{(pendingCount > 0 ? $" • {pendingCount} pending upload" : string.Empty)}"
@@ -1191,15 +1160,10 @@ public sealed class MainWindowViewModel : ObservableObject
             : "No recoverable session";
         DiagnosticsSettingsPath = snapshot.SettingsFilePath;
         DiagnosticsStoragePath = snapshot.Settings.Storage.RootDirectory;
+        DiagnosticsActiveFlight = snapshot.ActiveFlight is { } af
+            ? BuildAssignedFlightText(af)
+            : "None assigned — departure/arrival airports will not auto-populate";
 
-        // Build the embedded map URL from base URL + tracker API token.
-        // Keep null when no token is configured — WebView2 shows a "configure your token" message
-        // rather than navigating to /tracker-map with no auth (which returns 404).
-        var mapToken = snapshot.Settings.Api.PilotApiToken;
-        var mapBase  = snapshot.Settings.Api.BaseUri.ToString().TrimEnd('/');
-        LiveMapUri = string.IsNullOrWhiteSpace(mapToken)
-            ? null
-            : new Uri($"{mapBase}/tracker-map?token={Uri.EscapeDataString(mapToken)}");
         DiagnosticsLastTelemetry = telemetry is null
             ? "No telemetry received yet"
             : $"{telemetry.Phase} • IAS {telemetry.IndicatedAirspeedKnots:0} kts • VS {telemetry.VerticalSpeedFpm:0} fpm • AGL {telemetry.AltitudeAglFeet:0} ft • HDG {telemetry.HeadingMagneticDegrees:0}° • {telemetry.Latitude:F4},{telemetry.Longitude:F4}";

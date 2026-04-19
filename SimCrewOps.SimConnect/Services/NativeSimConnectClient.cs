@@ -205,6 +205,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private nint _simConnectHandle;
     private LatestSimConnectState _latestState = new();
     private AircraftProfile _activeProfile = AircraftProfile.Default;
+    private string? _detectedAircraftTitle;
     private readonly MobiFlightBridge _mobiFlightBridge = new();
     private bool _disposed;
 
@@ -440,8 +441,10 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
         var aircraftPath = state.StringValue ?? string.Empty;
         _activeProfile = AircraftProfileCatalog.MatchOrDefault(aircraftPath);
+        _detectedAircraftTitle = ParseAircraftTitle(aircraftPath);
 
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Aircraft loaded: {aircraftPath}");
+        System.Diagnostics.Debug.WriteLine($"[SimConnect] Detected title : {_detectedAircraftTitle}");
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Active profile : {_activeProfile.Name}" +
             (_activeProfile.RequiresLvarBridge ? " (LVAR bridge required)" : string.Empty));
 
@@ -560,6 +563,35 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         EnqueueFrame();
     }
 
+    /// <summary>
+    /// Parses a user-friendly aircraft name from the MSFS AircraftLoaded path.
+    /// The path is a relative .air file location, e.g.:
+    ///   "Community\fenix-a319\Aircraft\A319\fenix_a319.air"  → "fenix-a319"
+    ///   "SimObjects\Airplanes\Asobo_B787_10\B787_10.air"     → "Asobo_B787_10"
+    /// Returns the second path segment (the package/folder name) as the title,
+    /// falling back to the filename stem if that segment isn't meaningful.
+    /// </summary>
+    private static string? ParseAircraftTitle(string aircraftPath)
+    {
+        if (string.IsNullOrWhiteSpace(aircraftPath))
+            return null;
+
+        var parts = aircraftPath
+            .Replace('/', '\\')
+            .Split('\\', StringSplitOptions.RemoveEmptyEntries);
+
+        // Path layout: [root]\[package-name]\...\[file].air
+        // "package-name" is the most useful human-readable segment (index 1).
+        if (parts.Length >= 2)
+            return parts[1];
+
+        // Single-segment fallback — strip the .air extension.
+        var name = parts[0];
+        return name.EndsWith(".air", StringComparison.OrdinalIgnoreCase)
+            ? name[..^4]
+            : name;
+    }
+
     private void EnqueueFrame()
     {
         if (!_latestState.HasFlightCritical)
@@ -612,6 +644,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             ActiveProfileName   = _activeProfile.Name,
             LvarBridgeRequired  = _activeProfile.RequiresLvarBridge,
             LvarBridgeConnected = _mobiFlightBridge.IsActive,
+            AircraftTitle       = _detectedAircraftTitle,
         });
     }
 

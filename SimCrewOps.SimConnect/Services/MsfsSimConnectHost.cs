@@ -137,6 +137,8 @@ public sealed class MsfsSimConnectHost
                 HasReceivedOperationalData = _status.HasReceivedOperationalData || rawFrame.HasOperationalData,
                 ClientPath = ResolveClientPath(),
                 LastErrorMessage = null,
+                // Update detected aircraft whenever the frame carries a title (set on AircraftLoaded).
+                DetectedAircraftTitle = rawFrame.AircraftTitle ?? _status.DetectedAircraftTitle,
             };
 
             return new SimConnectPollResult

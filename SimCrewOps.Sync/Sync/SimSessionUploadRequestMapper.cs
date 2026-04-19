@@ -33,9 +33,9 @@ public sealed class SimSessionUploadRequestMapper
             ScoreFinal = state.ScoreResult.FinalScore,
             TrackerVersion = trackerVersion,
             FlightMode = state.Context.FlightMode,
-            BidId = string.IsNullOrWhiteSpace(state.Context.BidId) ? null : state.Context.BidId,
-            Departure = string.IsNullOrWhiteSpace(state.Context.DepartureAirportIcao) ? null : state.Context.DepartureAirportIcao,
-            Arrival   = string.IsNullOrWhiteSpace(state.Context.ArrivalAirportIcao)   ? null : state.Context.ArrivalAirportIcao,
+            BidId      = string.IsNullOrWhiteSpace(state.Context.BidId) ? null : state.Context.BidId,
+            Departure  = string.IsNullOrWhiteSpace(state.Context.DepartureAirportIcao) ? null : state.Context.DepartureAirportIcao,
+            Arrival    = string.IsNullOrWhiteSpace(state.Context.ArrivalAirportIcao)   ? null : state.Context.ArrivalAirportIcao,
         };
     }
 

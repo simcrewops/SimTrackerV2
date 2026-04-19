@@ -33,6 +33,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
     private ActiveFlightResponse? _activeFlight;
     private DateTimeOffset _activeFlightFetchedUtc = DateTimeOffset.MinValue;
     private IActiveFlightFetcher? _activeFlightFetcher;
+    private string? _lastDetectedAircraftTitle;
 
     // Refresh the active flight from the API every 5 minutes while the app is running.
     private static readonly TimeSpan ActiveFlightRefreshInterval = TimeSpan.FromMinutes(5);
@@ -107,6 +108,22 @@ public sealed class TrackerShellHost : IAsyncDisposable
         }
 
         var simConnectPoll = await _simConnectHost.PollAsync(cancellationToken).ConfigureAwait(false);
+
+        // When SimConnect detects a new aircraft title (e.g. "fenix-a319"), push it into
+        // the session context so the live position beacon and session upload both record
+        // the actual aircraft being flown rather than the bid aircraft type.
+        var detectedTitle = simConnectPoll.Status.DetectedAircraftTitle;
+        if (!string.IsNullOrWhiteSpace(detectedTitle) && detectedTitle != _lastDetectedAircraftTitle)
+        {
+            _lastDetectedAircraftTitle = detectedTitle;
+            var current = _persistentRuntimeCoordinator.CurrentContext;
+            _persistentRuntimeCoordinator.UpdateContext(current with
+            {
+                AircraftType     = detectedTitle,
+                AircraftCategory = ResolveAircraftCategory(detectedTitle),
+            });
+        }
+
         if (simConnectPoll.HasTelemetry)
         {
             _lastRawTelemetryFrame = simConnectPoll.RawFrame;
