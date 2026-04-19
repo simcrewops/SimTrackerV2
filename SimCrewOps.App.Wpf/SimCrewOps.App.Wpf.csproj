@@ -9,10 +9,10 @@
     <LangVersion>12.0</LangVersion>
     <AssemblyName>SimTrackerV2</AssemblyName>
     <RootNamespace>SimCrewOps.App.Wpf</RootNamespace>
-    <Version>2.0.1-alpha</Version>
-    <AssemblyVersion>2.0.1.0</AssemblyVersion>
-    <FileVersion>2.0.1.0</FileVersion>
-    <InformationalVersion>2.0.1-alpha</InformationalVersion>
+    <Version>2.1.0-beta</Version>
+    <AssemblyVersion>2.1.0.0</AssemblyVersion>
+    <FileVersion>2.1.0.0</FileVersion>
+    <InformationalVersion>2.1.0-beta</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
