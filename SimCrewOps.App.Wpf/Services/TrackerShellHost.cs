@@ -34,9 +34,10 @@ public sealed class TrackerShellHost : IAsyncDisposable
     private DateTimeOffset _activeFlightFetchedUtc = DateTimeOffset.MinValue;
     private IActiveFlightFetcher? _activeFlightFetcher;
     private string? _lastDetectedAircraftTitle;
+    private DateTimeOffset? _lastKnownBlocksOffUtc;
 
-    // Refresh the active flight from the API every 5 minutes while the app is running.
-    private static readonly TimeSpan ActiveFlightRefreshInterval = TimeSpan.FromMinutes(5);
+    // Refresh the active flight from the API every minute while the app is running.
+    private static readonly TimeSpan ActiveFlightRefreshInterval = TimeSpan.FromMinutes(1);
 
     public TrackerShellHost(
         ITrackerAppSettingsStore settingsStore,
@@ -134,6 +135,17 @@ public sealed class TrackerShellHost : IAsyncDisposable
             _recoverySnapshot = await _persistentRuntimeCoordinator
                 .GetRecoverySnapshotAsync(cancellationToken)
                 .ConfigureAwait(false);
+
+            // Trigger an immediate active-flight re-fetch the moment blocks-off fires.
+            // The first few position beacons of every leg go out right after pushback —
+            // without this they would carry the previous leg's context until the 1-minute
+            // timer ticks.
+            var newBlocksOff = _runtimeState.BlockTimes.BlocksOffUtc;
+            if (newBlocksOff is not null && newBlocksOff != _lastKnownBlocksOffUtc)
+            {
+                _lastKnownBlocksOffUtc = newBlocksOff;
+                _activeFlightFetchedUtc = DateTimeOffset.MinValue; // force refresh on next poll
+            }
         }
 
         return BuildSnapshot(simConnectPoll.Status);
@@ -169,6 +181,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
                     FlightNumber         = flight.FlightNumber,
                     AircraftType         = flight.AircraftType,
                     AircraftCategory     = ResolveAircraftCategory(flight.AircraftType),
+                    BidId                = string.IsNullOrWhiteSpace(flight.BidId) ? null : flight.BidId,
                 }
                 : new FlightSessionContext();
 
