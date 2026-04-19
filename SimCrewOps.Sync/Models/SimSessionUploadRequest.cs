@@ -63,4 +63,10 @@ public sealed record SimSessionUploadRequest
 
     [JsonPropertyName("bidId")]
     public string? BidId { get; init; }
+
+    [JsonPropertyName("departure")]
+    public string? Departure { get; init; }
+
+    [JsonPropertyName("arrival")]
+    public string? Arrival { get; init; }
 }
