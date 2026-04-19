@@ -81,6 +81,9 @@ public sealed class FlightSessionScoringTracker
     private double _taxiInMaxGroundSpeed;
     private int _taxiInTurnSpeedEvents;
     private DateTimeOffset? _lastTaxiInTurnEventAt;
+    // Debounce timers — penalty only locks in after lights are on continuously for 60 s
+    private DateTimeOffset? _taxiInLandingLightsOnStart;
+    private DateTimeOffset? _taxiInStrobesOnStart;
 
     private bool _arrivalSeen;
     private bool _arrivalParkingBrakeObserved;
@@ -209,6 +212,8 @@ public sealed class FlightSessionScoringTracker
         _taxiInMaxGroundSpeed = input.TaxiIn.MaxGroundSpeedKnots;
         _taxiInTurnSpeedEvents = input.TaxiIn.ExcessiveTurnSpeedEvents;
         _lastTaxiInTurnEventAt = null;
+        _taxiInLandingLightsOnStart = null;
+        _taxiInStrobesOnStart = null;
 
         _arrivalSeen = currentPhase == FlightPhase.Arrival;
         _arrivalParkingBrakeObserved = currentPhase == FlightPhase.Arrival;
@@ -667,14 +672,34 @@ public sealed class FlightSessionScoringTracker
         _taxiInSeen = true;
         _taxiInMaxGroundSpeed = Math.Max(_taxiInMaxGroundSpeed, frame.GroundSpeedKnots);
 
-        if (frame.LandingLightsOn)
+        // Landing lights — 60-second grace window after runway vacate before penalty locks in
+        if (_postRestoreGraceFrames <= 0)
         {
-            _taxiInLandingLightsOff = false;
+            if (frame.LandingLightsOn)
+            {
+                _taxiInLandingLightsOnStart ??= frame.TimestampUtc;
+                if (frame.TimestampUtc - _taxiInLandingLightsOnStart.Value >= TimeSpan.FromSeconds(60))
+                    _taxiInLandingLightsOff = false;
+            }
+            else
+            {
+                _taxiInLandingLightsOnStart = null;
+            }
         }
 
-        if (frame.StrobesOn)
+        // Strobes — same 60-second window
+        if (_postRestoreGraceFrames <= 0)
         {
-            _taxiInStrobesOff = false;
+            if (frame.StrobesOn)
+            {
+                _taxiInStrobesOnStart ??= frame.TimestampUtc;
+                if (frame.TimestampUtc - _taxiInStrobesOnStart.Value >= TimeSpan.FromSeconds(60))
+                    _taxiInStrobesOff = false;
+            }
+            else
+            {
+                _taxiInStrobesOnStart = null;
+            }
         }
 
         if (!frame.TaxiLightsOn)
@@ -709,10 +734,6 @@ public sealed class FlightSessionScoringTracker
         {
             if (!frame.ParkingBrakeSet)
             {
-                // This tracks the last known taxi-light state before the parking brake was set.
-                // A same-frame brake+lights-off update does not prove the required order.
-                _arrivalTaxiLightsOffBeforeParkingBrakeSet = !frame.TaxiLightsOn;
-
                 if (!AnyEngineRunning(frame))
                 {
                     _arrivalParkingBrakeSetBeforeAllEnginesShutdown = false;
@@ -722,6 +743,13 @@ public sealed class FlightSessionScoringTracker
             {
                 _arrivalParkingBrakeObserved = true;
             }
+        }
+
+        // Taxi lights must be turned off after parking brake is set (shutdown checklist).
+        // Penalty clears the moment lights go off — no timer needed.
+        if (_arrivalParkingBrakeObserved && !frame.TaxiLightsOn)
+        {
+            _arrivalTaxiLightsOffBeforeParkingBrakeSet = true;
         }
 
         _arrivalAllEnginesOffByEndOfSession = !AnyEngineRunning(frame);

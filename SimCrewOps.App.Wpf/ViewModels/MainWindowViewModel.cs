@@ -126,6 +126,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private double _runwayTdzWidth = 60.0;
     private double _runwayMarkerLeft = 40.0;
     private string _diagnosticsSimState = "Waiting for simulator process";
+    private string _diagnosticsActiveFlight = "No flight assigned";
     private string _diagnosticsSyncState = "Background sync not yet initialized";
     private string _diagnosticsRecoveryState = "No recoverable session";
     private string _diagnosticsSettingsPath = string.Empty;
@@ -601,6 +602,12 @@ public sealed class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _diagnosticsRecoveryState, value);
     }
 
+    public string DiagnosticsActiveFlight
+    {
+        get => _diagnosticsActiveFlight;
+        private set => SetProperty(ref _diagnosticsActiveFlight, value);
+    }
+
     public string DiagnosticsSettingsPath
     {
         get => _diagnosticsSettingsPath;
@@ -1072,12 +1079,16 @@ public sealed class MainWindowViewModel : ObservableObject
         TouchdownBounces = landingMetrics is not null ? $"{landingMetrics.BounceCount}" : "--";
 
         var runway = activeState?.LandingRunwayResolution;
-        LandingRunway = runway is not null ? $"{runway.AirportIcao} {runway.Runway.RunwayIdentifier}" : string.Empty;
-        TdzDistanceFt = runway is not null ? $"{runway.Projection.DistanceFromThresholdFeet:0}" : "--";
+        var postLanding = activeState?.CurrentPhase is FlightPhase.Landing
+            or FlightPhase.TaxiIn or FlightPhase.Arrival;
+        LandingRunway = runway is not null
+            ? $"{runway.AirportIcao} {runway.Runway.RunwayIdentifier}"
+            : postLanding ? "No flight assigned" : string.Empty;
+        TdzDistanceFt   = runway is not null ? $"{runway.Projection.DistanceFromThresholdFeet:0}" : "--";
         TdzCrossTrackFt = runway is not null ? $"{Math.Abs(runway.Projection.CrossTrackDistanceFeet):0}" : "--";
         TdzExcessFt = runway is not null && runway.Projection.TouchdownZoneExcessDistanceFeet > 0
             ? $"{runway.Projection.TouchdownZoneExcessDistanceFeet:0}"
-            : "0";
+            : runway is not null ? "0" : "--";
 
         var score = activeState?.ScoreResult.FinalScore ?? 88;
         ScoreBarWidth = Math.Clamp(score / 100.0 * 200.0, 0, 200);
@@ -1174,6 +1185,9 @@ public sealed class MainWindowViewModel : ObservableObject
             : "No recoverable session";
         DiagnosticsSettingsPath = snapshot.SettingsFilePath;
         DiagnosticsStoragePath = snapshot.Settings.Storage.RootDirectory;
+        DiagnosticsActiveFlight = snapshot.ActiveFlight is { } af
+            ? BuildAssignedFlightText(af)
+            : "None assigned — departure/arrival airports will not auto-populate";
 
         // Build the embedded map URL from base URL + tracker API token.
         // Keep null when no token is configured — WebView2 shows a "configure your token" message
