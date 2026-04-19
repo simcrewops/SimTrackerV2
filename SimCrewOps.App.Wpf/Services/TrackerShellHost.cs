@@ -182,6 +182,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
                     AircraftType         = flight.AircraftType,
                     AircraftCategory     = ResolveAircraftCategory(flight.AircraftType),
                     BidId                = string.IsNullOrWhiteSpace(flight.BidId) ? null : flight.BidId,
+                    ScheduledBlockHours  = flight.ScheduledBlockHours,
                 }
                 : new FlightSessionContext();
 
