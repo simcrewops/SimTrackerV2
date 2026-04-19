@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:model="clr-namespace:SimCrewOps.App.Wpf.Models"
+        xmlns:vm="clr-namespace:SimCrewOps.App.Wpf.ViewModels"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         mc:Ignorable="d"
         Title="SimCrewOps Tracker"
@@ -1153,13 +1154,17 @@
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Retry sync — right aligned -->
-                <Button Content="↻ Retry Sync"
-                        Command="{Binding RetrySyncCommand}"
-                        Style="{StaticResource SecondaryButtonStyle}"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center"
-                        Margin="0,0,14,0" />
+                <!-- Version + retry sync — right aligned -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0">
+                    <TextBlock Text="{x:Static vm:MainWindowViewModel.AppVersion}"
+                               FontSize="10" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,14,0" />
+                    <Button Content="↻ Retry Sync"
+                            Command="{Binding RetrySyncCommand}"
+                            Style="{StaticResource SecondaryButtonStyle}" />
+                </StackPanel>
             </Grid>
         </Border>
 
