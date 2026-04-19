@@ -65,6 +65,8 @@ public sealed class RuntimeCoordinator
     /// Only applies when no session is in progress — if blocks-off has already fired
     /// the context is preserved to keep the current flight's data intact.
     /// </summary>
+    public FlightSessionContext CurrentContext => _context;
+
     public void UpdateContext(FlightSessionContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
