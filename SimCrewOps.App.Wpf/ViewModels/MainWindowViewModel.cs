@@ -1068,12 +1068,16 @@ public sealed class MainWindowViewModel : ObservableObject
         TouchdownBounces = landingMetrics is not null ? $"{landingMetrics.BounceCount}" : "--";
 
         var runway = activeState?.LandingRunwayResolution;
-        LandingRunway = runway is not null ? $"{runway.AirportIcao} {runway.Runway.RunwayIdentifier}" : string.Empty;
-        TdzDistanceFt = runway is not null ? $"{runway.Projection.DistanceFromThresholdFeet:0}" : "--";
+        var postLanding = activeState?.CurrentPhase is FlightPhase.Landing
+            or FlightPhase.TaxiIn or FlightPhase.Arrival;
+        LandingRunway = runway is not null
+            ? $"{runway.AirportIcao} {runway.Runway.RunwayIdentifier}"
+            : postLanding ? "No arrival airport set" : string.Empty;
+        TdzDistanceFt   = runway is not null ? $"{runway.Projection.DistanceFromThresholdFeet:0}" : "--";
         TdzCrossTrackFt = runway is not null ? $"{Math.Abs(runway.Projection.CrossTrackDistanceFeet):0}" : "--";
-        TdzExcessFt = runway is not null && runway.Projection.TouchdownZoneExcessDistanceFeet > 0
+        TdzExcessFt     = runway is not null && runway.Projection.TouchdownZoneExcessDistanceFeet > 0
             ? $"{runway.Projection.TouchdownZoneExcessDistanceFeet:0}"
-            : "0";
+            : runway is not null ? "0" : "--";
 
         var score = activeState?.ScoreResult.FinalScore ?? 88;
         ScoreBarWidth = Math.Clamp(score / 100.0 * 200.0, 0, 200);

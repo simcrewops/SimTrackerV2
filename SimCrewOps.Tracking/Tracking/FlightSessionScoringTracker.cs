@@ -83,6 +83,8 @@ public sealed class FlightSessionScoringTracker
     private bool _taxiInStrobesOff = true;
     private bool _taxiInTaxiLightsValid = true;
     private DateTimeOffset? _taxiInLightsOffStart;
+    private DateTimeOffset? _taxiInLandingLightsOnStart;   // debounce: 20 s sustained on → penalty
+    private DateTimeOffset? _taxiInStrobesOnStart;          // debounce: 20 s sustained on → penalty
     private double _taxiInMaxGroundSpeed;
     private int _taxiInTurnSpeedEvents;
     private DateTimeOffset? _lastTaxiInTurnEventAt;
@@ -218,6 +220,8 @@ public sealed class FlightSessionScoringTracker
         _taxiInStrobesOff = !_taxiInSeen || input.TaxiIn.StrobesOff;
         _taxiInTaxiLightsValid = !_taxiInSeen || input.TaxiIn.TaxiLightsOn;
         _taxiInLightsOffStart = null;
+        _taxiInLandingLightsOnStart = null;
+        _taxiInStrobesOnStart = null;
         _taxiInMaxGroundSpeed = input.TaxiIn.MaxGroundSpeedKnots;
         _taxiInTurnSpeedEvents = input.TaxiIn.ExcessiveTurnSpeedEvents;
         _lastTaxiInTurnEventAt = null;
@@ -699,14 +703,35 @@ public sealed class FlightSessionScoringTracker
         _taxiInSeen = true;
         _taxiInMaxGroundSpeed = Math.Max(_taxiInMaxGroundSpeed, frame.GroundSpeedKnots);
 
-        if (frame.LandingLightsOn)
+        // Landing lights — 20-second sustained-on required before penalty locks in.
+        // Gives the pilot time to complete the after-landing checklist after runway vacate.
+        if (_postRestoreGraceFrames <= 0)
         {
-            _taxiInLandingLightsOff = false;
+            if (frame.LandingLightsOn)
+            {
+                _taxiInLandingLightsOnStart ??= frame.TimestampUtc;
+                if (frame.TimestampUtc - _taxiInLandingLightsOnStart.Value >= TimeSpan.FromSeconds(20))
+                    _taxiInLandingLightsOff = false;
+            }
+            else
+            {
+                _taxiInLandingLightsOnStart = null;
+            }
         }
 
-        if (frame.StrobesOn)
+        // Strobes — same 20-second window.
+        if (_postRestoreGraceFrames <= 0)
         {
-            _taxiInStrobesOff = false;
+            if (frame.StrobesOn)
+            {
+                _taxiInStrobesOnStart ??= frame.TimestampUtc;
+                if (frame.TimestampUtc - _taxiInStrobesOnStart.Value >= TimeSpan.FromSeconds(20))
+                    _taxiInStrobesOff = false;
+            }
+            else
+            {
+                _taxiInStrobesOnStart = null;
+            }
         }
 
         // 3-second debounce: an accidental light toggle doesn't cause a permanent penalty.
@@ -751,10 +776,6 @@ public sealed class FlightSessionScoringTracker
         {
             if (!frame.ParkingBrakeSet)
             {
-                // This tracks the last known taxi-light state before the parking brake was set.
-                // A same-frame brake+lights-off update does not prove the required order.
-                _arrivalTaxiLightsOffBeforeParkingBrakeSet = !frame.TaxiLightsOn;
-
                 if (!AnyEngineRunning(frame))
                 {
                     _arrivalParkingBrakeSetBeforeAllEnginesShutdown = false;
@@ -764,6 +785,15 @@ public sealed class FlightSessionScoringTracker
             {
                 _arrivalParkingBrakeObserved = true;
             }
+        }
+
+        // After the parking brake is set, mark taxi lights as compliant as soon as they
+        // are turned off (normal shutdown checklist order: park → then lights off).
+        // The field stays false until that happens, so a pilot who never turns lights off
+        // after parking retains the deduction for the full session.
+        if (_arrivalParkingBrakeObserved && !frame.TaxiLightsOn)
+        {
+            _arrivalTaxiLightsOffBeforeParkingBrakeSet = true;
         }
 
         _arrivalAllEnginesOffByEndOfSession = !AnyEngineRunning(frame);
