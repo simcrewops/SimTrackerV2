@@ -377,7 +377,7 @@
                                        Margin="0,0,14,0" />
 
                             <!-- Beacon -->
-                            <Border Style="{StaticResource StatusPillStyle}">
+                            <Border>
                                 <Border.Style>
                                     <Style TargetType="Border" BasedOn="{StaticResource StatusPillStyle}">
                                         <Style.Triggers>
@@ -417,7 +417,7 @@
                             </Border>
 
                             <!-- Taxi -->
-                            <Border Style="{StaticResource StatusPillStyle}">
+                            <Border>
                                 <Border.Style>
                                     <Style TargetType="Border" BasedOn="{StaticResource StatusPillStyle}">
                                         <Style.Triggers>
@@ -457,7 +457,7 @@
                             </Border>
 
                             <!-- Strobe -->
-                            <Border Style="{StaticResource StatusPillStyle}">
+                            <Border>
                                 <Border.Style>
                                     <Style TargetType="Border" BasedOn="{StaticResource StatusPillStyle}">
                                         <Style.Triggers>
