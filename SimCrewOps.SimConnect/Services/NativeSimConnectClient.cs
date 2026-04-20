@@ -566,10 +566,10 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     /// <summary>
     /// Parses a user-friendly aircraft name from the MSFS AircraftLoaded path.
     /// The path is a relative .air file location, e.g.:
-    ///   "Community\fenix-a319\Aircraft\A319\fenix_a319.air"  → "fenix-a319"
-    ///   "SimObjects\Airplanes\Asobo_B787_10\B787_10.air"     → "Asobo_B787_10"
-    /// Returns the second path segment (the package/folder name) as the title,
-    /// falling back to the filename stem if that segment isn't meaningful.
+    ///   "Community\fenix-a319\Aircraft\A319\fenix_a319.air"              → "fenix-a319"
+    ///   "Official\OneStore\asobo-aircraft-a320neo\...\aircraft.cfg"      → "asobo-aircraft-a320neo"
+    ///   "Official\Base\asobo-aircraft-a320neo\...\config\aircraft.cfg"   → "asobo-aircraft-a320neo"
+    ///   "SimObjects\Airplanes\Asobo_B787_10\B787_10.air"                 → "Asobo_B787_10"
     /// </summary>
     private static string? ParseAircraftTitle(string aircraftPath)
     {
@@ -580,34 +580,46 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             .Replace('/', '\\')
             .Split('\\', StringSplitOptions.RemoveEmptyEntries);
 
-        // MSFS returns a full absolute path, e.g.:
-        //   C:\...\Packages\Community\fenix-a319\SimObjects\Airplanes\...\*.air
-        //   C:\...\Packages\Official\OneStore\asobo-aircraft-a320neo\...\*.air
-        //   C:\...\Packages\Official\Steam\asobo-aircraft-a320neo\...\*.air
-        //
-        // The package name sits immediately after Community / OneStore / Steam.
-        var packageRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Community", "OneStore", "Steam" };
+        // ── Primary scan: package folder structure ─────────────────────────────
+        // MSFS path layouts:
+        //   ...\Packages\Community\<package>\...          → parts[i+1] after "Community"
+        //   ...\Packages\Official\<channel>\<package>\... → parts[i+2] after "Official"
+        //     where <channel> is OneStore | Steam | Base | Marketplace | etc.
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            if (string.Equals(parts[i], "Community", StringComparison.OrdinalIgnoreCase))
+                return parts[i + 1];
+
+            if (string.Equals(parts[i], "Official", StringComparison.OrdinalIgnoreCase)
+                && i + 2 < parts.Length)
+                return parts[i + 2];
+        }
+
+        // ── Secondary scan: SimObjects vehicle container ───────────────────────
+        // Relative paths that skip the package root (e.g. "SimObjects\Airplanes\Asobo_B787_10\...").
+        // The aircraft folder name sits immediately after the vehicle-type directory.
+        var vehicleContainers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Airplanes", "Helicopters", "Rotorcraft", "Boats", "GroundVehicles" };
 
         for (var i = 0; i < parts.Length - 1; i++)
         {
-            if (packageRoots.Contains(parts[i]))
+            if (vehicleContainers.Contains(parts[i]))
                 return parts[i + 1];
         }
 
-        // Relative-path fallback: if the last segment is a file (any extension —
-        // .air, .cfg, etc.), return its parent folder (the aircraft folder name).
-        // If it's already a bare folder name, return it directly.
-        if (parts.Length >= 2)
+        // ── Final fallback: walk from the end, skip files and generic folders ──
+        var genericFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "config", "data", "sounds", "texture", "model", "panel", "effects", "SimObjects" };
+
+        for (var i = parts.Length - 1; i >= 0; i--)
         {
-            var last = parts[^1];
-            return last.Contains('.') ? parts[^2] : last;
+            var seg = parts[i];
+            if (seg.Contains('.')) continue;           // skip files (.air, .cfg, …)
+            if (genericFolders.Contains(seg)) continue; // skip generic sub-folders
+            return seg;
         }
 
-        // Single-segment fallback — strip any file extension.
-        var name = parts[0];
-        var dot = name.LastIndexOf('.');
-        return dot > 0 ? name[..dot] : name;
+        return null;
     }
 
     private void EnqueueFrame()

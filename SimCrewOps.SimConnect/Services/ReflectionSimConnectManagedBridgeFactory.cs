@@ -344,29 +344,43 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         var parts = aircraftPath.Replace('/', '\\')
             .Split('\\', StringSplitOptions.RemoveEmptyEntries);
 
-        // MSFS returns a full absolute path — package name follows Community/OneStore/Steam.
-        var packageRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Community", "OneStore", "Steam" };
+        // MSFS path layouts:
+        //   ...\Packages\Community\<package>\...          → parts[i+1] after "Community"
+        //   ...\Packages\Official\<channel>\<package>\... → parts[i+2] after "Official"
+        //     where <channel> is OneStore | Steam | Base | Marketplace | etc.
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            if (string.Equals(parts[i], "Community", StringComparison.OrdinalIgnoreCase))
+                return parts[i + 1];
+
+            if (string.Equals(parts[i], "Official", StringComparison.OrdinalIgnoreCase)
+                && i + 2 < parts.Length)
+                return parts[i + 2];
+        }
+
+        // ── Secondary scan: SimObjects vehicle container ───────────────────────
+        var vehicleContainers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Airplanes", "Helicopters", "Rotorcraft", "Boats", "GroundVehicles" };
 
         for (var i = 0; i < parts.Length - 1; i++)
         {
-            if (packageRoots.Contains(parts[i]))
+            if (vehicleContainers.Contains(parts[i]))
                 return parts[i + 1];
         }
 
-        // Relative-path fallback: if the last segment is a file (any extension —
-        // .air, .cfg, etc.), return its parent folder (the aircraft folder name).
-        // If it's already a bare folder name, return it directly.
-        if (parts.Length >= 2)
+        // ── Final fallback: walk from the end, skip files and generic folders ──
+        var genericFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "config", "data", "sounds", "texture", "model", "panel", "effects", "SimObjects" };
+
+        for (var i = parts.Length - 1; i >= 0; i--)
         {
-            var last = parts[^1];
-            return last.Contains('.') ? parts[^2] : last;
+            var seg = parts[i];
+            if (seg.Contains('.')) continue;
+            if (genericFolders.Contains(seg)) continue;
+            return seg;
         }
 
-        // Single-segment fallback — strip any file extension.
-        var name = parts[0];
-        var dot = name.LastIndexOf('.');
-        return dot > 0 ? name[..dot] : name;
+        return null;
     }
 
     private void HandleSimConnectException(object? data)
