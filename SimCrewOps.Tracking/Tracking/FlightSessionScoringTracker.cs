@@ -51,6 +51,7 @@ public sealed class FlightSessionScoringTracker
     private double? _pendingCruiseTargetAltitudeFeet;
     private DateTimeOffset? _pendingCruiseTargetStartedAt;
     private double? _newFlightLevelCaptureSeconds;
+    private DateTimeOffset? _lastSignificantCruiseVsAt;
 
     private bool _descentSeen;
     private double _descentMaxIasBelowFl100;
@@ -175,6 +176,7 @@ public sealed class FlightSessionScoringTracker
         _pendingCruiseTargetAltitudeFeet = null;
         _pendingCruiseTargetStartedAt = null;
         _newFlightLevelCaptureSeconds = input.Cruise.NewFlightLevelCaptureSeconds;
+        _lastSignificantCruiseVsAt = null;
 
         if (HasReachedPhase(currentPhase, FlightPhase.Cruise) && lastTelemetryFrame is not null)
         {
@@ -512,22 +514,21 @@ public sealed class FlightSessionScoringTracker
         var currentAltitude = Math.Round(frame.IndicatedAltitudeFeet / 100.0) * 100.0;
         _cruiseTargetAltitudeFeet ??= currentAltitude;
 
-        // Only accumulate altitude deviation while the aircraft is in level flight.
-        // During a step climb (or descent to a lower cruise level) the VS will be well
-        // above 300 fpm; counting that deviation would penalise an intentional level change.
-        //
-        // Edge case: VS bleeds off below 300 fpm while the new level is still pending
-        // adoption (needs 60 s of stability). In that window the aircraft is close to
-        // _pendingCruiseTargetAltitudeFeet, not the old target — so use the smaller of the
-        // two deviations to avoid a false penalty during the settling period.
-        if (Math.Abs(frame.VerticalSpeedFpm) < 300)
+        // Track whenever VS exceeds 300 fpm — used below to suppress false altitude-
+        // deviation penalties during the level-off phase after a step climb/descent.
+        if (Math.Abs(frame.VerticalSpeedFpm) > 300)
+            _lastSignificantCruiseVsAt = frame.TimestampUtc;
+
+        // Only accumulate altitude deviation while the aircraft has been in genuinely
+        // level flight for at least 60 seconds.  If VS was significant within the last
+        // 60 s we're still in (or just completed) a step climb/descent — skip accumulation
+        // so intentional level changes don't register as altitude deviations.
+        if (Math.Abs(frame.VerticalSpeedFpm) < 300 &&
+            (_lastSignificantCruiseVsAt is null ||
+             frame.TimestampUtc - _lastSignificantCruiseVsAt.Value >= TimeSpan.FromSeconds(60)))
         {
-            var deviationFromCurrent = Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value);
-            var deviationFromPending  = _pendingCruiseTargetAltitudeFeet.HasValue
-                ? Math.Abs(frame.IndicatedAltitudeFeet - _pendingCruiseTargetAltitudeFeet.Value)
-                : deviationFromCurrent;
-            _cruiseMaxAltitudeDeviation = Math.Max(_cruiseMaxAltitudeDeviation,
-                Math.Min(deviationFromCurrent, deviationFromPending));
+            var deviation = Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value);
+            _cruiseMaxAltitudeDeviation = Math.Max(_cruiseMaxAltitudeDeviation, deviation);
         }
 
         if (Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value) > 300)
