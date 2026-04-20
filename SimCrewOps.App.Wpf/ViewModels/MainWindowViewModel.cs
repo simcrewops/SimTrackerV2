@@ -1062,7 +1062,7 @@ public sealed class MainWindowViewModel : ObservableObject
             or FlightPhase.TaxiIn or FlightPhase.Arrival;
         LandingRunway = runway is not null
             ? $"{runway.AirportIcao} {runway.Runway.RunwayIdentifier}"
-            : postLanding ? "No flight assigned" : string.Empty;
+            : postLanding ? "No arrival airport set" : string.Empty;
         TdzDistanceFt   = runway is not null ? $"{runway.Projection.DistanceFromThresholdFeet:0}" : "--";
         TdzCrossTrackFt = runway is not null ? $"{Math.Abs(runway.Projection.CrossTrackDistanceFeet):0}" : "--";
         TdzExcessFt     = runway is not null && runway.Projection.TouchdownZoneExcessDistanceFeet > 0
