@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.IO;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -320,7 +321,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
 
         // szString is the aircraft .air file path, e.g. "Community\fenix-a319\..."
         var aircraftPath = GetInstanceValue(data, "szString")?.ToString() ?? string.Empty;
-        _detectedAircraftTitle = ParseAircraftTitle(aircraftPath);
+        _detectedAircraftTitle = ReadTitleFromAircraftCfg(aircraftPath) ?? ParseAircraftTitle(aircraftPath);
     }
 
     private void RequestAircraftState(Type simConnectType)
@@ -334,6 +335,68 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         catch
         {
             // Non-fatal — aircraft title will remain null if unsupported.
+        }
+    }
+
+    private static string? ReadTitleFromAircraftCfg(string aircraftPath)
+    {
+        try
+        {
+            string cfgPath;
+            if (aircraftPath.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase))
+            {
+                cfgPath = aircraftPath;
+            }
+            else
+            {
+                var dir = Path.GetDirectoryName(aircraftPath);
+                if (string.IsNullOrEmpty(dir)) return null;
+                cfgPath = Path.Combine(dir, "aircraft.cfg");
+            }
+
+            if (!File.Exists(cfgPath)) return null;
+
+            string? generalTitle = null;
+            string? firstFltsimTitle = null;
+            var inGeneral = false;
+            var inFirstFltsim = false;
+            var fltsimSeen = false;
+            var lineCount = 0;
+
+            foreach (var rawLine in File.ReadLines(cfgPath))
+            {
+                if (++lineCount > 300) break;
+                var line = rawLine.Trim();
+                if (line.Length == 0 || line[0] == ';') continue;
+
+                if (line[0] == '[')
+                {
+                    inGeneral     = line.Equals("[GENERAL]",  StringComparison.OrdinalIgnoreCase);
+                    inFirstFltsim = !fltsimSeen &&
+                                    line.StartsWith("[FLTSIM.", StringComparison.OrdinalIgnoreCase);
+                    if (inFirstFltsim) fltsimSeen = true;
+                    continue;
+                }
+
+                if ((inGeneral || inFirstFltsim) && line.StartsWith("title", StringComparison.OrdinalIgnoreCase))
+                {
+                    var eq = line.IndexOf('=');
+                    if (eq < 0) continue;
+                    var value = line[(eq + 1)..].Trim().Trim('"');
+                    if (string.IsNullOrWhiteSpace(value)) continue;
+
+                    if (inGeneral)     { generalTitle     = value; break; }
+                    if (inFirstFltsim) { firstFltsimTitle = value; }
+                }
+
+                if (generalTitle is not null && firstFltsimTitle is not null) break;
+            }
+
+            return generalTitle ?? firstFltsimTitle;
+        }
+        catch
+        {
+            return null;
         }
     }
 

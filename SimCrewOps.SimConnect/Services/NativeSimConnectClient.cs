@@ -441,7 +441,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
         var aircraftPath = state.StringValue ?? string.Empty;
         _activeProfile = AircraftProfileCatalog.MatchOrDefault(aircraftPath);
-        _detectedAircraftTitle = ParseAircraftTitle(aircraftPath);
+        _detectedAircraftTitle = ReadTitleFromAircraftCfg(aircraftPath) ?? ParseAircraftTitle(aircraftPath);
 
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Aircraft loaded: {aircraftPath}");
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Detected title : {_detectedAircraftTitle}");
@@ -566,6 +566,82 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     /// <summary>
     /// Parses a user-friendly aircraft name from the MSFS AircraftLoaded path.
     /// The path is a relative .air file location, e.g.:
+    /// Reads the human-readable aircraft title directly from the aircraft.cfg file
+    /// that MSFS reports in the AircraftLoaded system state.
+    ///
+    /// Looks for <c>title =</c> under the <c>[GENERAL]</c> section first, then falls
+    /// back to the first <c>[FLTSIM.x]</c> variant title. Returns null if the file
+    /// cannot be found or read (e.g. path is a .air file, not a .cfg).
+    /// </summary>
+    private static string? ReadTitleFromAircraftCfg(string aircraftPath)
+    {
+        try
+        {
+            // Build the .cfg path: use as-is if it already points to a .cfg,
+            // otherwise look for aircraft.cfg in the same directory.
+            string cfgPath;
+            if (aircraftPath.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase))
+            {
+                cfgPath = aircraftPath;
+            }
+            else
+            {
+                var dir = Path.GetDirectoryName(aircraftPath);
+                if (string.IsNullOrEmpty(dir)) return null;
+                cfgPath = Path.Combine(dir, "aircraft.cfg");
+            }
+
+            if (!File.Exists(cfgPath)) return null;
+
+            string? generalTitle = null;
+            string? firstFltsimTitle = null;
+            var inGeneral = false;
+            var inFirstFltsim = false;
+            var fltsimSeen = false;
+
+            // Read only up to 300 lines — the GENERAL section is always near the top.
+            var lineCount = 0;
+            foreach (var rawLine in File.ReadLines(cfgPath))
+            {
+                if (++lineCount > 300) break;
+
+                var line = rawLine.Trim();
+                if (line.Length == 0 || line[0] == ';') continue;
+
+                if (line[0] == '[')
+                {
+                    inGeneral     = line.Equals("[GENERAL]",  StringComparison.OrdinalIgnoreCase);
+                    inFirstFltsim = !fltsimSeen &&
+                                    line.StartsWith("[FLTSIM.", StringComparison.OrdinalIgnoreCase);
+                    if (inFirstFltsim) fltsimSeen = true;
+                    continue;
+                }
+
+                if ((inGeneral || inFirstFltsim) && line.StartsWith("title", StringComparison.OrdinalIgnoreCase))
+                {
+                    var eq = line.IndexOf('=');
+                    if (eq < 0) continue;
+
+                    var value = line[(eq + 1)..].Trim().Trim('"');
+                    if (string.IsNullOrWhiteSpace(value)) continue;
+
+                    if (inGeneral)       { generalTitle    = value; break; }
+                    if (inFirstFltsim)   { firstFltsimTitle = value; }
+                }
+
+                // Once we have both candidates stop early.
+                if (generalTitle is not null && firstFltsimTitle is not null) break;
+            }
+
+            return generalTitle ?? firstFltsimTitle;
+        }
+        catch
+        {
+            return null; // File locked, path invalid, etc. — fall through to path parsing.
+        }
+    }
+
+    /// <summary>
     ///   "Community\fenix-a319\Aircraft\A319\fenix_a319.air"              → "fenix-a319"
     ///   "Official\OneStore\asobo-aircraft-a320neo\...\aircraft.cfg"      → "asobo-aircraft-a320neo"
     ///   "Official\Base\asobo-aircraft-a320neo\...\config\aircraft.cfg"   → "asobo-aircraft-a320neo"
