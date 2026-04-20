@@ -52,6 +52,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private Brush _syncStatusBrush = new SolidColorBrush(MediaColor.FromRgb(56, 91, 105));
     private string _headerFlightText = "Waiting for flight context • MSFS telemetry will populate here";
     private string _assignedFlightText = string.Empty;
+    private string _scheduledBlockText = string.Empty;
     private string _phaseTitle = "PREFLIGHT";
     private string _phaseSubtitle = "The live ops board stays blank until the tracker receives real telemetry.";
     private string _phaseStatusLine = "Waiting for telemetry";
@@ -304,6 +305,16 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         get => _assignedFlightText;
         private set => SetProperty(ref _assignedFlightText, value);
+    }
+
+    /// <summary>
+    /// Scheduled block time from the active assignment, e.g. "Scheduled 2.5h block".
+    /// Empty when no assignment or no block time is known.
+    /// </summary>
+    public string ScheduledBlockText
+    {
+        get => _scheduledBlockText;
+        private set => SetProperty(ref _scheduledBlockText, value);
     }
 
     public string PhaseSubtitle
@@ -1023,6 +1034,9 @@ public sealed class MainWindowViewModel : ObservableObject
         PhaseTitle = phase.ToString().ToUpperInvariant();
         HeaderFlightText = BuildHeaderFlightText(activeState, snapshot.ActiveFlight);
         AssignedFlightText = BuildAssignedFlightText(snapshot.ActiveFlight);
+        ScheduledBlockText = snapshot.ActiveFlight?.ScheduledBlockHours is { } h
+            ? $"Scheduled {h:0.0}h block"
+            : string.Empty;
         PhaseSubtitle = BuildPhaseSubtitle(phase);
         PhaseStatusLine = BuildPhaseStatusLine(telemetry, phase);
 
@@ -1584,6 +1598,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private static string BuildAssignedFlightText(ActiveFlightResponse? activeFlight)
     {
         if (activeFlight is null) return string.Empty;
+        var airline = string.IsNullOrWhiteSpace(activeFlight.Airline) ? "" : $"{activeFlight.Airline} ";
         var dep = (activeFlight.Departure ?? "----").ToUpperInvariant();
         var arr = (activeFlight.Arrival ?? "----").ToUpperInvariant();
         var fn  = string.IsNullOrWhiteSpace(activeFlight.FlightNumber) ? "" : $" • {activeFlight.FlightNumber.ToUpperInvariant()}";
@@ -1597,7 +1612,7 @@ public sealed class MainWindowViewModel : ObservableObject
             "premium_time" => "premium",
             _              => "booked",
         };
-        return $"{dep} → {arr}{fn}{ac}  ({src})";
+        return $"{airline}{dep} → {arr}{fn}{ac}  ({src})";
     }
 
     private static string BuildBidDisplay(

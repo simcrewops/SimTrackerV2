@@ -117,7 +117,7 @@
                     <!-- Divider -->
                     <Border Width="1" Background="{StaticResource BorderDefaultBrush}" Margin="18,4" />
 
-                    <!-- Aircraft -->
+                    <!-- Aircraft + scheduled block -->
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="{Binding AircraftType}"
                                    FontSize="20"
@@ -128,6 +128,21 @@
                                    FontWeight="Bold"
                                    Foreground="{StaticResource TextMutedBrush}"
                                    Margin="0,3,0,0" />
+                        <TextBlock Text="{Binding ScheduledBlockText}"
+                                   FontSize="9"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource AccentOrangeBrush}"
+                                   Margin="0,2,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ScheduledBlockText}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                     </StackPanel>
                 </StackPanel>
 
