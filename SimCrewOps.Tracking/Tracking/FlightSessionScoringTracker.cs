@@ -514,12 +514,20 @@ public sealed class FlightSessionScoringTracker
 
         // Only accumulate altitude deviation while the aircraft is in level flight.
         // During a step climb (or descent to a lower cruise level) the VS will be well
-        // above 300 fpm; counting that deviation would penalise an intentional level
-        // change.  The target-altitude adoption logic below handles updating the
-        // reference once the new level is captured.
+        // above 300 fpm; counting that deviation would penalise an intentional level change.
+        //
+        // Edge case: VS bleeds off below 300 fpm while the new level is still pending
+        // adoption (needs 60 s of stability). In that window the aircraft is close to
+        // _pendingCruiseTargetAltitudeFeet, not the old target — so use the smaller of the
+        // two deviations to avoid a false penalty during the settling period.
         if (Math.Abs(frame.VerticalSpeedFpm) < 300)
         {
-            _cruiseMaxAltitudeDeviation = Math.Max(_cruiseMaxAltitudeDeviation, Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value));
+            var deviationFromCurrent = Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value);
+            var deviationFromPending  = _pendingCruiseTargetAltitudeFeet.HasValue
+                ? Math.Abs(frame.IndicatedAltitudeFeet - _pendingCruiseTargetAltitudeFeet.Value)
+                : deviationFromCurrent;
+            _cruiseMaxAltitudeDeviation = Math.Max(_cruiseMaxAltitudeDeviation,
+                Math.Min(deviationFromCurrent, deviationFromPending));
         }
 
         if (Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value) > 300)
