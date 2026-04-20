@@ -597,13 +597,15 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
         // Relative-path fallback: take the parent folder of the .air file,
         // which is the aircraft folder name (e.g. "Asobo_A320_NEO").
+        // When the path has no .air extension (e.g. "SimObjects\Airplanes\Asobo_A320_NEO"),
+        // use the LAST segment — NOT parts[0] which would be "SimObjects".
         if (parts.Length >= 2)
         {
             var last = parts[^1];
             if (last.EndsWith(".air", StringComparison.OrdinalIgnoreCase))
                 return parts[^2];
 
-            return parts[0];
+            return last;
         }
 
         // Single-segment fallback — strip the .air extension.

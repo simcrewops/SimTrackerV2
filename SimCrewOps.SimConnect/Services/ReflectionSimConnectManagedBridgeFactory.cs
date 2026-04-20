@@ -355,12 +355,14 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         }
 
         // Relative-path fallback: parent folder of the .air file.
+        // When the path has no .air extension (e.g. "SimObjects\Airplanes\Asobo_A320_NEO"),
+        // use the LAST segment — NOT parts[0] which would be "SimObjects".
         if (parts.Length >= 2)
         {
             var last = parts[^1];
             if (last.EndsWith(".air", StringComparison.OrdinalIgnoreCase))
                 return parts[^2];
-            return parts[0];
+            return last;
         }
 
         var name = parts[0];
