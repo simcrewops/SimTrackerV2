@@ -354,19 +354,19 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
                 return parts[i + 1];
         }
 
-        // Relative-path fallback: parent folder of the .air file.
-        // When the path has no .air extension (e.g. "SimObjects\Airplanes\Asobo_A320_NEO"),
-        // use the LAST segment — NOT parts[0] which would be "SimObjects".
+        // Relative-path fallback: if the last segment is a file (any extension —
+        // .air, .cfg, etc.), return its parent folder (the aircraft folder name).
+        // If it's already a bare folder name, return it directly.
         if (parts.Length >= 2)
         {
             var last = parts[^1];
-            if (last.EndsWith(".air", StringComparison.OrdinalIgnoreCase))
-                return parts[^2];
-            return last;
+            return last.Contains('.') ? parts[^2] : last;
         }
 
+        // Single-segment fallback — strip any file extension.
         var name = parts[0];
-        return name.EndsWith(".air", StringComparison.OrdinalIgnoreCase) ? name[..^4] : name;
+        var dot = name.LastIndexOf('.');
+        return dot > 0 ? name[..dot] : name;
     }
 
     private void HandleSimConnectException(object? data)
