@@ -69,4 +69,46 @@ public sealed record SimSessionUploadRequest
 
     [JsonPropertyName("arrival")]
     public string? Arrival { get; init; }
+
+    /// <summary>
+    /// Per-phase score breakdown with all deduction findings.
+    /// Allows the website to show pilots exactly why they lost points on each phase.
+    /// Only findings with actual deductions (PointsDeducted > 0) or automatic fails are included.
+    /// </summary>
+    [JsonPropertyName("phaseFindings")]
+    public IReadOnlyList<PhaseScoreFindingUpload>? PhaseFindings { get; init; }
+
+    /// <summary>
+    /// Global safety deductions (overspeed, stall, GPWS) that are not tied to a single phase.
+    /// </summary>
+    [JsonPropertyName("globalFindings")]
+    public IReadOnlyList<ScoreFindingUpload>? GlobalFindings { get; init; }
+}
+
+public sealed record PhaseScoreFindingUpload
+{
+    [JsonPropertyName("phase")]
+    public string Phase { get; init; } = "";
+
+    [JsonPropertyName("maxPoints")]
+    public double MaxPoints { get; init; }
+
+    [JsonPropertyName("awardedPoints")]
+    public double AwardedPoints { get; init; }
+
+    /// <summary>Deduction findings for this phase. Empty list = clean phase.</summary>
+    [JsonPropertyName("findings")]
+    public IReadOnlyList<ScoreFindingUpload> Findings { get; init; } = [];
+}
+
+public sealed record ScoreFindingUpload
+{
+    [JsonPropertyName("description")]
+    public string Description { get; init; } = "";
+
+    [JsonPropertyName("pointsDeducted")]
+    public double PointsDeducted { get; init; }
+
+    [JsonPropertyName("isAutomaticFail")]
+    public bool IsAutomaticFail { get; init; }
 }
