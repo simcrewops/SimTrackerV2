@@ -77,6 +77,10 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
         if (_serviceStack.BackgroundSyncCoordinator is not null)
         {
+            // After any successful upload, immediately refresh the active flight so the
+            // tracker picks up the next assignment without waiting for the poll interval.
+            _serviceStack.BackgroundSyncCoordinator.OnSessionsUploadedAsync = RefreshActiveFlightAsync;
+
             _serviceStack.BackgroundSyncCoordinator.Start();
 
             try
