@@ -24,6 +24,7 @@ public sealed class SimConnectTelemetryMapper
             Mach = rawFrame.Mach,
             GroundSpeedKnots = rawFrame.GroundSpeedKnots,
             VerticalSpeedFpm = rawFrame.VerticalSpeedFpm,
+            VelocityWorldYFps = rawFrame.VelocityWorldYFps,
             BankAngleDegrees = rawFrame.BankAngleDegrees,
             PitchAngleDegrees = rawFrame.PitchAngleDegrees,
             HeadingMagneticDegrees = rawFrame.HeadingMagneticDegrees,

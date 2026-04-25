@@ -885,26 +885,33 @@ public sealed class FlightSessionScoringTracker
 
     private double CalculateTouchdownVerticalSpeed(TelemetryFrame touchdownFrame)
     {
-        // Primary: barometric VS on the last airborne frame, sampled just before wheel contact.
+        // Primary: VELOCITY WORLD Y at the moment of wheel contact.
         //
-        // The VERTICAL SPEED SimVar reports the instantaneous rate of altitude change.  On the
-        // first on-ground frame the gear physically compresses and the SimVar spikes (sometimes
-        // 2–3× the actual sink rate).  The frame immediately before OnGround flips is free of
-        // this artefact and gives the true approach/flare sink rate.
-        //
-        // The adjacent-frame AGL-delta method (previous primary) amplifies badly at high frame
-        // rates: a 2 ft AGL drop in 0.125 s (8 Hz) = 960 fpm even for a smooth landing, which
-        // consistently reads heavier than the cockpit indication or other trackers.
+        // This SimVar is driven by the physics engine and has no barometric lag —
+        // it reads the true instantaneous sink rate at the exact frame OnGround flips.
+        // The VERTICAL SPEED SimVar (barometric) lags real aircraft motion by 1–2 s,
+        // so during a flare where the pilot arrests from 350 → 195 fpm the baro VS
+        // still reads the pre-flare rate at touchdown. VELOCITY WORLD Y does not have
+        // this problem and matches what Volanta and other pro trackers report.
+        if (touchdownFrame.VelocityWorldYFps < 0)
+            return Math.Abs(touchdownFrame.VelocityWorldYFps) * 60.0;
+
+        // Fallback A: VelocityWorldY on the last airborne frame (slightly earlier reading).
+        // Catches the case where the sim briefly reports 0 or positive on the touchdown frame.
+        if (_previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VelocityWorldYFps < 0)
+            return Math.Abs(_previousFrame.VelocityWorldYFps) * 60.0;
+
+        // Fallback B: barometric VS on the last airborne frame (sampled just before contact).
+        // The frame immediately before OnGround is free of gear-compression artefacts.
         if (_previousFrame is not null
             && !_previousFrame.OnGround
-            && _previousFrame.AltitudeAglFeet <= 50   // must be in the flare/approach, not cruise
-            && _previousFrame.VerticalSpeedFpm < 0)   // must be descending
+            && _previousFrame.AltitudeAglFeet <= 50
+            && _previousFrame.VerticalSpeedFpm < 0)
         {
             return Math.Abs(_previousFrame.VerticalSpeedFpm);
         }
 
-        // Fallback A: barometric VS on the touchdown frame itself.
-        // Used when the previous frame is missing or the AGL guard above isn't met.
+        // Fallback C: barometric VS on the touchdown frame itself.
         if (touchdownFrame.VerticalSpeedFpm < 0)
             return Math.Abs(touchdownFrame.VerticalSpeedFpm);
 

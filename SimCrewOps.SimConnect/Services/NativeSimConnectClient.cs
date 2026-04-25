@@ -441,7 +441,12 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
         var aircraftPath = state.StringValue ?? string.Empty;
         _activeProfile = AircraftProfileCatalog.MatchOrDefault(aircraftPath);
-        _detectedAircraftTitle = ReadTitleFromAircraftCfg(aircraftPath) ?? ParseAircraftTitle(aircraftPath);
+
+        // Prefer the profile's declared ICAO type (e.g. "A319") when available —
+        // it's cleaner than anything we can parse from the raw file path or aircraft.cfg.
+        _detectedAircraftTitle = _activeProfile.IcaoType
+            ?? ReadTitleFromAircraftCfg(aircraftPath)
+            ?? ParseAircraftTitle(aircraftPath);
 
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Aircraft loaded: {aircraftPath}");
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Detected title : {_detectedAircraftTitle}");
@@ -482,6 +487,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             ParkingBrakePosition = snapshot.ParkingBrakePosition,
             OnGround = onGround,
             CrashFlag = snapshot.CrashFlag,
+            VelocityWorldYFps = snapshot.VelocityWorldYFps,
         };
 
         EnqueueFrame();
@@ -747,6 +753,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             Engine2Running = _latestState.Engine2Running,
             Engine3Running = _latestState.Engine3Running,
             Engine4Running = _latestState.Engine4Running,
+            VelocityWorldYFps   = _latestState.VelocityWorldYFps,
             ActiveProfileName   = _activeProfile.Name,
             LvarBridgeRequired  = _activeProfile.RequiresLvarBridge,
             LvarBridgeConnected = _mobiFlightBridge.IsActive,
@@ -825,6 +832,9 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly double ParkingBrakePosition;  // bool SimVar → 0.0 or 1.0
         public readonly double OnGround;              // SIM ON GROUND → 0.0 or 1.0
         public readonly double CrashFlag;             // bool SimVar → 0.0 or 1.0
+        // Physics-engine vertical velocity (ft/s, negative = descending, no barometric lag).
+        // Must stay last to match velocity_world_y appended at the end of FlightCriticalVariables.
+        public readonly double VelocityWorldYFps;
     }
 
     // All fields are double — uniform 8-byte layout, no mixed-type alignment issues.
@@ -943,6 +953,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public double Engine2Running { get; init; }
         public double Engine3Running { get; init; }
         public double Engine4Running { get; init; }
+        public double VelocityWorldYFps { get; init; }
     }
 }
 
