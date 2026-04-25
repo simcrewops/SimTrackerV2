@@ -193,8 +193,10 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private const uint FlightCriticalRequestId = 1;
     private const uint OperationalRequestId    = 2;
     private const uint AircraftStateRequestId  = 3;    // for RequestSystemState("AircraftLoaded")
+    private const uint AtcModelRequestId       = 4;    // for ATC MODEL string SimVar (once per aircraft load)
     private const uint FlightCriticalDefinitionId = 11;
     private const uint OperationalDefinitionId    = 12;
+    private const uint AtcModelDefinitionId       = 13; // separate from numeric struct definitions
     private const uint UserObjectId = 0;
 
     private readonly nint _nativeLibraryHandle;
@@ -205,7 +207,8 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private nint _simConnectHandle;
     private LatestSimConnectState _latestState = new();
     private AircraftProfile _activeProfile = AircraftProfile.Default;
-    private string? _detectedAircraftTitle;
+    private string? _detectedAircraftTitle;   // file-based detection, used until SimVar arrives
+    private string? _atcModelSimVar;           // ATC MODEL SimVar — overrides file-based value when available
     private readonly MobiFlightBridge _mobiFlightBridge = new();
     private bool _disposed;
 
@@ -361,6 +364,23 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             OperationalRequestId,
             SimConnectDefinitionCatalog.ScoringAndOperationalVariables,
             SimConnectPeriod.Second);
+
+        // Register the ATC MODEL string SimVar definition.
+        // String SimVars must be in their own definition — they cannot share a
+        // definition with Float64 SimVars because the data layout is incompatible.
+        var result = _exports.AddToDataDefinition(
+            _simConnectHandle,
+            AtcModelDefinitionId,
+            "ATC MODEL",
+            null,  // string SimVars have no unit
+            SimConnectDataType.String256,
+            0.0f,
+            0);
+        if (result < 0)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[SimConnect] AddToDataDefinition(ATC MODEL) failed: 0x{result:X8}");
+        }
     }
 
     private void RequestAircraftState()
@@ -427,6 +447,17 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             case OperationalRequestId:
                 UpdateOperational(Marshal.PtrToStructure<OperationalSnapshot>(payloadPointer));
                 break;
+            case AtcModelRequestId:
+                // ATC MODEL is a String256 SimVar — the payload starts immediately after
+                // the SimConnectRecvSimObjectData header (no intermediate struct needed).
+                var atcModel = Marshal.PtrToStructure<AtcModelSnapshot>(payloadPointer);
+                var rawAtcModel = atcModel.Value?.Trim();
+                if (!string.IsNullOrWhiteSpace(rawAtcModel))
+                {
+                    _atcModelSimVar = rawAtcModel;
+                    System.Diagnostics.Debug.WriteLine($"[SimConnect] ATC MODEL SimVar  : {_atcModelSimVar}");
+                }
+                break;
         }
     }
 
@@ -442,15 +473,26 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         var aircraftPath = state.StringValue ?? string.Empty;
         _activeProfile = AircraftProfileCatalog.MatchOrDefault(aircraftPath);
 
-        // Detection priority:
-        //   1. Profile IcaoType   — hardcoded for known addons (most explicit)
-        //   2. .air filename      — MSFS always loads the variant-specific .air file,
-        //                           so "fnx_a319.air" can only ever be an A319 regardless
-        //                           of what the shared aircraft.cfg says in [GENERAL]
-        //   3. atc_model in cfg   — ICAO code from aircraft.cfg [GENERAL] or [FLTSIM]
-        //   4. ParseAircraftTitle — community package folder name (last resort)
-        _detectedAircraftTitle = _activeProfile.IcaoType
+        // Detection priority (most → least accurate):
+        //   1. FLTSIM section match — parse aircraft.cfg to find the [FLTSIM.n] section
+        //                             whose "sim =" value matches the loaded .air filename;
+        //                             read that section's atc_model. This is the only
+        //                             approach that distinguishes variants inside a combined
+        //                             package (e.g. Fenix A32X with A319/A320/A321 in one
+        //                             folder sharing a single aircraft.cfg).
+        //   2. .air filename heuristic — "FNX_A319.air" encodes the variant in the name,
+        //                             so a simple pattern scan works for many addons even
+        //                             without FLTSIM match (e.g. if aircraft.cfg has no
+        //                             per-variant atc_model).
+        //   3. Profile IcaoType   — hardcoded for known addons, but catch-all profiles
+        //                           (e.g. generic "fnx" → A320) can be wrong for variants;
+        //                           used only after the two variant-specific checks above.
+        //   4. atc_model in cfg   — [GENERAL] section value; shared across all variants
+        //                           in combined packages, used as a broad fallback.
+        //   5. ParseAircraftTitle — community package folder name (last resort).
+        _detectedAircraftTitle = ReadVariantIcaoFromAircraftCfg(aircraftPath)
             ?? ExtractIcaoFromAircraftPath(aircraftPath)
+            ?? _activeProfile.IcaoType
             ?? ReadTitleFromAircraftCfg(aircraftPath)
             ?? ParseAircraftTitle(aircraftPath);
 
@@ -458,6 +500,23 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Detected title : {_detectedAircraftTitle}");
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Active profile : {_activeProfile.Name}" +
             (_activeProfile.RequiresLvarBridge ? " (LVAR bridge required)" : string.Empty));
+
+        // Clear any stale ATC MODEL value from the previously loaded aircraft, then
+        // request a fresh read. The response arrives asynchronously as SimObjectData
+        // and will override _detectedAircraftTitle in EnqueueFrame once received.
+        _atcModelSimVar = null;
+        var atcResult = _exports.RequestDataOnSimObject(
+            _simConnectHandle,
+            AtcModelRequestId,
+            AtcModelDefinitionId,
+            UserObjectId,
+            SimConnectPeriod.Once,
+            0, 0, 0, 0);
+        if (atcResult < 0)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[SimConnect] RequestDataOnSimObject(ATC MODEL) failed: 0x{atcResult:X8}");
+        }
 
         // Subscribe to profile LVARs via MobiFlight (deferred if bridge not yet Active).
         _mobiFlightBridge.SubscribeToProfile(_activeProfile);
@@ -573,6 +632,103 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         };
 
         EnqueueFrame();
+    }
+
+    /// <summary>
+    /// Reads the ICAO type code for the specific variant that is currently loaded by
+    /// matching the loaded <c>.air</c> filename against the <c>sim =</c> key in each
+    /// <c>[FLTSIM.n]</c> section of the aircraft's <c>aircraft.cfg</c>, then returning
+    /// <c>atc_model</c> from that section.
+    ///
+    /// This is the most accurate approach for combined packages (e.g. Fenix A32X) where
+    /// A319/A320/A321 live in a single folder. MSFS loads a variant-specific <c>.air</c>
+    /// file (e.g. <c>FNX_A319.air</c>) even when the package is combined, and each
+    /// <c>[FLTSIM.n]</c> section carries its own <c>atc_model</c>.
+    ///
+    /// Returns <c>null</c> when:
+    /// – the path does not end in <c>.air</c> (e.g. MSFS reported a <c>.cfg</c> path),
+    /// – no matching section is found, or
+    /// – the matching section has no <c>atc_model</c> key.
+    /// </summary>
+    private static string? ReadVariantIcaoFromAircraftCfg(string aircraftPath)
+    {
+        if (!aircraftPath.EndsWith(".air", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        try
+        {
+            // The filename without extension is exactly the value of "sim =" in the
+            // matching [FLTSIM.n] section (e.g. "FNX_A319" for FNX_A319.air).
+            var simName = Path.GetFileNameWithoutExtension(aircraftPath);
+            if (string.IsNullOrEmpty(simName)) return null;
+
+            var dir = Path.GetDirectoryName(aircraftPath);
+            if (string.IsNullOrEmpty(dir)) return null;
+
+            var cfgPath = Path.Combine(dir, "aircraft.cfg");
+            if (!File.Exists(cfgPath)) return null;
+
+            // Buffer the current section's sim= and atc_model= values.
+            // When we move to the next section we can check if the buffered section matched.
+            string? sectionSim = null;
+            string? sectionAtcModel = null;
+            var inFltsim = false;
+            var lineCount = 0;
+
+            foreach (var rawLine in File.ReadLines(cfgPath))
+            {
+                // Safety cap — aircraft.cfg files can be large in big livery packs.
+                if (++lineCount > 4000) break;
+
+                var line = rawLine.Trim();
+                if (line.Length == 0 || line[0] == ';') continue;
+
+                if (line[0] == '[')
+                {
+                    // Leaving a FLTSIM section: check if it was the target.
+                    if (inFltsim
+                        && sectionSim?.Equals(simName, StringComparison.OrdinalIgnoreCase) == true
+                        && sectionAtcModel is not null)
+                    {
+                        return sectionAtcModel;
+                    }
+
+                    // Reset for the new section.
+                    sectionSim      = null;
+                    sectionAtcModel = null;
+                    inFltsim = line.StartsWith("[FLTSIM.", StringComparison.OrdinalIgnoreCase);
+                    continue;
+                }
+
+                if (!inFltsim) continue;
+
+                var eq = line.IndexOf('=');
+                if (eq < 0) continue;
+
+                var key   = line[..eq].Trim();
+                var value = line[(eq + 1)..].Trim().Trim('"');
+                if (string.IsNullOrWhiteSpace(value)) continue;
+
+                if (key.Equals("sim", StringComparison.OrdinalIgnoreCase))
+                    sectionSim = value;
+                else if (key.Equals("atc_model", StringComparison.OrdinalIgnoreCase))
+                    sectionAtcModel = value;
+            }
+
+            // Handle a matching section at end of file (no trailing section header).
+            if (inFltsim
+                && sectionSim?.Equals(simName, StringComparison.OrdinalIgnoreCase) == true
+                && sectionAtcModel is not null)
+            {
+                return sectionAtcModel;
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null; // File locked, path invalid, etc.
+        }
     }
 
     /// <summary>
@@ -840,7 +996,9 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             ActiveProfileName   = _activeProfile.Name,
             LvarBridgeRequired  = _activeProfile.RequiresLvarBridge,
             LvarBridgeConnected = _mobiFlightBridge.IsActive,
-            AircraftTitle       = _detectedAircraftTitle,
+            // ATC MODEL SimVar is the authoritative source (same one vPilot / Volanta use).
+            // Fall back to the file-based detection until the SimVar response arrives.
+            AircraftTitle       = _atcModelSimVar ?? _detectedAircraftTitle,
         });
     }
 
@@ -943,6 +1101,15 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly double StallWarning;
         public readonly double GpwsAlert;
         public readonly double OverspeedWarning;
+    }
+
+    // SIMCONNECT_DATATYPE_STRING256 payload — 256 ANSI characters, null-terminated.
+    // Used to read string SimVars such as ATC MODEL and TITLE.
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    private readonly struct AtcModelSnapshot
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public readonly string Value;
     }
 
     [StructLayout(LayoutKind.Sequential)]
