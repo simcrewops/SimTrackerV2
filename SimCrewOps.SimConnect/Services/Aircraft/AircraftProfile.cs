@@ -25,6 +25,14 @@ public sealed record AircraftProfile
     public required string TitlePattern { get; init; }
 
     /// <summary>
+    /// ICAO aircraft type designator shown in the tracker UI (e.g. "A319", "B738").
+    /// When set, this overrides path-based title detection so the display always
+    /// shows a clean type code rather than a raw package folder or cfg title.
+    /// Null means fall back to ReadTitleFromAircraftCfg / ParseAircraftTitle.
+    /// </summary>
+    public string? IcaoType { get; init; }
+
+    /// <summary>
     /// True when one or more light channels require an LVAR bridge
     /// (MobiFlight WASM) rather than standard SimVars.
     /// </summary>
