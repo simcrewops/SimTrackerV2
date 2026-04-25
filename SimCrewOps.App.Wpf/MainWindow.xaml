@@ -998,29 +998,44 @@
                     <ItemsControl Grid.Row="3" ItemsSource="{Binding ReviewScoreRows}" Margin="0,24,0,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type model:ScoreRowModel}">
-                                <Grid Margin="0,0,0,14">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="140" />
-                                        <ColumnDefinition Width="220" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding Label}"
-                                               FontSize="15" FontWeight="Bold"
-                                               Foreground="{StaticResource TextPrimaryBrush}" />
-                                    <Border Grid.Column="1" Height="6" CornerRadius="3"
-                                            Background="{StaticResource BgMutedBrush}"
-                                            VerticalAlignment="Center" Margin="12,0,0,0">
-                                        <Border Height="6" CornerRadius="3"
-                                                Background="{Binding FillBrush}"
-                                                Width="{Binding FillWidth}"
-                                                HorizontalAlignment="Left" />
-                                    </Border>
-                                    <TextBlock Grid.Column="2"
-                                               Text="{Binding ScoreText}"
-                                               HorizontalAlignment="Right"
-                                               FontSize="14" FontWeight="Bold"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
-                                </Grid>
+                                <StackPanel Margin="0,0,0,16">
+                                    <!-- Phase label + score bar + score text -->
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="140" />
+                                            <ColumnDefinition Width="220" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Label}"
+                                                   FontSize="15" FontWeight="Bold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                                        <Border Grid.Column="1" Height="6" CornerRadius="3"
+                                                Background="{StaticResource BgMutedBrush}"
+                                                VerticalAlignment="Center" Margin="12,0,0,0">
+                                            <Border Height="6" CornerRadius="3"
+                                                    Background="{Binding FillBrush}"
+                                                    Width="{Binding FillWidth}"
+                                                    HorizontalAlignment="Left" />
+                                        </Border>
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding ScoreText}"
+                                                   HorizontalAlignment="Right"
+                                                   FontSize="14" FontWeight="Bold"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                    </Grid>
+                                    <!-- All deduction findings shown beneath the bar -->
+                                    <ItemsControl ItemsSource="{Binding Findings}" Margin="140,4,0,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type model:FindingRowModel}">
+                                                <TextBlock Text="{Binding DisplayText}"
+                                                           FontSize="12"
+                                                           Foreground="{StaticResource TextMutedBrush}"
+                                                           Margin="0,2,0,0"
+                                                           TextWrapping="Wrap" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

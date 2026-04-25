@@ -1364,8 +1364,16 @@ public sealed class MainWindowViewModel : ObservableObject
         // Bar fills a 200 px track (used in both the phase-bar column and the review right panel)
         var fillWidth = phaseScore.MaxPoints <= 0 ? 0.0 : 200.0 * pct;
 
-        // Surface the first non-trivial finding as a single line under the bar
-        var finding = phaseScore.Findings.FirstOrDefault(f => f.PointsDeducted > 0 || f.IsAutomaticFail);
+        // Build the full findings list for the review page.
+        // Automatic-fail findings are shown as-is; point deductions include the amount.
+        var findings = phaseScore.Findings
+            .Where(f => f.PointsDeducted > 0 || f.IsAutomaticFail)
+            .Select(f => new FindingRowModel(
+                f.IsAutomaticFail
+                    ? $"↳ {f.Description}"
+                    : $"↳ {f.Description}  −{f.PointsDeducted:0.#} pts",
+                f.IsAutomaticFail))
+            .ToList();
 
         return new ScoreRowModel(
             phaseScore.Phase switch
@@ -1379,7 +1387,7 @@ public sealed class MainWindowViewModel : ObservableObject
                 : $"{phaseScore.AwardedPoints:0.#} / {phaseScore.MaxPoints:0.#}",
             fillWidth,
             fillBrush,
-            finding is not null ? $"↳ {finding.Description}" : string.Empty);
+            findings);
     }
 
     private static List<ScoreRowModel> CreateSampleScoreRows()
@@ -1387,13 +1395,13 @@ public sealed class MainWindowViewModel : ObservableObject
         var muted = new SolidColorBrush(MediaColor.FromRgb(56, 91, 105));
         return new List<ScoreRowModel>
         {
-            new("Preflight", "--", 0, muted),
-            new("Taxi Out",  "--", 0, muted),
-            new("Takeoff",   "--", 0, muted),
-            new("Approach",  "--", 0, muted),
-            new("Landing",   "--", 0, muted),
-            new("Taxi In",   "--", 0, muted),
-            new("Arrival",   "--", 0, muted),
+            new("Preflight", "--", 0, muted, []),
+            new("Taxi Out",  "--", 0, muted, []),
+            new("Takeoff",   "--", 0, muted, []),
+            new("Approach",  "--", 0, muted, []),
+            new("Landing",   "--", 0, muted, []),
+            new("Taxi In",   "--", 0, muted, []),
+            new("Arrival",   "--", 0, muted, []),
         };
     }
 
