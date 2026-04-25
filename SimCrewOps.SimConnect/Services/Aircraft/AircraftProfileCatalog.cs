@@ -48,6 +48,51 @@ public static class AircraftProfileCatalog
             StrobeLight  = Lvar("S_OH_EXT_LT_STROBE",    onThreshold: 1.0),
         },
 
+        // ── Fenix Simulations A321 ────────────────────────────────────────────────
+        // Fenix path: ...Community\fenix-a321\SimObjects\Airplanes\fnx_a321\...
+        // Same LVAR names as A319/A320 — shared cockpit logic across the family.
+        new AircraftProfile
+        {
+            Name = "Fenix A321",
+            TitlePattern = "fnx_a321",
+            IcaoType = "A321",
+            RequiresLvarBridge = true,
+            TaxiLight    = Lvar("S_OH_EXT_LT_NOSE",      onThreshold: 1.0),
+            LandingLight = Lvar("S_OH_EXT_LT_LANDING_L", onThreshold: 2.0),
+            BeaconLight  = Lvar("S_OH_EXT_LT_BEACON",    onThreshold: 1.0),
+            StrobeLight  = Lvar("S_OH_EXT_LT_STROBE",    onThreshold: 1.0),
+        },
+
+        // ── Fenix Simulations A32X (catch-all) ────────────────────────────────────
+        // Catches community livery packages (e.g. "FMK_32X", "fnx_32x") whose folder
+        // paths contain "fnx" or "fenix" but not a specific variant string above.
+        // Reported aircraft type defaults to A320 — correct for most of the family.
+        new AircraftProfile
+        {
+            Name = "Fenix A32X",
+            TitlePattern = "fnx",
+            IcaoType = "A320",
+            RequiresLvarBridge = true,
+            TaxiLight    = Lvar("S_OH_EXT_LT_NOSE",      onThreshold: 1.0),
+            LandingLight = Lvar("S_OH_EXT_LT_LANDING_L", onThreshold: 2.0),
+            BeaconLight  = Lvar("S_OH_EXT_LT_BEACON",    onThreshold: 1.0),
+            StrobeLight  = Lvar("S_OH_EXT_LT_STROBE",    onThreshold: 1.0),
+        },
+
+        // ── Fenix Simulations (fenix folder name fallback) ────────────────────────
+        // Some livery packages use the base "fenix" folder rather than "fnx_xxx".
+        new AircraftProfile
+        {
+            Name = "Fenix A32X",
+            TitlePattern = "fenix",
+            IcaoType = "A320",
+            RequiresLvarBridge = true,
+            TaxiLight    = Lvar("S_OH_EXT_LT_NOSE",      onThreshold: 1.0),
+            LandingLight = Lvar("S_OH_EXT_LT_LANDING_L", onThreshold: 2.0),
+            BeaconLight  = Lvar("S_OH_EXT_LT_BEACON",    onThreshold: 1.0),
+            StrobeLight  = Lvar("S_OH_EXT_LT_STROBE",    onThreshold: 1.0),
+        },
+
         // ── Aerosoft CRJ 550 / 700 / 900 / 1000 ──────────────────────────────────
         // Strobe uses standard SimVar (no confirmed ASCRJ_EXTL_STROBE read LVAR).
         // Sources: MobiFlight msfs2020_simvars.cip, MobiFlight event ID presets
