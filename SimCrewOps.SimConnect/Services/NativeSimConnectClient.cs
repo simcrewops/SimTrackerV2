@@ -579,6 +579,16 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     /// back to the first <c>[FLTSIM.x]</c> variant title. Returns null if the file
     /// cannot be found or read (e.g. path is a .air file, not a .cfg).
     /// </summary>
+    /// <summary>
+    /// Reads the best available aircraft identifier from the aircraft.cfg file.
+    ///
+    /// Priority order:
+    ///   1. atc_model in [GENERAL] — ICAO type designator (e.g. "A320", "B738").
+    ///      This is the cleanest source: it is the standard ICAO code set by the
+    ///      aircraft developer and works regardless of livery package folder names.
+    ///   2. title in [GENERAL] — developer-level aircraft title.
+    ///   3. title in [FLTSIM.0] — first livery title (often verbose, last resort).
+    /// </summary>
     private static string? ReadTitleFromAircraftCfg(string aircraftPath)
     {
         try
@@ -599,6 +609,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
             if (!File.Exists(cfgPath)) return null;
 
+            string? generalAtcModel = null;
             string? generalTitle = null;
             string? firstFltsimTitle = null;
             var inGeneral = false;
@@ -616,6 +627,9 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
                 if (line[0] == '[')
                 {
+                    // Once we leave [GENERAL] and already have atc_model we're done.
+                    if (inGeneral && generalAtcModel is not null) break;
+
                     inGeneral     = line.Equals("[GENERAL]",  StringComparison.OrdinalIgnoreCase);
                     inFirstFltsim = !fltsimSeen &&
                                     line.StartsWith("[FLTSIM.", StringComparison.OrdinalIgnoreCase);
@@ -623,23 +637,35 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
                     continue;
                 }
 
-                if ((inGeneral || inFirstFltsim) && line.StartsWith("title", StringComparison.OrdinalIgnoreCase))
+                var eq = line.IndexOf('=');
+                if (eq < 0) continue;
+                var value = line[(eq + 1)..].Trim().Trim('"');
+                if (string.IsNullOrWhiteSpace(value)) continue;
+
+                if (inGeneral)
                 {
-                    var eq = line.IndexOf('=');
-                    if (eq < 0) continue;
-
-                    var value = line[(eq + 1)..].Trim().Trim('"');
-                    if (string.IsNullOrWhiteSpace(value)) continue;
-
-                    if (inGeneral)       { generalTitle    = value; break; }
-                    if (inFirstFltsim)   { firstFltsimTitle = value; }
+                    // atc_model is the ICAO type code — highest priority.
+                    if (line.StartsWith("atc_model", StringComparison.OrdinalIgnoreCase))
+                    {
+                        generalAtcModel = value;
+                    }
+                    else if (generalTitle is null &&
+                             line.StartsWith("title", StringComparison.OrdinalIgnoreCase))
+                    {
+                        generalTitle = value;
+                    }
+                }
+                else if (inFirstFltsim && firstFltsimTitle is null &&
+                         line.StartsWith("title", StringComparison.OrdinalIgnoreCase))
+                {
+                    firstFltsimTitle = value;
                 }
 
-                // Once we have both candidates stop early.
-                if (generalTitle is not null && firstFltsimTitle is not null) break;
+                // Stop as soon as we have everything we need.
+                if (generalAtcModel is not null && firstFltsimTitle is not null) break;
             }
 
-            return generalTitle ?? firstFltsimTitle;
+            return generalAtcModel ?? generalTitle ?? firstFltsimTitle;
         }
         catch
         {
