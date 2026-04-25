@@ -193,8 +193,10 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private const uint FlightCriticalRequestId = 1;
     private const uint OperationalRequestId    = 2;
     private const uint AircraftStateRequestId  = 3;    // for RequestSystemState("AircraftLoaded")
+    private const uint AtcModelRequestId       = 4;    // for ATC MODEL string SimVar (once per aircraft load)
     private const uint FlightCriticalDefinitionId = 11;
     private const uint OperationalDefinitionId    = 12;
+    private const uint AtcModelDefinitionId       = 13; // separate from numeric struct definitions
     private const uint UserObjectId = 0;
 
     private readonly nint _nativeLibraryHandle;
@@ -205,7 +207,8 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private nint _simConnectHandle;
     private LatestSimConnectState _latestState = new();
     private AircraftProfile _activeProfile = AircraftProfile.Default;
-    private string? _detectedAircraftTitle;
+    private string? _detectedAircraftTitle;   // file-based detection, used until SimVar arrives
+    private string? _atcModelSimVar;           // ATC MODEL SimVar — overrides file-based value when available
     private readonly MobiFlightBridge _mobiFlightBridge = new();
     private bool _disposed;
 
@@ -361,6 +364,23 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             OperationalRequestId,
             SimConnectDefinitionCatalog.ScoringAndOperationalVariables,
             SimConnectPeriod.Second);
+
+        // Register the ATC MODEL string SimVar definition.
+        // String SimVars must be in their own definition — they cannot share a
+        // definition with Float64 SimVars because the data layout is incompatible.
+        var result = _exports.AddToDataDefinition(
+            _simConnectHandle,
+            AtcModelDefinitionId,
+            "ATC MODEL",
+            null,  // string SimVars have no unit
+            SimConnectDataType.String256,
+            0.0f,
+            0);
+        if (result < 0)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[SimConnect] AddToDataDefinition(ATC MODEL) failed: 0x{result:X8}");
+        }
     }
 
     private void RequestAircraftState()
@@ -427,6 +447,17 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             case OperationalRequestId:
                 UpdateOperational(Marshal.PtrToStructure<OperationalSnapshot>(payloadPointer));
                 break;
+            case AtcModelRequestId:
+                // ATC MODEL is a String256 SimVar — the payload starts immediately after
+                // the SimConnectRecvSimObjectData header (no intermediate struct needed).
+                var atcModel = Marshal.PtrToStructure<AtcModelSnapshot>(payloadPointer);
+                var rawAtcModel = atcModel.Value?.Trim();
+                if (!string.IsNullOrWhiteSpace(rawAtcModel))
+                {
+                    _atcModelSimVar = rawAtcModel;
+                    System.Diagnostics.Debug.WriteLine($"[SimConnect] ATC MODEL SimVar  : {_atcModelSimVar}");
+                }
+                break;
         }
     }
 
@@ -469,6 +500,23 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Detected title : {_detectedAircraftTitle}");
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Active profile : {_activeProfile.Name}" +
             (_activeProfile.RequiresLvarBridge ? " (LVAR bridge required)" : string.Empty));
+
+        // Clear any stale ATC MODEL value from the previously loaded aircraft, then
+        // request a fresh read. The response arrives asynchronously as SimObjectData
+        // and will override _detectedAircraftTitle in EnqueueFrame once received.
+        _atcModelSimVar = null;
+        var atcResult = _exports.RequestDataOnSimObject(
+            _simConnectHandle,
+            AtcModelRequestId,
+            AtcModelDefinitionId,
+            UserObjectId,
+            SimConnectPeriod.Once,
+            0, 0, 0, 0);
+        if (atcResult < 0)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[SimConnect] RequestDataOnSimObject(ATC MODEL) failed: 0x{atcResult:X8}");
+        }
 
         // Subscribe to profile LVARs via MobiFlight (deferred if bridge not yet Active).
         _mobiFlightBridge.SubscribeToProfile(_activeProfile);
@@ -948,7 +996,9 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             ActiveProfileName   = _activeProfile.Name,
             LvarBridgeRequired  = _activeProfile.RequiresLvarBridge,
             LvarBridgeConnected = _mobiFlightBridge.IsActive,
-            AircraftTitle       = _detectedAircraftTitle,
+            // ATC MODEL SimVar is the authoritative source (same one vPilot / Volanta use).
+            // Fall back to the file-based detection until the SimVar response arrives.
+            AircraftTitle       = _atcModelSimVar ?? _detectedAircraftTitle,
         });
     }
 
@@ -1051,6 +1101,15 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly double StallWarning;
         public readonly double GpwsAlert;
         public readonly double OverspeedWarning;
+    }
+
+    // SIMCONNECT_DATATYPE_STRING256 payload — 256 ANSI characters, null-terminated.
+    // Used to read string SimVars such as ATC MODEL and TITLE.
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    private readonly struct AtcModelSnapshot
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public readonly string Value;
     }
 
     [StructLayout(LayoutKind.Sequential)]
