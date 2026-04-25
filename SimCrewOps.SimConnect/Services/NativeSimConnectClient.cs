@@ -442,9 +442,15 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         var aircraftPath = state.StringValue ?? string.Empty;
         _activeProfile = AircraftProfileCatalog.MatchOrDefault(aircraftPath);
 
-        // Prefer the profile's declared ICAO type (e.g. "A319") when available —
-        // it's cleaner than anything we can parse from the raw file path or aircraft.cfg.
+        // Detection priority:
+        //   1. Profile IcaoType   — hardcoded for known addons (most explicit)
+        //   2. .air filename      — MSFS always loads the variant-specific .air file,
+        //                           so "fnx_a319.air" can only ever be an A319 regardless
+        //                           of what the shared aircraft.cfg says in [GENERAL]
+        //   3. atc_model in cfg   — ICAO code from aircraft.cfg [GENERAL] or [FLTSIM]
+        //   4. ParseAircraftTitle — community package folder name (last resort)
         _detectedAircraftTitle = _activeProfile.IcaoType
+            ?? ExtractIcaoFromAircraftPath(aircraftPath)
             ?? ReadTitleFromAircraftCfg(aircraftPath)
             ?? ParseAircraftTitle(aircraftPath);
 
@@ -570,8 +576,59 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     }
 
     /// <summary>
-    /// Parses a user-friendly aircraft name from the MSFS AircraftLoaded path.
-    /// The path is a relative .air file location, e.g.:
+    /// Extracts an ICAO type code from the aircraft .air filename and its immediate
+    /// parent folder name. MSFS always loads the variant-specific .air file, so the
+    /// filename is a reliable variant indicator even when the package bundles multiple
+    /// variants in one folder with a shared aircraft.cfg.
+    ///
+    /// Examples:
+    ///   "...FNX_32X\fnx_a319.air"  → "A319"
+    ///   "...FNX_32X\fnx_a320.air"  → "A320"
+    ///   "...pmdg-737-800\b738.air" → "B738"
+    /// </summary>
+    private static string? ExtractIcaoFromAircraftPath(string aircraftPath)
+    {
+        if (string.IsNullOrWhiteSpace(aircraftPath))
+            return null;
+
+        // Build a short candidate string from just the filename and its parent folder.
+        // Searching only these two segments avoids false matches from package root names.
+        var fileName     = Path.GetFileNameWithoutExtension(aircraftPath) ?? string.Empty;
+        var parentFolder = Path.GetFileName(Path.GetDirectoryName(aircraftPath)) ?? string.Empty;
+        var candidates   = $"{fileName} {parentFolder}";
+
+        // Ordered most-specific → least-specific so "a319" beats "a31x" style substrings.
+        // Each tuple: (search token, ICAO designator to return).
+        ReadOnlySpan<(string Token, string Icao)> patterns =
+        [
+            // Airbus narrow-body family
+            ("a318", "A318"), ("a319", "A319"), ("a320", "A320"), ("a321", "A321"),
+            // Airbus wide-body
+            ("a220", "A220"), ("a310", "A310"),
+            ("a330", "A330"), ("a340", "A340"), ("a350", "A350"), ("a380", "A380"),
+            // Boeing narrow-body
+            ("b737", "B737"), ("b738", "B738"), ("b739", "B739"),
+            ("b757", "B752"),
+            // Boeing wide-body
+            ("b767", "B763"), ("b777", "B77W"), ("b787", "B789"),
+            ("b747", "B744"), ("b748", "B748"),
+            // Regional jets
+            ("crj7", "CRJ7"), ("crj9", "CRJ9"), ("crj2", "CRJ2"),
+            ("e170", "E170"), ("e175", "E175"), ("e190", "E190"), ("e195", "E195"),
+            // Turboprops
+            ("q400", "DH8D"), ("atr72", "AT75"), ("atr42", "AT43"),
+        ];
+
+        foreach (var (token, icao) in patterns)
+        {
+            if (candidates.Contains(token, StringComparison.OrdinalIgnoreCase))
+                return icao;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Reads the human-readable aircraft title directly from the aircraft.cfg file
     /// that MSFS reports in the AircraftLoaded system state.
     ///
