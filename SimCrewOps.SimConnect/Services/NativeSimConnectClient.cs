@@ -454,8 +454,14 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
                 var rawAtcModel = atcModel.Value?.Trim();
                 if (!string.IsNullOrWhiteSpace(rawAtcModel))
                 {
-                    _atcModelSimVar = rawAtcModel;
-                    System.Diagnostics.Debug.WriteLine($"[SimConnect] ATC MODEL SimVar  : {_atcModelSimVar}");
+                    // MSFS 2024 returns an internal model key instead of a plain ICAO code, e.g.:
+                    //   "ATCCOM.AC_MODEL A319.0.text"  →  "A319"
+                    //   "ATCCOM.AC_MODEL B738.0.text"  →  "B738"
+                    // MSFS 2020 returns the clean ICAO code directly ("A319", "B738", …).
+                    // ParseAtcModelValue handles both formats.
+                    _atcModelSimVar = ParseAtcModelValue(rawAtcModel);
+                    System.Diagnostics.Debug.WriteLine($"[SimConnect] ATC MODEL raw     : {rawAtcModel}");
+                    System.Diagnostics.Debug.WriteLine($"[SimConnect] ATC MODEL parsed  : {_atcModelSimVar}");
                 }
                 break;
         }
@@ -632,6 +638,37 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         };
 
         EnqueueFrame();
+    }
+
+    /// <summary>
+    /// Extracts a clean ICAO type code from the raw <c>ATC MODEL</c> SimVar value.
+    ///
+    /// MSFS 2020 returns the code directly ("A319", "B738").
+    /// MSFS 2024 returns an internal model key: "ATCCOM.AC_MODEL A319.0.text".
+    /// Both formats are handled:
+    /// <list type="bullet">
+    ///   <item>If "AC_MODEL " is present, the token immediately after it is extracted
+    ///         and everything from its first dot onward is stripped.</item>
+    ///   <item>Otherwise the value is returned as-is (already a plain ICAO code).</item>
+    /// </list>
+    /// </summary>
+    internal static string ParseAtcModelValue(string raw)
+    {
+        // Look for the "AC_MODEL " marker (case-insensitive).
+        const string marker = "AC_MODEL ";
+        var idx = raw.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            var typeStart = idx + marker.Length;
+            // The type code ends at the first dot, e.g. "A319.0.text" → "A319".
+            var dotIdx = raw.IndexOf('.', typeStart);
+            return dotIdx > typeStart
+                ? raw[typeStart..dotIdx]
+                : raw[typeStart..];
+        }
+
+        // Already a clean ICAO code — return as-is.
+        return raw;
     }
 
     /// <summary>
