@@ -34,12 +34,12 @@ public sealed class SimConnectFacilityRunwayProvider : IRunwayDataProvider
             return null;
         }
 
-        if (snapshot.Runways.Any(runway => !runway.HasPrimaryThresholdData || !runway.HasSecondaryThresholdData))
-        {
-            return null;
-        }
-
+        // Filter out individual runways missing threshold data rather than rejecting the
+        // entire catalog. Some MSFS airports return complete data for the active runways
+        // but null for closed or construction runways — discarding the whole airport was
+        // causing all runway resolution to fail silently.
         var mappedRunways = snapshot.Runways
+            .Where(runway => runway.HasPrimaryThresholdData && runway.HasSecondaryThresholdData)
             .SelectMany(MapRunwayEnds)
             .OrderBy(runway => runway.RunwayIdentifier, StringComparer.OrdinalIgnoreCase)
             .ToArray();
