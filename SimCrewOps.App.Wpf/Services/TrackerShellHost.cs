@@ -33,9 +33,11 @@ public sealed class TrackerShellHost : IAsyncDisposable
     private ActiveFlightResponse? _activeFlight;
     private DateTimeOffset _activeFlightFetchedUtc = DateTimeOffset.MinValue;
     private IActiveFlightFetcher? _activeFlightFetcher;
+    private string? _lastDetectedAircraftTitle;
+    private DateTimeOffset? _lastKnownBlocksOffUtc;
 
-    // Refresh the active flight from the API every 5 minutes while the app is running.
-    private static readonly TimeSpan ActiveFlightRefreshInterval = TimeSpan.FromMinutes(5);
+    // Refresh the active flight from the API every minute while the app is running.
+    private static readonly TimeSpan ActiveFlightRefreshInterval = TimeSpan.FromMinutes(1);
 
     public TrackerShellHost(
         ITrackerAppSettingsStore settingsStore,
@@ -76,7 +78,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
         if (_serviceStack.BackgroundSyncCoordinator is not null)
         {
             // After any successful upload, immediately refresh the active flight so the
-            // tracker picks up the next assignment without waiting for the 5-minute poll.
+            // tracker picks up the next assignment without waiting for the poll interval.
             _serviceStack.BackgroundSyncCoordinator.OnSessionsUploadedAsync = RefreshActiveFlightAsync;
 
             _serviceStack.BackgroundSyncCoordinator.Start();
@@ -110,9 +112,23 @@ public sealed class TrackerShellHost : IAsyncDisposable
             await RefreshActiveFlightAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        DateTimeOffset? autoResetUtc = null;
-
         var simConnectPoll = await _simConnectHost.PollAsync(cancellationToken).ConfigureAwait(false);
+
+        // When SimConnect detects a new aircraft title (e.g. "fenix-a319"), push it into
+        // the session context so the live position beacon and session upload both record
+        // the actual aircraft being flown rather than the bid aircraft type.
+        var detectedTitle = simConnectPoll.Status.DetectedAircraftTitle;
+        if (!string.IsNullOrWhiteSpace(detectedTitle) && detectedTitle != _lastDetectedAircraftTitle)
+        {
+            _lastDetectedAircraftTitle = detectedTitle;
+            var current = _persistentRuntimeCoordinator.CurrentContext;
+            _persistentRuntimeCoordinator.UpdateContext(current with
+            {
+                AircraftType     = detectedTitle,
+                AircraftCategory = ResolveAircraftCategory(detectedTitle),
+            });
+        }
+
         if (simConnectPoll.HasTelemetry)
         {
             _lastRawTelemetryFrame = simConnectPoll.RawFrame;
@@ -120,33 +136,23 @@ public sealed class TrackerShellHost : IAsyncDisposable
                 .ProcessFrameAsync(simConnectPoll.TelemetryFrame!, cancellationToken)
                 .ConfigureAwait(false);
             _runtimeState = runtimeFrame.RuntimeFrame.State;
-
-            if (runtimeFrame.WasRepositionReset)
-            {
-                autoResetUtc = DateTimeOffset.UtcNow;
-                _runtimeState = null; // snapshot shows clean state after reset
-            }
-
             _recoverySnapshot = await _persistentRuntimeCoordinator
                 .GetRecoverySnapshotAsync(cancellationToken)
                 .ConfigureAwait(false);
+
+            // Trigger an immediate active-flight re-fetch the moment blocks-off fires.
+            // The first few position beacons of every leg go out right after pushback —
+            // without this they would carry the previous leg's context until the 1-minute
+            // timer ticks.
+            var newBlocksOff = _runtimeState.BlockTimes.BlocksOffUtc;
+            if (newBlocksOff is not null && newBlocksOff != _lastKnownBlocksOffUtc)
+            {
+                _lastKnownBlocksOffUtc = newBlocksOff;
+                _activeFlightFetchedUtc = DateTimeOffset.MinValue; // force refresh on next poll
+            }
         }
 
-        return BuildSnapshot(simConnectPoll.Status, autoResetUtc);
-    }
-
-    /// <summary>
-    /// Manually resets the current flight session to Preflight state, keeping the
-    /// flight context (departure, arrival, etc.) intact. Used by the Reset button.
-    /// </summary>
-    public async Task<TrackerShellSnapshot> ResetSessionAsync(CancellationToken cancellationToken = default)
-    {
-        await _persistentRuntimeCoordinator.ResetAsync(cancellationToken).ConfigureAwait(false);
-        _runtimeState = null;
-        _recoverySnapshot = await _persistentRuntimeCoordinator
-            .GetRecoverySnapshotAsync(cancellationToken)
-            .ConfigureAwait(false);
-        return BuildSnapshot();
+        return BuildSnapshot(simConnectPoll.Status);
     }
 
     /// <summary>
@@ -179,6 +185,8 @@ public sealed class TrackerShellHost : IAsyncDisposable
                     FlightNumber         = flight.FlightNumber,
                     AircraftType         = flight.AircraftType,
                     AircraftCategory     = ResolveAircraftCategory(flight.AircraftType),
+                    BidId                = string.IsNullOrWhiteSpace(flight.BidId) ? null : flight.BidId,
+                    ScheduledBlockHours  = flight.ScheduledBlockHours,
                 }
                 : new FlightSessionContext();
 
@@ -318,9 +326,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
         yield return Path.Combine(AppContext.BaseDirectory, "data", "ourairports-runways.csv");
     }
 
-    private TrackerShellSnapshot BuildSnapshot(
-        SimConnectHostStatus? simConnectStatus = null,
-        DateTimeOffset? autoResetOccurredUtc = null) =>
+    private TrackerShellSnapshot BuildSnapshot(SimConnectHostStatus? simConnectStatus = null) =>
         new()
         {
             Settings = Settings,
@@ -333,6 +339,5 @@ public sealed class TrackerShellHost : IAsyncDisposable
             LivePositionEnabled = !string.IsNullOrWhiteSpace(Settings.Api.PilotApiToken),
             LivePositionLastUploadUtc = _persistentRuntimeCoordinator.LastSuccessfulUploadUtc,
             ActiveFlight = _activeFlight,
-            AutoResetOccurredUtc = autoResetOccurredUtc,
         };
 }
