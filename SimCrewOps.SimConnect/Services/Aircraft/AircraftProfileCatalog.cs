@@ -93,23 +93,6 @@ public static class AircraftProfileCatalog
             StrobeLight  = Lvar("S_OH_EXT_LT_STROBE",    onThreshold: 1.0),
         },
 
-        // ── Fenix community livery packages (FMK_ prefix) ─────────────────────────
-        // Community livery packs for the Fenix A32X family sometimes ship as standalone
-        // Community folder packages (e.g. "FMK_32X") whose paths never contain "fnx" or
-        // "fenix". ParseAircraftTitle returns the Community folder name, so these need an
-        // explicit match. The Fenix LVARs are shared across all liveries of the same base.
-        new AircraftProfile
-        {
-            Name = "Fenix A32X",
-            TitlePattern = "fmk_",
-            IcaoType = "A320",
-            RequiresLvarBridge = true,
-            TaxiLight    = Lvar("S_OH_EXT_LT_NOSE",      onThreshold: 1.0),
-            LandingLight = Lvar("S_OH_EXT_LT_LANDING_L", onThreshold: 2.0),
-            BeaconLight  = Lvar("S_OH_EXT_LT_BEACON",    onThreshold: 1.0),
-            StrobeLight  = Lvar("S_OH_EXT_LT_STROBE",    onThreshold: 1.0),
-        },
-
         // ── Aerosoft CRJ 550 / 700 / 900 / 1000 ──────────────────────────────────
         // Strobe uses standard SimVar (no confirmed ASCRJ_EXTL_STROBE read LVAR).
         // Sources: MobiFlight msfs2020_simvars.cip, MobiFlight event ID presets
