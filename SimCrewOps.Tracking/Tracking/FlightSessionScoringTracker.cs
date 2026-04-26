@@ -74,6 +74,8 @@ public sealed class FlightSessionScoringTracker
     private double _landingTouchdownIndicatedAirspeedKnots;
     private double _landingTouchdownPitchAngleDegrees;
     private double _landingTouchdownGForce;
+    private double _landingTouchdownCenterlineDeviationFeet;
+    private double _landingTouchdownCrabAngleDegrees;
     private DateTimeOffset? _lastTouchdownAt;
     private DateTimeOffset? _airborneAfterTouchdownAt;
 
@@ -207,6 +209,8 @@ public sealed class FlightSessionScoringTracker
         _landingTouchdownIndicatedAirspeedKnots = input.Landing.TouchdownIndicatedAirspeedKnots;
         _landingTouchdownPitchAngleDegrees = input.Landing.TouchdownPitchAngleDegrees;
         _landingTouchdownGForce = input.Landing.TouchdownGForce;
+        _landingTouchdownCenterlineDeviationFeet = input.Landing.TouchdownCenterlineDeviationFeet;
+        _landingTouchdownCrabAngleDegrees = input.Landing.TouchdownCrabAngleDegrees;
         _lastTouchdownAt = wheelsOnUtc;
         _airborneAfterTouchdownAt = null;
 
@@ -335,6 +339,8 @@ public sealed class FlightSessionScoringTracker
                 TouchdownPitchAngleDegrees = _landingTouchdownPitchAngleDegrees,
                 TouchdownGForce = _landingTouchdownGForce,
                 BounceCount = _landingBounceCount,
+                TouchdownCenterlineDeviationFeet = _landingTouchdownCenterlineDeviationFeet,
+                TouchdownCrabAngleDegrees = _landingTouchdownCrabAngleDegrees,
             },
             TaxiIn = new TaxiInMetrics
             {
@@ -368,6 +374,16 @@ public sealed class FlightSessionScoringTracker
     {
         engine ??= new ScoringEngine();
         return engine.Calculate(BuildScoreInput(), weights);
+    }
+
+    /// <summary>
+    /// Called by RuntimeCoordinator immediately after touchdown runway resolution
+    /// completes, to record centerline deviation and crab angle for scoring.
+    /// </summary>
+    public void SetTouchdownRunwayMetrics(double centerlineDeviationFeet, double crabAngleDegrees)
+    {
+        _landingTouchdownCenterlineDeviationFeet = centerlineDeviationFeet;
+        _landingTouchdownCrabAngleDegrees = crabAngleDegrees;
     }
 
     private void UpdatePreflight(TelemetryFrame frame)

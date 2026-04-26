@@ -84,6 +84,8 @@ public sealed record LandingMetrics
     public double TouchdownPitchAngleDegrees { get; init; }
     public double TouchdownGForce { get; init; }
     public int BounceCount { get; init; }
+    public double TouchdownCenterlineDeviationFeet { get; init; }
+    public double TouchdownCrabAngleDegrees { get; init; }
 }
 
 public sealed record TaxiInMetrics : TaxiMetrics
