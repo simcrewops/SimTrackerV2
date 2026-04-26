@@ -122,12 +122,13 @@ public sealed class TrackerShellHost : IAsyncDisposable
         if (!string.IsNullOrWhiteSpace(detectedTitle) && detectedTitle != _lastDetectedAircraftTitle)
         {
             _lastDetectedAircraftTitle = detectedTitle;
-            var current = _persistentRuntimeCoordinator.CurrentContext;
-            _persistentRuntimeCoordinator.UpdateContext(current with
-            {
-                AircraftType     = detectedTitle,
-                AircraftCategory = ResolveAircraftCategory(detectedTitle),
-            });
+            // Use UpdateAircraftType rather than UpdateContext so the SimConnect-detected
+            // type always wins — UpdateContext is blocked after blocks-off, but the ATC
+            // MODEL SimVar fires asynchronously and typically arrives a few seconds into
+            // pushback, after blocks-off has already fired.
+            _persistentRuntimeCoordinator.UpdateAircraftType(
+                detectedTitle,
+                ResolveAircraftCategory(detectedTitle));
         }
 
         // Auto-detect the arrival airport from the GPS flight plan destination.
