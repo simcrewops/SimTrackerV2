@@ -2,13 +2,13 @@ using System.Runtime.InteropServices;
 
 namespace SimCrewOps.SimConnect.Models;
 
-internal sealed record SimConnectAirportFacilitySnapshot
+public sealed record SimConnectAirportFacilitySnapshot
 {
     public required string AirportIcao { get; init; }
     public required IReadOnlyList<SimConnectFacilityRunway> Runways { get; init; }
 }
 
-internal sealed record SimConnectFacilityRunway
+public sealed record SimConnectFacilityRunway
 {
     public required string AirportIcao { get; init; }
     public required double CenterLatitude { get; init; }
