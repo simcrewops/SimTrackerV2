@@ -70,6 +70,13 @@ public sealed class FlightSessionScoringTracker
     private double _approachBankAt500Agl;
     private double _approachPitchAt500Agl;
     private bool _approachGearDownAt500Agl;
+    // ILS approach quality
+    private bool _approachIlsDetected;
+    private double _approachMaxGlideslope;
+    private double _approachMaxLocalizer;
+    private double _approachGlideslopeSampleSum;
+    private double _approachLocalizerSampleSum;
+    private int _approachIlsSampleCount;
 
     private int _landingBounceCount;
     private double _landingTouchdownZoneExcessDistanceFeet;
@@ -82,6 +89,15 @@ public sealed class FlightSessionScoringTracker
     private double _landingTouchdownCrabAngleDegrees;
     private double _landingTouchdownLatitude;
     private double _landingTouchdownLongitude;
+    // Extended touchdown context
+    private bool _landingAutopilotAtTouchdown;
+    private bool _landingSpoilersAtTouchdown;
+    private bool _landingReverseThrustUsed;
+    private double _landingWindSpeedAtTouchdown;
+    private double _landingWindDirectionAtTouchdown;
+    private double _landingOatAtTouchdown;
+    private double _landingHeadwindComponent;
+    private double _landingCrosswindComponent;
     private DateTimeOffset? _lastTouchdownAt;
     private DateTimeOffset? _airborneAfterTouchdownAt;
 
@@ -102,6 +118,19 @@ public sealed class FlightSessionScoringTracker
     private bool _arrivalTaxiLightsOffBeforeParkingBrakeSet;
     private bool _arrivalAllEnginesOffBeforeParkingBrakeSet = true;
     private bool _arrivalAllEnginesOffByEndOfSession;
+
+    // ── Session-level metrics ──────────────────────────────────────────────
+    private DateTimeOffset? _sessionEnginesStartedAt;
+    private DateTimeOffset? _sessionWheelsOffAt;
+    private DateTimeOffset? _sessionWheelsOnAt;
+    private DateTimeOffset? _sessionEnginesOffAt;
+    private double _sessionFuelAtDepartureLbs;
+    private double _sessionFuelAtLandingLbs;
+    private bool _sessionFuelDepartureRecorded;
+    // GPS track — one point every GPS_TRACK_INTERVAL_SECONDS
+    private DateTimeOffset _lastGpsTrackPointAt;
+    private readonly List<GpsTrackPoint> _gpsTrack = [];
+    private const double GpsTrackIntervalSeconds = 30;
 
     // After a session restore (tracker restart / reconnect) the first few frames from
     // SimConnect may carry stale boolean SimVar values (all false) before MSFS has
@@ -282,6 +311,7 @@ public sealed class FlightSessionScoringTracker
         UpdateArrivalLifecycle(frame);
         UpdateArrival(frame);
         UpdateSafety(frame);
+        UpdateSession(frame);
 
         _previousFrame = frame;
     }
@@ -349,6 +379,13 @@ public sealed class FlightSessionScoringTracker
                 BankAngleAt500AglDegrees = _approachBankAt500Agl,
                 PitchAngleAt500AglDegrees = _approachPitchAt500Agl,
                 GearDownAt500Agl = !_capturedApproach500Agl || _approachGearDownAt500Agl,
+                IlsApproachDetected = _approachIlsDetected,
+                MaxGlideslopeDeviationDots = _approachMaxGlideslope,
+                AvgGlideslopeDeviationDots = _approachIlsSampleCount > 0
+                    ? _approachGlideslopeSampleSum / _approachIlsSampleCount : 0,
+                MaxLocalizerDeviationDots = _approachMaxLocalizer,
+                AvgLocalizerDeviationDots = _approachIlsSampleCount > 0
+                    ? _approachLocalizerSampleSum / _approachIlsSampleCount : 0,
             },
             Landing = new LandingMetrics
             {
@@ -363,6 +400,14 @@ public sealed class FlightSessionScoringTracker
                 TouchdownCrabAngleDegrees = _landingTouchdownCrabAngleDegrees,
                 TouchdownLatitude = _landingTouchdownLatitude,
                 TouchdownLongitude = _landingTouchdownLongitude,
+                AutopilotEngagedAtTouchdown = _landingAutopilotAtTouchdown,
+                SpoilersDeployedAtTouchdown = _landingSpoilersAtTouchdown,
+                ReverseThrustUsed = _landingReverseThrustUsed,
+                WindSpeedAtTouchdownKnots = _landingWindSpeedAtTouchdown,
+                WindDirectionAtTouchdownDegrees = _landingWindDirectionAtTouchdown,
+                HeadwindComponentKnots = _landingHeadwindComponent,
+                CrosswindComponentKnots = _landingCrosswindComponent,
+                OatCelsiusAtTouchdown = _landingOatAtTouchdown,
             },
             TaxiIn = new TaxiInMetrics
             {
@@ -389,6 +434,16 @@ public sealed class FlightSessionScoringTracker
                 GpwsEvents = _gpwsEvents,
                 EngineShutdownsInFlight = _engineShutdownsInFlight,
             },
+            Session = new SessionMetrics
+            {
+                EnginesStartedAtUtc = _sessionEnginesStartedAt,
+                WheelsOffAtUtc = _sessionWheelsOffAt,
+                WheelsOnAtUtc = _sessionWheelsOnAt,
+                EnginesOffAtUtc = _sessionEnginesOffAt,
+                FuelAtDepartureLbs = _sessionFuelAtDepartureLbs,
+                FuelAtLandingLbs = _sessionFuelAtLandingLbs,
+            },
+            GpsTrack = _gpsTrack,
         };
     }
 
@@ -406,6 +461,16 @@ public sealed class FlightSessionScoringTracker
     {
         _landingTouchdownCenterlineDeviationFeet = centerlineDeviationFeet;
         _landingTouchdownCrabAngleDegrees = crabAngleDegrees;
+    }
+
+    /// <summary>
+    /// Called by RuntimeCoordinator after runway resolution to set wind components
+    /// relative to the landing runway heading.
+    /// </summary>
+    public void SetTouchdownWindComponents(double headwindKnots, double crosswindKnots)
+    {
+        _landingHeadwindComponent = headwindKnots;
+        _landingCrosswindComponent = crosswindKnots;
     }
 
     private void UpdatePreflight(TelemetryFrame frame)
@@ -702,6 +767,20 @@ public sealed class FlightSessionScoringTracker
                 _approachGearDownAt500Agl = frame.GearDown;
             }
         }
+
+        // ILS quality — accumulate glideslope and localizer deviation while a valid
+        // signal is present, from 1000 ft AGL downwards.
+        if (frame.Nav1IlsSignalValid && frame.AltitudeAglFeet <= 1000)
+        {
+            _approachIlsDetected = true;
+            var gs = Math.Abs(frame.Nav1GlideslopeErrorDots);
+            var loc = Math.Abs(frame.Nav1LocalizerErrorDots);
+            _approachMaxGlideslope = Math.Max(_approachMaxGlideslope, gs);
+            _approachMaxLocalizer  = Math.Max(_approachMaxLocalizer,  loc);
+            _approachGlideslopeSampleSum += gs;
+            _approachLocalizerSampleSum  += loc;
+            _approachIlsSampleCount++;
+        }
     }
 
     private void UpdateLanding(TelemetryFrame frame)
@@ -723,11 +802,19 @@ public sealed class FlightSessionScoringTracker
             _landingTouchdownGForce = Math.Max(_landingTouchdownGForce, CalculateTouchdownGForce());
             if (_landingTouchdownIndicatedAirspeedKnots == 0)
             {
+                // First touchdown — record all point-in-time context.
                 _landingTouchdownBankAngleDegrees = Math.Abs(frame.BankAngleDegrees);
                 _landingTouchdownIndicatedAirspeedKnots = frame.IndicatedAirspeedKnots;
                 _landingTouchdownPitchAngleDegrees = frame.PitchAngleDegrees;
                 _landingTouchdownLatitude = frame.Latitude;
                 _landingTouchdownLongitude = frame.Longitude;
+                _landingAutopilotAtTouchdown = frame.AutopilotEngaged;
+                _landingSpoilersAtTouchdown = frame.SpoilersArmed || frame.SpoilerHandlePosition > 0.1;
+                _landingWindSpeedAtTouchdown = frame.WindSpeedKnots;
+                _landingWindDirectionAtTouchdown = frame.WindDirectionDegrees;
+                _landingOatAtTouchdown = frame.OutsideAirTempCelsius;
+                _sessionFuelAtLandingLbs = frame.FuelTotalLbs;
+                _sessionWheelsOnAt = frame.TimestampUtc;
             }
 
             if (_airborneAfterTouchdownAt is not null &&
@@ -753,6 +840,17 @@ public sealed class FlightSessionScoringTracker
         if (frame.TouchdownZoneExcessDistanceFeet is not null)
         {
             _landingTouchdownZoneExcessDistanceFeet = Math.Max(_landingTouchdownZoneExcessDistanceFeet, frame.TouchdownZoneExcessDistanceFeet.Value);
+        }
+
+        // Reverse thrust — detect sustained N1 above idle while on the ground after landing.
+        // A spoiler handle > 0.5 during rollout also confirms speedbrake deployment.
+        if (frame.OnGround && _lastTouchdownAt is not null && frame.GroundSpeedKnots > 10)
+        {
+            var maxN1 = Math.Max(
+                Math.Max(frame.Engine1N1Pct, frame.Engine2N1Pct),
+                Math.Max(frame.Engine3N1Pct, frame.Engine4N1Pct));
+            if (maxN1 > 20)
+                _landingReverseThrustUsed = true;
         }
     }
 
@@ -864,6 +962,45 @@ public sealed class FlightSessionScoringTracker
         }
 
         _arrivalAllEnginesOffByEndOfSession = !AnyEngineRunning(frame);
+    }
+
+    private void UpdateSession(TelemetryFrame frame)
+    {
+        // Engine start time — first frame where any engine is running.
+        if (_sessionEnginesStartedAt is null && AnyEngineRunning(frame))
+            _sessionEnginesStartedAt = frame.TimestampUtc;
+
+        // Wheels-off — first liftoff.
+        if (_sessionWheelsOffAt is null && _previousFrame is { OnGround: true } && !frame.OnGround)
+            _sessionWheelsOffAt = frame.TimestampUtc;
+
+        // Engines-off time — first frame where all engines stop (airborne or on ground).
+        if (_sessionEnginesOffAt is null && _sessionEnginesStartedAt is not null && !AnyEngineRunning(frame))
+            _sessionEnginesOffAt = frame.TimestampUtc;
+
+        // Departure fuel — snapshot when the aircraft first starts moving forward under own power.
+        if (!_sessionFuelDepartureRecorded && _forwardTaxiStarted)
+        {
+            _sessionFuelAtDepartureLbs = frame.FuelTotalLbs;
+            _sessionFuelDepartureRecorded = true;
+        }
+
+        // GPS track — one point every 30 seconds (or on phase changes).
+        var phaseChanged = _previousFrame is not null && _previousFrame.Phase != frame.Phase;
+        var intervalElapsed = (frame.TimestampUtc - _lastGpsTrackPointAt).TotalSeconds >= GpsTrackIntervalSeconds;
+        if (intervalElapsed || phaseChanged)
+        {
+            _gpsTrack.Add(new GpsTrackPoint
+            {
+                TimestampUtc = frame.TimestampUtc,
+                Latitude = frame.Latitude,
+                Longitude = frame.Longitude,
+                AltitudeFeet = frame.AltitudeFeet,
+                GroundSpeedKnots = frame.GroundSpeedKnots,
+                Phase = frame.Phase,
+            });
+            _lastGpsTrackPointAt = frame.TimestampUtc;
+        }
     }
 
     private void UpdateSafety(TelemetryFrame frame)

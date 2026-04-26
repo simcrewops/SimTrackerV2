@@ -52,6 +52,35 @@ public sealed record TelemetryFrame
     public bool Engine3Running { get; init; }
     public bool Engine4Running { get; init; }
 
+    /// <summary>N1 fan speed as a percentage for each engine (0–110 %).</summary>
+    public double Engine1N1Pct { get; init; }
+    public double Engine2N1Pct { get; init; }
+    public double Engine3N1Pct { get; init; }
+    public double Engine4N1Pct { get; init; }
+
+    /// <summary>True when the autopilot master switch is engaged.</summary>
+    public bool AutopilotEngaged { get; init; }
+
+    /// <summary>Total usable fuel weight in pounds.</summary>
+    public double FuelTotalLbs { get; init; }
+
+    /// <summary>Ambient wind speed in knots.</summary>
+    public double WindSpeedKnots { get; init; }
+
+    /// <summary>Ambient wind direction in degrees magnetic (direction wind is coming FROM).</summary>
+    public double WindDirectionDegrees { get; init; }
+
+    /// <summary>Outside air temperature in degrees Celsius.</summary>
+    public double OutsideAirTempCelsius { get; init; }
+
+    /// <summary>
+    /// Spoiler/speedbrake handle position (0.0 = fully retracted, 1.0 = fully deployed).
+    /// </summary>
+    public double SpoilerHandlePosition { get; init; }
+
+    /// <summary>True when the spoilers are armed for automatic deployment on touchdown.</summary>
+    public bool SpoilersArmed { get; init; }
+
     public double? TouchdownZoneExcessDistanceFeet { get; init; }
     // Reserved for future gate-arrival precision scoring.
     public double? GateArrivalDistanceFeet { get; init; }
@@ -69,4 +98,10 @@ public sealed record TelemetryFrame
     /// Reads 0.0 when no ILS is tuned.
     /// </summary>
     public double Nav1LocalizerErrorDots { get; init; }
+
+    /// <summary>
+    /// True when a NAV1 ILS signal is being received (signal strength above threshold).
+    /// Used to distinguish a genuine ILS approach from a nav radio tuned to a VOR.
+    /// </summary>
+    public bool Nav1IlsSignalValid { get; init; }
 }
