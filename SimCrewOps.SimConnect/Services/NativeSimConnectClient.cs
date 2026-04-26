@@ -193,10 +193,12 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private const uint FlightCriticalRequestId = 1;
     private const uint OperationalRequestId    = 2;
     private const uint AircraftStateRequestId  = 3;    // for RequestSystemState("AircraftLoaded")
-    private const uint AtcModelRequestId       = 4;    // for ATC MODEL string SimVar (once per aircraft load)
+    private const uint AtcModelRequestId          = 4;    // for ATC MODEL string SimVar (once per aircraft load)
+    private const uint GpsDestinationRequestId    = 5;    // for GPS DESTINATION AIRPORT IDENT (polled each frame)
     private const uint FlightCriticalDefinitionId = 11;
     private const uint OperationalDefinitionId    = 12;
-    private const uint AtcModelDefinitionId       = 13; // separate from numeric struct definitions
+    private const uint AtcModelDefinitionId       = 13;   // separate from numeric struct definitions
+    private const uint GpsDestinationDefinitionId = 14;   // separate string SimVar definition
     private const uint UserObjectId = 0;
 
     private readonly nint _nativeLibraryHandle;
@@ -209,6 +211,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private AircraftProfile _activeProfile = AircraftProfile.Default;
     private string? _detectedAircraftTitle;   // file-based detection, used until SimVar arrives
     private string? _atcModelSimVar;           // ATC MODEL SimVar — overrides file-based value when available
+    private string? _gpsDestinationIdent;      // GPS DESTINATION AIRPORT IDENT — destination from active GPS plan
     private readonly MobiFlightBridge _mobiFlightBridge = new();
     private bool _disposed;
 
@@ -381,6 +384,23 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             System.Diagnostics.Debug.WriteLine(
                 $"[SimConnect] AddToDataDefinition(ATC MODEL) failed: 0x{result:X8}");
         }
+
+        // Register the GPS DESTINATION AIRPORT IDENT string SimVar.
+        // Returns the ICAO of the active GPS flight plan destination (e.g. "KLAX").
+        // Used to auto-detect arrival airport for runway resolution on free flights.
+        result = _exports.AddToDataDefinition(
+            _simConnectHandle,
+            GpsDestinationDefinitionId,
+            "GPS DESTINATION AIRPORT IDENT",
+            null,
+            SimConnectDataType.String256,
+            0.0f,
+            0);
+        if (result < 0)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[SimConnect] AddToDataDefinition(GPS DESTINATION AIRPORT IDENT) failed: 0x{result:X8}");
+        }
     }
 
     private void RequestAircraftState()
@@ -464,6 +484,20 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
                     System.Diagnostics.Debug.WriteLine($"[SimConnect] ATC MODEL parsed  : {_atcModelSimVar}");
                 }
                 break;
+            case GpsDestinationRequestId:
+                var gpsDest = Marshal.PtrToStructure<AtcModelSnapshot>(payloadPointer);
+                var rawGpsDest = gpsDest.Value?.Trim();
+                // Accept any non-empty string that looks like an ICAO ident (3–4 chars, starts with letter).
+                if (!string.IsNullOrWhiteSpace(rawGpsDest) && rawGpsDest.Length is >= 3 and <= 5
+                    && char.IsLetter(rawGpsDest[0]))
+                {
+                    _gpsDestinationIdent = rawGpsDest.ToUpperInvariant();
+                }
+                else
+                {
+                    _gpsDestinationIdent = null;
+                }
+                break;
         }
     }
 
@@ -522,6 +556,21 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         {
             System.Diagnostics.Debug.WriteLine(
                 $"[SimConnect] RequestDataOnSimObject(ATC MODEL) failed: 0x{atcResult:X8}");
+        }
+
+        // Poll GPS destination once per second. The destination can change when the pilot
+        // modifies the flight plan mid-flight, so use Period.Second rather than Once.
+        var gpsResult = _exports.RequestDataOnSimObject(
+            _simConnectHandle,
+            GpsDestinationRequestId,
+            GpsDestinationDefinitionId,
+            UserObjectId,
+            SimConnectPeriod.Second,
+            0, 0, 0, 0);
+        if (gpsResult < 0)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[SimConnect] RequestDataOnSimObject(GPS DESTINATION) failed: 0x{gpsResult:X8}");
         }
 
         // Subscribe to profile LVARs via MobiFlight (deferred if bridge not yet Active).
@@ -635,6 +684,8 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             StallWarning = snapshot.StallWarning,
             GpwsAlert = snapshot.GpwsAlert,
             OverspeedWarning = snapshot.OverspeedWarning,
+            Nav1GlideslopeErrorDegrees = snapshot.Nav1GlideslopeErrorDegrees,
+            Nav1RadialErrorDegrees = snapshot.Nav1RadialErrorDegrees,
         };
 
         EnqueueFrame();
@@ -1035,7 +1086,10 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             LvarBridgeConnected = _mobiFlightBridge.IsActive,
             // ATC MODEL SimVar is the authoritative source (same one vPilot / Volanta use).
             // Fall back to the file-based detection until the SimVar response arrives.
-            AircraftTitle       = _atcModelSimVar ?? _detectedAircraftTitle,
+            AircraftTitle            = _atcModelSimVar ?? _detectedAircraftTitle,
+            Nav1GlideslopeErrorDegrees = _latestState.Nav1GlideslopeErrorDegrees,
+            Nav1RadialErrorDegrees   = _latestState.Nav1RadialErrorDegrees,
+            GpsDestinationIdent      = _gpsDestinationIdent,
         });
     }
 
@@ -1138,6 +1192,9 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly double StallWarning;
         public readonly double GpwsAlert;
         public readonly double OverspeedWarning;
+        // NAV1 approach instruments — appended last to preserve existing layout.
+        public readonly double Nav1GlideslopeErrorDegrees;   // NAV GLIDE SLOPE ERROR:1
+        public readonly double Nav1RadialErrorDegrees;        // NAV RADIAL ERROR:1
     }
 
     // SIMCONNECT_DATATYPE_STRING256 payload — 256 ANSI characters, null-terminated.
@@ -1241,6 +1298,8 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public double Engine3Running { get; init; }
         public double Engine4Running { get; init; }
         public double VelocityWorldYFps { get; init; }
+        public double Nav1GlideslopeErrorDegrees { get; init; }
+        public double Nav1RadialErrorDegrees { get; init; }
     }
 }
 

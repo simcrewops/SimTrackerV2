@@ -1274,14 +1274,27 @@ public sealed class MainWindowViewModel : ObservableObject
             new MetricTileModel("ENG 2", telemetry is null ? "--" : telemetry.Engine2Running ? "ON" : "OFF"),
             new MetricTileModel("TAXI LT", telemetry is null ? "--" : telemetry.TaxiLightsOn ? "ON" : "OFF"),
         },
+        FlightPhase.Approach => new[]
+        {
+            new MetricTileModel("IAS", telemetry is null ? "-- kt" : $"{telemetry.IndicatedAirspeedKnots:0} kt"),
+            new MetricTileModel("VS",  telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm", telemetry is { VerticalSpeedFpm: < -1000 }),
+            new MetricTileModel("ALT AGL", telemetry is null ? "-- ft" : $"{telemetry.AltitudeAglFeet:0} ft"),
+            // G/S: positive = above glidepath (fly down), negative = below (fly up).
+            // Alert when deviation exceeds 1 dot — well outside the stable approach envelope.
+            new MetricTileModel("G/S",
+                telemetry is null ? "-- dot" : $"{telemetry.Nav1GlideslopeErrorDots:+0.0;-0.0;0.0} dot",
+                telemetry is not null && Math.Abs(telemetry.Nav1GlideslopeErrorDots) > 1.0),
+            new MetricTileModel("DIST THR", "-- nm"),
+            // LOC: positive = right of centreline, negative = left.
+            new MetricTileModel("LOC",
+                telemetry is null ? "-- dot" : $"{telemetry.Nav1LocalizerErrorDots:+0.0;-0.0;0.0} dot",
+                telemetry is not null && Math.Abs(telemetry.Nav1LocalizerErrorDots) > 1.0),
+        },
         _ => new[]
         {
             new MetricTileModel("IAS", telemetry is null ? "-- kt" : $"{telemetry.IndicatedAirspeedKnots:0} kt"),
-            new MetricTileModel("VS", telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm", telemetry is { VerticalSpeedFpm: < -1000 }),
+            new MetricTileModel("VS",  telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm"),
             new MetricTileModel("ALT AGL", telemetry is null ? "-- ft" : $"{telemetry.AltitudeAglFeet:0} ft"),
-            new MetricTileModel("G/S", "-- dot"),
-            new MetricTileModel("DIST THR", "-- nm"),
-            new MetricTileModel("LOC", "-- dot"),
         },
     };
 

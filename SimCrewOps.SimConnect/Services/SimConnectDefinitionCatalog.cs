@@ -65,6 +65,12 @@ public static class SimConnectDefinitionCatalog
         Define("stall_warning", "STALL WARNING", "bool", SimConnectUpdateRate.Second),
         Define("gpws_warning", "GPWS SYSTEM ACTIVE", "bool", SimConnectUpdateRate.Second, requiredForScoring: false),
         Define("overspeed_warning", "OVERSPEED WARNING", "bool", SimConnectUpdateRate.Second, requiredForScoring: false),
+        // NAV1 glideslope and localizer deviation — used for approach G/S and LOC display.
+        // NAV GLIDE SLOPE ERROR:1 returns deviation in degrees (positive = above glidepath, negative = below).
+        // NAV RADIAL ERROR:1 returns deviation from selected course in degrees; for ILS this is LOC deviation.
+        // Both are optional: if the aircraft has no NAV tuned these will read 0.0.
+        Define("nav1_glideslope_error", "NAV GLIDE SLOPE ERROR:1", "degrees", SimConnectUpdateRate.SimFrame, requiredForScoring: false),
+        Define("nav1_radial_error", "NAV RADIAL ERROR:1", "degrees", SimConnectUpdateRate.SimFrame, requiredForScoring: false),
     ];
 
     public static IReadOnlyList<SimConnectVariableDefinition> AllVariables =>
