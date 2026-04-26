@@ -189,8 +189,9 @@ public sealed class MainWindowViewModel : ObservableObject
         ShowDiagnosticsCommand = new RelayCommand(() => SelectedPage = NavPage.Diagnostics);
         ShowSettingsCommand = new RelayCommand(() => SelectedPage = NavPage.Settings);
 
-        RetrySyncCommand = new RelayCommand(() => _ = RetrySyncAsync());
-        SaveSettingsCommand = new RelayCommand(() => _ = SaveSettingsAsync());
+        RetrySyncCommand        = new RelayCommand(() => _ = RetrySyncAsync());
+        RefreshFlightCommand    = new RelayCommand(() => _ = RefreshFlightAsync());
+        SaveSettingsCommand     = new RelayCommand(() => _ = SaveSettingsAsync());
 
         _pollingTimer = new DispatcherTimer
         {
@@ -234,6 +235,7 @@ public sealed class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _liveFlights, value);
     }
     public RelayCommand RetrySyncCommand { get; }
+    public RelayCommand RefreshFlightCommand { get; }
     public RelayCommand SaveSettingsCommand { get; }
     public RelayCommand OpenAccountSettingsCommand { get; } = new RelayCommand(() =>
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -938,6 +940,22 @@ public sealed class MainWindowViewModel : ObservableObject
         if (_latestSnapshot is not null)
         {
             ApplySnapshot(await _shellHost.PollAsync());
+        }
+    }
+
+    private async Task RefreshFlightAsync()
+    {
+        try
+        {
+            await _shellHost.ForceRefreshActiveFlightAsync();
+            if (_latestSnapshot is not null)
+            {
+                ApplySnapshot(await _shellHost.PollAsync());
+            }
+        }
+        catch
+        {
+            // Swallow — refresh is best-effort, UI will show whatever is available.
         }
     }
 

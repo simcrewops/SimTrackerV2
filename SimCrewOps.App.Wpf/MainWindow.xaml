@@ -146,6 +146,16 @@
                     </StackPanel>
                 </StackPanel>
 
+                <!-- Refresh flight button — re-fetches active flight assignment from the API -->
+                <Button Command="{Binding RefreshFlightCommand}"
+                        ToolTip="Refresh active flight from SimCrewOps (use after clicking Fly Next)"
+                        Style="{StaticResource IconButtonStyle}"
+                        Width="28" Height="28"
+                        Margin="10,0,0,0"
+                        VerticalAlignment="Center">
+                    <TextBlock Text="↻" FontSize="16" FontWeight="Bold" />
+                </Button>
+
                 <!-- Right: status pills -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Border Background="{StaticResource BgElevatedBrush}"

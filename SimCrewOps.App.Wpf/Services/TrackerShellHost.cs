@@ -181,6 +181,17 @@ public sealed class TrackerShellHost : IAsyncDisposable
     /// Fetches the pilot's next assigned flight from the API and pushes it into
     /// the runtime coordinator as the current session context.
     /// </summary>
+    /// <summary>
+    /// Immediately re-fetches the active flight from the API, bypassing the normal refresh interval.
+    /// Call this after the pilot clicks "Fly Next" on the web app so the tracker picks up the
+    /// new departure/arrival without waiting for the next scheduled refresh.
+    /// </summary>
+    public async Task ForceRefreshActiveFlightAsync(CancellationToken cancellationToken = default)
+    {
+        _activeFlightFetchedUtc = DateTimeOffset.MinValue;
+        await RefreshActiveFlightAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task RefreshActiveFlightAsync(CancellationToken cancellationToken = default)
     {
         if (_activeFlightFetcher is null)
