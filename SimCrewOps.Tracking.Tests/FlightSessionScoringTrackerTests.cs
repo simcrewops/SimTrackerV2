@@ -98,6 +98,62 @@ public sealed class FlightSessionScoringTrackerTests
     }
 
     [Fact]
+    public void TrackerDoesNotPenaliseAltitudeDeviationDuringInitialLevelOff()
+    {
+        // Aircraft enters cruise while still climbing gently (VS 150 fpm).
+        // The target should float for 30 s and lock at the settled altitude,
+        // so the level-off overshoot never registers as a deviation.
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 13, 1, 0, 0, TimeSpan.Zero);
+
+        // Entering cruise at 34850 ft, still climbing at 150 fpm.
+        tracker.Ingest(Frame(t0.AddSeconds(0),  FlightPhase.Cruise, onGround: false, altitude: 34850, agl: 32850, ias: 280, mach: 0.76, vs: 150, heading: 90));
+        tracker.Ingest(Frame(t0.AddSeconds(5),  FlightPhase.Cruise, onGround: false, altitude: 34900, agl: 32900, ias: 280, mach: 0.76, vs: 100, heading: 90));
+        tracker.Ingest(Frame(t0.AddSeconds(10), FlightPhase.Cruise, onGround: false, altitude: 34950, agl: 32950, ias: 280, mach: 0.76, vs: 50,  heading: 90));
+        // Aircraft fully levels at 35000 ft from t=15 s onwards.
+        tracker.Ingest(Frame(t0.AddSeconds(15), FlightPhase.Cruise, onGround: false, altitude: 35000, agl: 33000, ias: 280, mach: 0.76, vs: 20,  heading: 90));
+        tracker.Ingest(Frame(t0.AddSeconds(30), FlightPhase.Cruise, onGround: false, altitude: 35000, agl: 33000, ias: 280, mach: 0.76, vs: 10,  heading: 90));
+        // t=45 s — 30 s after VS first dropped below 100 fpm at t=15 → now settled.
+        tracker.Ingest(Frame(t0.AddSeconds(46), FlightPhase.Cruise, onGround: false, altitude: 35000, agl: 33000, ias: 280, mach: 0.76, vs: 0,   heading: 90));
+
+        var input = tracker.BuildScoreInput();
+
+        // Zero deviation: target tracked the aircraft during level-off and locked at 35000.
+        Assert.Equal(0, input.Cruise.MaxAltitudeDeviationFeet);
+    }
+
+    [Fact]
+    public void TrackerDoesNotPenaliseAltitudeDeviationDuringStepClimb()
+    {
+        // Settled at FL200, then a step climb to FL300.
+        // Neither the climb itself nor the level-off at FL300 should register as
+        // altitude deviations; the target should re-settle at FL300.
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 13, 1, 30, 0, TimeSpan.Zero);
+
+        // Settle at FL200 — feed 35 s of low-VS frames so the target locks.
+        tracker.Ingest(Frame(t0.AddSeconds(0),  FlightPhase.Cruise, onGround: false, altitude: 20000, agl: 18000, ias: 280, mach: 0.72, vs: 0,    heading: 90));
+        tracker.Ingest(Frame(t0.AddSeconds(35), FlightPhase.Cruise, onGround: false, altitude: 20000, agl: 18000, ias: 280, mach: 0.72, vs: 0,    heading: 90));
+
+        // Step climb begins — VS 2000 fpm.
+        tracker.Ingest(Frame(t0.AddSeconds(40), FlightPhase.Cruise, onGround: false, altitude: 20500, agl: 18500, ias: 280, mach: 0.72, vs: 2000, heading: 90));
+        tracker.Ingest(Frame(t0.AddSeconds(80), FlightPhase.Cruise, onGround: false, altitude: 25000, agl: 23000, ias: 280, mach: 0.74, vs: 2000, heading: 90));
+        // Near FL300, leveling off — VS drops to 200 fpm.
+        tracker.Ingest(Frame(t0.AddSeconds(120), FlightPhase.Cruise, onGround: false, altitude: 29800, agl: 27800, ias: 280, mach: 0.76, vs: 200, heading: 90));
+        // FL300 reached, VS near zero from t=125.
+        tracker.Ingest(Frame(t0.AddSeconds(125), FlightPhase.Cruise, onGround: false, altitude: 30000, agl: 28000, ias: 280, mach: 0.76, vs: 50,  heading: 90));
+        // Settled at FL300 after 30 s of low VS (t=155+).
+        tracker.Ingest(Frame(t0.AddSeconds(156), FlightPhase.Cruise, onGround: false, altitude: 30000, agl: 28000, ias: 280, mach: 0.76, vs: 0,   heading: 90));
+        // A few more frames to confirm zero deviation at FL300.
+        tracker.Ingest(Frame(t0.AddSeconds(160), FlightPhase.Cruise, onGround: false, altitude: 30000, agl: 28000, ias: 280, mach: 0.76, vs: 0,   heading: 90));
+
+        var input = tracker.BuildScoreInput();
+
+        // Target re-settled at FL300 — no deviation from the step climb.
+        Assert.Equal(0, input.Cruise.MaxAltitudeDeviationFeet);
+    }
+
+    [Fact]
     public void TrackerPassesArrival_WhenAllEnginesOffBeforeParkingBrake()
     {
         // SOPs: engines must be shut down BEFORE setting the parking brake.

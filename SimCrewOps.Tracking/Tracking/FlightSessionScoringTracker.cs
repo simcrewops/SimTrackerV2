@@ -48,10 +48,12 @@ public sealed class FlightSessionScoringTracker
     private double? _cruiseReferenceIasKnots;
     private double? _cruiseReferenceMach;
     private double? _cruiseTargetAltitudeFeet;
-    private double? _pendingCruiseTargetAltitudeFeet;
-    private DateTimeOffset? _pendingCruiseTargetStartedAt;
     private double? _newFlightLevelCaptureSeconds;
-    private DateTimeOffset? _lastSignificantCruiseVsAt;
+    // Settling: target floats until VS has been ≤ 100 fpm for 30 consecutive seconds.
+    private DateTimeOffset? _cruiseLowVsStartedAt;
+    // Capture timing: set when VS first drops below 300 fpm after a step climb.
+    private DateTimeOffset? _cruiseLevelingStartedAt;
+    private bool _cruiseHadSignificantClimb;
 
     private bool _descentSeen;
     private double _descentMaxIasBelowFl100;
@@ -177,10 +179,11 @@ public sealed class FlightSessionScoringTracker
         _lastCruiseSpeedInstabilityAt = null;
         _cruiseSpeedInstabilityStartedAt = null;
         _cruiseSpeedInstabilityActive = false;
-        _pendingCruiseTargetAltitudeFeet = null;
-        _pendingCruiseTargetStartedAt = null;
         _newFlightLevelCaptureSeconds = input.Cruise.NewFlightLevelCaptureSeconds;
-        _lastSignificantCruiseVsAt = null;
+        // Settling state is not persisted — live frames will re-establish it.
+        _cruiseLowVsStartedAt = null;
+        _cruiseLevelingStartedAt = null;
+        _cruiseHadSignificantClimb = false;
 
         if (HasReachedPhase(currentPhase, FlightPhase.Cruise) && lastTelemetryFrame is not null)
         {
@@ -533,52 +536,76 @@ public sealed class FlightSessionScoringTracker
         _cruiseMaxBank = Math.Max(_cruiseMaxBank, Math.Abs(frame.BankAngleDegrees));
         _cruiseMaxG = Math.Max(_cruiseMaxG, frame.GForce);
 
+        var absVs = Math.Abs(frame.VerticalSpeedFpm);
         var currentAltitude = Math.Round(frame.IndicatedAltitudeFeet / 100.0) * 100.0;
-        _cruiseTargetAltitudeFeet ??= currentAltitude;
 
-        // Track whenever VS exceeds 300 fpm — used below to suppress false altitude-
-        // deviation penalties during the level-off phase after a step climb/descent.
-        if (Math.Abs(frame.VerticalSpeedFpm) > 300)
-            _lastSignificantCruiseVsAt = frame.TimestampUtc;
-
-        // Only accumulate altitude deviation while the aircraft has been in genuinely
-        // level flight for at least 60 seconds.  If VS was significant within the last
-        // 60 s we're still in (or just completed) a step climb/descent — skip accumulation
-        // so intentional level changes don't register as altitude deviations.
-        if (Math.Abs(frame.VerticalSpeedFpm) < 300 &&
-            (_lastSignificantCruiseVsAt is null ||
-             frame.TimestampUtc - _lastSignificantCruiseVsAt.Value >= TimeSpan.FromSeconds(60)))
+        // ── Altitude target settling ──────────────────────────────────────────
+        // The cruise altitude target "floats" to follow the aircraft until VS has
+        // been ≤ 100 fpm for 30 consecutive seconds.  Re-arms on every climb or
+        // descent so both the initial level-off and all step climbs are excluded
+        // from altitude deviation tracking.
+        if (absVs > 100)
         {
-            var deviation = Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value);
-            _cruiseMaxAltitudeDeviation = Math.Max(_cruiseMaxAltitudeDeviation, deviation);
-        }
+            // Aircraft is climbing or descending — reset settling timer and keep
+            // the target following.
+            _cruiseLowVsStartedAt = null;
+            _cruiseTargetAltitudeFeet = currentAltitude;
 
-        if (Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value) > 300)
-        {
-            if (_pendingCruiseTargetAltitudeFeet is null ||
-                Math.Abs(frame.IndicatedAltitudeFeet - _pendingCruiseTargetAltitudeFeet.Value) > 100)
+            if (absVs > 300)
             {
-                _pendingCruiseTargetAltitudeFeet = currentAltitude;
-                _pendingCruiseTargetStartedAt = frame.TimestampUtc;
+                // Significant VS: a step climb/descent is in progress.
+                // Reset the leveling timer until VS drops back below 300 fpm.
+                _cruiseHadSignificantClimb = true;
+                _cruiseLevelingStartedAt = null;
             }
-            else if (_pendingCruiseTargetStartedAt is not null &&
-                     frame.TimestampUtc - _pendingCruiseTargetStartedAt >= TimeSpan.FromSeconds(60))
+            else if (_cruiseHadSignificantClimb)
             {
-                _newFlightLevelCaptureSeconds = (_newFlightLevelCaptureSeconds is null)
-                    ? (frame.TimestampUtc - _pendingCruiseTargetStartedAt.Value).TotalSeconds
-                    : Math.Max(_newFlightLevelCaptureSeconds.Value, (frame.TimestampUtc - _pendingCruiseTargetStartedAt.Value).TotalSeconds);
-
-                _cruiseTargetAltitudeFeet = _pendingCruiseTargetAltitudeFeet;
-                _pendingCruiseTargetAltitudeFeet = null;
-                _pendingCruiseTargetStartedAt = null;
+                // VS is 100–300 fpm: leveling off after a step climb.
+                // Start the capture timer on the first such frame.
+                _cruiseLevelingStartedAt ??= frame.TimestampUtc;
             }
         }
         else
         {
-            _pendingCruiseTargetAltitudeFeet = null;
-            _pendingCruiseTargetStartedAt = null;
+            // VS ≤ 100 fpm — accumulate consecutive seconds of level flight.
+            _cruiseLowVsStartedAt ??= frame.TimestampUtc;
+
+            // If we came from a step climb, start the capture timer now.
+            if (_cruiseHadSignificantClimb)
+                _cruiseLevelingStartedAt ??= frame.TimestampUtc;
+
+            var settledSeconds = (frame.TimestampUtc - _cruiseLowVsStartedAt.Value).TotalSeconds;
+
+            if (settledSeconds < 30)
+            {
+                // Still within the settling window — keep target following.
+                _cruiseTargetAltitudeFeet = currentAltitude;
+            }
+            else
+            {
+                // Fully settled: lock the target and start tracking deviations.
+                _cruiseTargetAltitudeFeet ??= currentAltitude;
+
+                // Record step-climb capture time (time from leveling-off start to
+                // fully settled), so the scoring engine can penalise slow captures.
+                if (_cruiseHadSignificantClimb && _cruiseLevelingStartedAt is not null)
+                {
+                    var captureSeconds = (frame.TimestampUtc - _cruiseLevelingStartedAt.Value).TotalSeconds;
+                    _newFlightLevelCaptureSeconds = _newFlightLevelCaptureSeconds is null
+                        ? captureSeconds
+                        : Math.Max(_newFlightLevelCaptureSeconds.Value, captureSeconds);
+                }
+
+                _cruiseHadSignificantClimb = false;
+                _cruiseLevelingStartedAt = null;
+
+                // Accumulate deviation from the locked target.
+                var deviation = Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value);
+                _cruiseMaxAltitudeDeviation = Math.Max(_cruiseMaxAltitudeDeviation, deviation);
+            }
         }
 
+        // ── Speed instability ─────────────────────────────────────────────────
         if (_previousFrame is null || _previousFrame.Phase != FlightPhase.Cruise)
         {
             _cruiseReferenceIasKnots = frame.IndicatedAirspeedKnots;
