@@ -89,7 +89,7 @@ public sealed record SimSessionUploadRequest
     /// Sourced from the ATC MODEL SimVar; null for free flights where no type
     /// was detected before blocks-on.
     /// </summary>
-    [JsonPropertyName("aircraftType")]
+    [JsonPropertyName("aircraft")]
     public string? AircraftType { get; init; }
 
     /// <summary>
