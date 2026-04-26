@@ -52,10 +52,11 @@ public sealed class TrackerShellHost : IAsyncDisposable
         _serviceFactory = new TrackerServiceFactory();
         _settings = serviceStack.Settings;
         _activeFlightFetcher = serviceStack.ActiveFlightFetcher;
+        var managedSimConnectClient = new ManagedSimConnectClient();
         _simConnectHost = new MsfsSimConnectHost(
             new SimulatorProcessDetector(new SystemProcessListProvider()),
-            new AdaptiveSimConnectClient());
-        var runwayDataProvider = CreateRunwayDataProvider(settingsFilePath);
+            new AdaptiveSimConnectClient(new NativeSimConnectClient(), managedSimConnectClient));
+        var runwayDataProvider = CreateRunwayDataProvider(settingsFilePath, managedSimConnectClient);
         var runtimeCoordinator = new RuntimeCoordinator(
             new FlightSessionContext(),
             new RunwayResolver(runwayDataProvider),
@@ -256,11 +257,13 @@ public sealed class TrackerShellHost : IAsyncDisposable
         return "narrowbody";
     }
 
-    private static IRunwayDataProvider CreateRunwayDataProvider(string settingsFilePath)
+    private static IRunwayDataProvider CreateRunwayDataProvider(
+        string settingsFilePath,
+        ManagedSimConnectClient managedSimConnectClient)
     {
         var providers = new List<IRunwayDataProvider>
         {
-            new SimConnectFacilityRunwayProvider(),
+            SimConnectFacilityRunwayProvider.ForLiveConnection(managedSimConnectClient),
         };
 
         foreach (var csvPath in GetFallbackCsvPaths(settingsFilePath))

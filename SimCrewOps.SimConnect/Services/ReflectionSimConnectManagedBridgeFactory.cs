@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -37,6 +38,19 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
 
     private LatestSimConnectState _latestState = new();
     private bool _disposed;
+
+    // Facility request state — initialized lazily on first RequestFacilityDataAsync call.
+    private const uint FacilityDefinitionId = 401;
+    private const uint FacilityRequestId    = 402;
+    private const double FeetPerMeter = 3.28084;
+    private MethodInfo? _addToFacilityDefinitionMethod;
+    private MethodInfo? _requestFacilityDataMethod;
+    private bool _facilityDefinitionRegistered;
+    private readonly object _facilityInitLock = new();
+    private volatile TaskCompletionSource<SimConnectAirportFacilitySnapshot?>? _facilityCompletion;
+    private readonly Dictionary<uint, FacilityPendingRunwayNode> _facilityRunways = [];
+    private readonly ConcurrentQueue<Exception> _facilityErrors = new();
+    private string? _facilityActiveIcao;
 
     public ReflectionSimConnectManagedBridge(Assembly managedAssembly, SimConnectHostOptions options)
     {
@@ -124,6 +138,312 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
 
         _messageSignal.Dispose();
         return Task.CompletedTask;
+    }
+
+    public async Task<SimConnectAirportFacilitySnapshot?> RequestFacilityDataAsync(
+        string airportIcao,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        var normalizedIcao = airportIcao.Trim().ToUpperInvariant();
+
+        lock (_facilityInitLock)
+        {
+            if (!_facilityDefinitionRegistered)
+            {
+                try
+                {
+                    InitializeFacilityDefinitions();
+                    _facilityDefinitionRegistered = true;
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceWarning("SimConnect facility definition init failed: {0}", ex.Message);
+                    return null;
+                }
+            }
+        }
+
+        var completion = new TaskCompletionSource<SimConnectAirportFacilitySnapshot?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _facilityRunways.Clear();
+        _facilityErrors.Clear();
+        _facilityActiveIcao = normalizedIcao;
+        _facilityCompletion = completion;
+
+        try
+        {
+            InvokeFacilityRequest(normalizedIcao);
+        }
+        catch (Exception ex)
+        {
+            _facilityCompletion = null;
+            Trace.TraceWarning("SimConnect facility request failed for {0}: {1}", normalizedIcao, ex.Message);
+            return null;
+        }
+
+        var started = DateTimeOffset.UtcNow;
+        var timeout = TimeSpan.FromSeconds(3);
+
+        while (!completion.Task.IsCompleted)
+        {
+            if (_facilityErrors.TryDequeue(out var err))
+            {
+                _facilityCompletion = null;
+                Trace.TraceWarning("SimConnect facility error for {0}: {1}", normalizedIcao, err.Message);
+                return null;
+            }
+
+            var elapsed = DateTimeOffset.UtcNow - started;
+            var remaining = timeout - elapsed;
+            if (remaining <= TimeSpan.Zero || cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+
+            var handles = new WaitHandle[] { cancellationToken.WaitHandle, _messageSignal };
+            var signaled = WaitHandle.WaitAny(handles, (int)Math.Clamp(remaining.TotalMilliseconds, 1, int.MaxValue));
+            if (signaled == 0)
+            {
+                break;
+            }
+
+            DrainMessages();
+        }
+
+        _facilityCompletion = null;
+
+        return completion.Task.IsCompletedSuccessfully
+            ? await completion.Task.ConfigureAwait(false)
+            : null;
+    }
+
+    private void InitializeFacilityDefinitions()
+    {
+        var simConnectType = _simConnect.GetType();
+
+        _addToFacilityDefinitionMethod = simConnectType.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .SingleOrDefault(m => m.Name == "AddToFacilityDefinition" && m.GetParameters().Length == 2)
+            ?? throw new InvalidOperationException("Managed SimConnect AddToFacilityDefinition method was not found.");
+
+        _requestFacilityDataMethod = simConnectType.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .Where(m => m.Name == "RequestFacilityData")
+            .OrderByDescending(m => m.GetParameters().Length)
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException("Managed SimConnect RequestFacilityData method was not found.");
+
+        foreach (var field in FacilityDefinitionFields.All)
+        {
+            _addToFacilityDefinitionMethod.Invoke(_simConnect, [FacilityDefinitionId, field]);
+        }
+
+        WireEvent(simConnectType, "OnRecvFacilityData", HandleFacilityData);
+        WireEvent(simConnectType, "OnRecvFacilityDataEnd", HandleFacilityDataEnd);
+    }
+
+    private void InvokeFacilityRequest(string airportIcao)
+    {
+        var parameters = _requestFacilityDataMethod!.GetParameters();
+        object?[] args = parameters.Length switch
+        {
+            4 => [FacilityDefinitionId, FacilityRequestId, airportIcao, string.Empty],
+            3 => [FacilityDefinitionId, FacilityRequestId, airportIcao],
+            _ => throw new InvalidOperationException("RequestFacilityData overload not supported."),
+        };
+        _requestFacilityDataMethod.Invoke(_simConnect, args);
+    }
+
+    private void HandleFacilityData(object? data)
+    {
+        try
+        {
+            if (data is null || FacilityGetUint(data, "UserRequestId", "dwRequestID", "RequestId") != FacilityRequestId)
+            {
+                return;
+            }
+
+            var uniqueId       = FacilityGetUint(data, "UniqueRequestId", "dwUniqueRequestId");
+            var parentUniqueId = FacilityGetUint(data, "ParentUniqueRequestId", "dwParentUniqueRequestId");
+            var facilityType   = FacilityGetEnumName(FacilityGetValue(data, "Type", "dwType"));
+            var payload        = FacilityGetPayload(data);
+
+            if (facilityType.Contains("RUNWAY", StringComparison.OrdinalIgnoreCase))
+            {
+                var runway = FacilityParseRunwayPayload(payload);
+                if (runway is not null)
+                {
+                    _facilityRunways[uniqueId] = new FacilityPendingRunwayNode { Runway = runway };
+                }
+                return;
+            }
+
+            if (facilityType.Contains("PAVEMENT", StringComparison.OrdinalIgnoreCase)
+                && _facilityRunways.TryGetValue(parentUniqueId, out var node))
+            {
+                node.AddThresholdPayload(FacilityParsePavementPayload(payload));
+            }
+        }
+        catch (Exception ex)
+        {
+            _facilityErrors.Enqueue(ex);
+        }
+    }
+
+    private void HandleFacilityDataEnd(object? data)
+    {
+        try
+        {
+            if (data is null || FacilityGetUint(data, "UserRequestId", "dwRequestID", "RequestId") != FacilityRequestId)
+            {
+                return;
+            }
+
+            _facilityCompletion?.TrySetResult(BuildFacilitySnapshot());
+        }
+        catch (Exception ex)
+        {
+            _facilityErrors.Enqueue(ex);
+        }
+    }
+
+    private SimConnectAirportFacilitySnapshot? BuildFacilitySnapshot()
+    {
+        if (string.IsNullOrWhiteSpace(_facilityActiveIcao))
+        {
+            return null;
+        }
+
+        var runways = _facilityRunways.Values
+            .Select(node => node.ToFacilityRunway(_facilityActiveIcao!, FeetPerMeter))
+            .Where(r => r is not null)
+            .Cast<SimConnectFacilityRunway>()
+            .OrderBy(r => r.PrimaryNumber)
+            .ThenBy(r => r.PrimaryDesignator)
+            .ToArray();
+
+        return runways.Length == 0
+            ? null
+            : new SimConnectAirportFacilitySnapshot
+            {
+                AirportIcao = _facilityActiveIcao!,
+                Runways = runways,
+            };
+    }
+
+    // ── Facility reflection helpers ───────────────────────────────────────────────
+
+    private static FacilityRunwayPayload? FacilityParseRunwayPayload(object payload)
+    {
+        if (payload is IntPtr ptr && ptr != IntPtr.Zero)
+            return Marshal.PtrToStructure<FacilityRunwayPayload>(ptr);
+
+        if (payload is byte[] bytes)
+        {
+            var handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+            try { return Marshal.PtrToStructure<FacilityRunwayPayload>(handle.AddrOfPinnedObject()); }
+            finally { handle.Free(); }
+        }
+
+        return new FacilityRunwayPayload
+        {
+            Latitude          = FacilityGetDouble(payload, "Latitude",           "LATITUDE"),
+            Longitude         = FacilityGetDouble(payload, "Longitude",          "LONGITUDE"),
+            Heading           = (float)FacilityGetDouble(payload, "Heading",     "HEADING"),
+            Length            = (float)FacilityGetDouble(payload, "Length",      "LENGTH"),
+            PrimaryNumber     = FacilityGetInt32(payload,   "PrimaryNumber",     "PRIMARY_NUMBER"),
+            PrimaryDesignator = FacilityGetInt32(payload,   "PrimaryDesignator", "PRIMARY_DESIGNATOR"),
+            SecondaryNumber   = FacilityGetInt32(payload,   "SecondaryNumber",   "SECONDARY_NUMBER"),
+            SecondaryDesignator = FacilityGetInt32(payload, "SecondaryDesignator", "SECONDARY_DESIGNATOR"),
+        };
+    }
+
+    private static FacilityPavementPayload? FacilityParsePavementPayload(object payload)
+    {
+        if (payload is IntPtr ptr && ptr != IntPtr.Zero)
+            return Marshal.PtrToStructure<FacilityPavementPayload>(ptr);
+
+        if (payload is byte[] bytes)
+        {
+            var handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+            try { return Marshal.PtrToStructure<FacilityPavementPayload>(handle.AddrOfPinnedObject()); }
+            finally { handle.Free(); }
+        }
+
+        var enable = FacilityGetNullableInt32(payload, "Enable", "ENABLE");
+        var length = FacilityGetNullableDouble(payload, "Length", "LENGTH");
+        if (length is null && enable is null) return null;
+
+        return new FacilityPavementPayload { Length = (float)(length ?? 0), Enable = enable ?? 0 };
+    }
+
+    private static object FacilityGetPayload(object data)
+    {
+        var value = FacilityGetValue(data, "Data", "dwData");
+        if (value is null) return data;
+        return value switch
+        {
+            Array arr when arr.Length > 0 => arr.GetValue(0) ?? data,
+            _ => value,
+        };
+    }
+
+    private static uint FacilityGetUint(object instance, params string[] names)
+    {
+        var value = FacilityGetValue(instance, names);
+        return value is null ? 0u : Convert.ToUInt32(value);
+    }
+
+    private static string FacilityGetEnumName(object? value) => value?.ToString() ?? string.Empty;
+
+    private static double FacilityGetDouble(object instance, params string[] names) =>
+        FacilityGetNullableDouble(instance, names) ?? 0;
+
+    private static double? FacilityGetNullableDouble(object instance, params string[] names)
+    {
+        var value = FacilityGetValue(instance, names);
+        return value switch
+        {
+            null => null,
+            float f => f,
+            double d => d,
+            _ => Convert.ToDouble(value),
+        };
+    }
+
+    private static int FacilityGetInt32(object instance, params string[] names) =>
+        FacilityGetNullableInt32(instance, names) ?? 0;
+
+    private static int? FacilityGetNullableInt32(object instance, params string[] names)
+    {
+        var value = FacilityGetValue(instance, names);
+        return value is null ? null : Convert.ToInt32(value);
+    }
+
+    private static object? FacilityGetValue(object instance, params string[] memberNames)
+    {
+        var type = instance.GetType();
+        foreach (var name in memberNames)
+        {
+            var prop = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            if (prop is not null) return prop.GetValue(instance);
+            var field = type.GetField(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            if (field is not null) return field.GetValue(instance);
+        }
+
+        var normalized = memberNames.Select(n => n.Replace("_", string.Empty, StringComparison.Ordinal).Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (normalized.Contains(prop.Name.Replace("_", string.Empty, StringComparison.Ordinal).Trim()))
+                return prop.GetValue(instance);
+        }
+        foreach (var fld in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (normalized.Contains(fld.Name.Replace("_", string.Empty, StringComparison.Ordinal).Trim()))
+                return fld.GetValue(instance);
+        }
+        return null;
     }
 
     private void RegisterDefinitions(Assembly managedAssembly, Type simConnectType)
