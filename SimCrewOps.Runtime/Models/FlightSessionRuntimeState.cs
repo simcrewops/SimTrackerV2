@@ -38,5 +38,11 @@ public sealed record FlightSessionRuntimeState
     public required ScoreResult ScoreResult { get; init; }
 
     public bool HasResolvedLandingRunway => LandingRunwayResolution is not null;
-    public bool IsComplete => BlockTimes.BlocksOnUtc is not null;
+
+    /// <summary>
+    /// True when the session is complete — either the traditional BlocksOn event fired,
+    /// or the post-flight session-end condition was met (engines off + beacon off + parking brake set).
+    /// </summary>
+    public bool IsComplete => BlockTimes.BlocksOnUtc is not null
+                           || BlockTimes.SessionEndTriggeredUtc is not null;
 }

@@ -31,6 +31,8 @@ public sealed class RuntimeCoordinator
     private DateTimeOffset? _lastLivePositionSentUtc;
     private double? _lastLivePositionLatitude;
     private double? _lastLivePositionLongitude;
+    // Session-end trigger: set once when engines off + beacon off + parking brake set after landing.
+    private bool _sessionEndTriggered;
 
     /// <summary>
     /// UTC timestamp of the most recent live-position upload that the server accepted (HTTP 200).
@@ -119,6 +121,7 @@ public sealed class RuntimeCoordinator
         _lastLivePositionSentUtc = null;
         _lastLivePositionLatitude = state.LastTelemetryFrame?.Latitude;
         _lastLivePositionLongitude = state.LastTelemetryFrame?.Longitude;
+        _sessionEndTriggered = state.BlockTimes.SessionEndTriggeredUtc is not null;
 
         _phaseEngine.Restore(
             state.CurrentPhase,
@@ -212,6 +215,7 @@ public sealed class RuntimeCoordinator
         _scoringTracker.Ingest(labelledFrame);
         _lastTelemetryFrame = labelledFrame;
         CaptureBlockEvent(enrichedPhaseFrame.BlockEvent);
+        CheckSessionEndCondition(labelledFrame);
         TryDispatchLivePosition(labelledFrame, cancellationToken);
 
         var scoreInput = _scoringTracker.BuildScoreInput();
@@ -260,6 +264,13 @@ public sealed class RuntimeCoordinator
                 _scoringTracker.SetTouchdownRunwayMetrics(
                     _landingRunwayResolution.Projection.CrossTrackDistanceFeet,
                     _landingRunwayResolution.HeadingDifferenceDegrees);
+
+                // Compute headwind and crosswind components from wind data at touchdown.
+                var (headwind, crosswind) = ComputeWindComponents(
+                    phaseFrame.Raw.WindSpeedKnots,
+                    phaseFrame.Raw.WindDirectionDegrees,
+                    _landingRunwayResolution.Runway.TrueHeadingDegrees);
+                _scoringTracker.SetTouchdownWindComponents(headwind, crosswind);
             }
         }
 
@@ -286,6 +297,39 @@ public sealed class RuntimeCoordinator
             BlockEventType.BlocksOn => _blockTimes with { BlocksOnUtc = blockEvent.TimestampUtc },
             _ => _blockTimes,
         };
+    }
+
+    /// <summary>
+    /// Detects the post-flight session-end condition: all engines off, beacon light off,
+    /// and parking brake set — after a completed landing (WheelsOn recorded).
+    /// Sets <see cref="SessionEndTriggeredUtc"/> once and never again for the session.
+    /// </summary>
+    private void CheckSessionEndCondition(TelemetryFrame frame)
+    {
+        if (_sessionEndTriggered)
+        {
+            return;
+        }
+
+        // Guard: only fire after a landing has been recorded.
+        if (_blockTimes.WheelsOnUtc is null)
+        {
+            return;
+        }
+
+        // Condition: all engines off AND beacon off AND parking brake set.
+        var allEnginesOff = !frame.Engine1Running
+                         && !frame.Engine2Running
+                         && !frame.Engine3Running
+                         && !frame.Engine4Running;
+
+        if (!allEnginesOff || frame.BeaconLightOn || !frame.ParkingBrakeSet)
+        {
+            return;
+        }
+
+        _sessionEndTriggered = true;
+        _blockTimes = _blockTimes with { SessionEndTriggeredUtc = frame.TimestampUtc };
     }
 
     private void TryDispatchLivePosition(TelemetryFrame telemetryFrame, CancellationToken cancellationToken)
@@ -359,6 +403,31 @@ public sealed class RuntimeCoordinator
         {
             Trace.TraceWarning("Tracker live position dispatch failed: {0}", ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Decomposes wind speed and direction into headwind and crosswind components
+    /// relative to the runway.
+    /// </summary>
+    /// <param name="windSpeedKnots">Ambient wind speed in knots.</param>
+    /// <param name="windDirectionDegrees">Direction the wind is coming FROM, in degrees true.</param>
+    /// <param name="runwayTrueHeadingDegrees">Runway heading in degrees true (direction of landing roll).</param>
+    /// <returns>
+    /// HeadwindKnots: positive = headwind component (opposing motion).
+    /// CrosswindKnots: positive = wind from the right side of the runway.
+    /// </returns>
+    private static (double HeadwindKnots, double CrosswindKnots) ComputeWindComponents(
+        double windSpeedKnots,
+        double windDirectionDegrees,
+        double runwayTrueHeadingDegrees)
+    {
+        // Relative angle: wind-from minus runway heading.
+        // At 0° relative angle the wind is on the nose (pure headwind).
+        // At 90° relative angle the wind is from the right (pure crosswind right).
+        var relAngleRad = (windDirectionDegrees - runwayTrueHeadingDegrees) * Math.PI / 180.0;
+        var headwind  = windSpeedKnots * Math.Cos(relAngleRad);  // positive = headwind
+        var crosswind = windSpeedKnots * Math.Sin(relAngleRad);  // positive = from the right
+        return (headwind, crosswind);
     }
 
     private bool IsActiveFlight() =>

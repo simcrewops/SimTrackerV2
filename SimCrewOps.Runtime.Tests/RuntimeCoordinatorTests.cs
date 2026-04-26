@@ -181,6 +181,335 @@ public sealed class RuntimeCoordinatorTests
         Assert.Equal("KARR", arrival.State.Context.ArrivalAirportIcao);
     }
 
+    // ── Session-end condition ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task RuntimeCoordinator_SessionEndCondition_DoesNotFireBeforeWheelsOn()
+    {
+        // Even when all post-shutdown conditions are met (engines off, beacon off,
+        // parking brake set), the session-end trigger must NOT fire unless WheelsOn
+        // has already been recorded — otherwise a pre-departure shutdown fires it.
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext(),
+            new RunwayResolver(new StubRunwayDataProvider(null)));
+
+        var t0 = new DateTimeOffset(2026, 4, 15, 10, 0, 0, TimeSpan.Zero);
+
+        // Restore with no WheelsOnUtc (pre-flight / aborted pushback scenario).
+        coordinator.Restore(new FlightSessionRuntimeState
+        {
+            Context = new FlightSessionContext(),
+            CurrentPhase = FlightPhase.Preflight,
+            BlockTimes = new FlightSessionBlockTimes(),   // no WheelsOnUtc
+            ScoreInput = new FlightScoreInput(),
+            ScoreResult = new ScoreResult(100, 92, "A", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
+        });
+
+        // All post-shutdown conditions met — but no WheelsOn recorded yet.
+        var result = await coordinator.ProcessFrameAsync(
+            Frame(t0, onGround: true, parkingBrake: true, engine1Running: false));
+
+        Assert.Null(result.State.BlockTimes.SessionEndTriggeredUtc);
+        Assert.False(result.State.IsComplete);
+    }
+
+    [Fact]
+    public async Task RuntimeCoordinator_SessionEndCondition_FiresAfterLandingWhenAllConditionsMet()
+    {
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext(),
+            new RunwayResolver(new StubRunwayDataProvider(null)));
+
+        var t0 = new DateTimeOffset(2026, 4, 15, 11, 0, 0, TimeSpan.Zero);
+
+        // Restore into post-landing TaxiIn state (WheelsOnUtc already recorded).
+        coordinator.Restore(new FlightSessionRuntimeState
+        {
+            Context = new FlightSessionContext(),
+            CurrentPhase = FlightPhase.TaxiIn,
+            BlockTimes = new FlightSessionBlockTimes
+            {
+                BlocksOffUtc = t0.AddHours(-2),
+                WheelsOffUtc = t0.AddHours(-1.9),
+                WheelsOnUtc  = t0.AddMinutes(-5),
+            },
+            LastTelemetryFrame = Frame(t0.AddSeconds(-1), onGround: true, heading: 90),
+            ScoreInput = new FlightScoreInput(),
+            ScoreResult = new ScoreResult(100, 92, "A", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
+        });
+
+        // Send the post-shutdown frame: engines off + beacon off (default) + parking brake set.
+        var sessionEndTime = t0.AddSeconds(30);
+        var result = await coordinator.ProcessFrameAsync(
+            Frame(sessionEndTime, onGround: true, parkingBrake: true, engine1Running: false));
+
+        Assert.Equal(sessionEndTime, result.State.BlockTimes.SessionEndTriggeredUtc);
+        Assert.True(result.State.IsComplete);
+    }
+
+    [Fact]
+    public async Task RuntimeCoordinator_SessionEndCondition_DoesNotFireWhenAnEngineIsStillRunning()
+    {
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext(),
+            new RunwayResolver(new StubRunwayDataProvider(null)));
+
+        var t0 = new DateTimeOffset(2026, 4, 15, 12, 0, 0, TimeSpan.Zero);
+
+        coordinator.Restore(new FlightSessionRuntimeState
+        {
+            Context = new FlightSessionContext(),
+            CurrentPhase = FlightPhase.TaxiIn,
+            BlockTimes = new FlightSessionBlockTimes
+            {
+                BlocksOffUtc = t0.AddHours(-2),
+                WheelsOffUtc = t0.AddHours(-1.9),
+                WheelsOnUtc  = t0.AddMinutes(-5),
+            },
+            LastTelemetryFrame = Frame(t0.AddSeconds(-1), onGround: true, heading: 90),
+            ScoreInput = new FlightScoreInput(),
+            ScoreResult = new ScoreResult(100, 92, "A", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
+        });
+
+        // Engine 1 is still running — condition not met.
+        var result = await coordinator.ProcessFrameAsync(
+            Frame(t0, onGround: true, parkingBrake: true, engine1Running: true));
+
+        Assert.Null(result.State.BlockTimes.SessionEndTriggeredUtc);
+        Assert.False(result.State.IsComplete);
+    }
+
+    [Fact]
+    public async Task RuntimeCoordinator_SessionEndCondition_DoesNotFireWhenBeaconIsOn()
+    {
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext(),
+            new RunwayResolver(new StubRunwayDataProvider(null)));
+
+        var t0 = new DateTimeOffset(2026, 4, 15, 13, 0, 0, TimeSpan.Zero);
+
+        coordinator.Restore(new FlightSessionRuntimeState
+        {
+            Context = new FlightSessionContext(),
+            CurrentPhase = FlightPhase.TaxiIn,
+            BlockTimes = new FlightSessionBlockTimes
+            {
+                BlocksOffUtc = t0.AddHours(-2),
+                WheelsOffUtc = t0.AddHours(-1.9),
+                WheelsOnUtc  = t0.AddMinutes(-5),
+            },
+            LastTelemetryFrame = Frame(t0.AddSeconds(-1), onGround: true, heading: 90),
+            ScoreInput = new FlightScoreInput(),
+            ScoreResult = new ScoreResult(100, 92, "A", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
+        });
+
+        // All engines off, parking brake set — but beacon is still on.
+        var result = await coordinator.ProcessFrameAsync(
+            Frame(t0, onGround: true, parkingBrake: true, engine1Running: false) with
+            {
+                BeaconLightOn = true,
+            });
+
+        Assert.Null(result.State.BlockTimes.SessionEndTriggeredUtc);
+        Assert.False(result.State.IsComplete);
+    }
+
+    [Fact]
+    public async Task RuntimeCoordinator_SessionEndCondition_DoesNotFireWhenParkingBrakeNotSet()
+    {
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext(),
+            new RunwayResolver(new StubRunwayDataProvider(null)));
+
+        var t0 = new DateTimeOffset(2026, 4, 15, 14, 0, 0, TimeSpan.Zero);
+
+        coordinator.Restore(new FlightSessionRuntimeState
+        {
+            Context = new FlightSessionContext(),
+            CurrentPhase = FlightPhase.TaxiIn,
+            BlockTimes = new FlightSessionBlockTimes
+            {
+                BlocksOffUtc = t0.AddHours(-2),
+                WheelsOffUtc = t0.AddHours(-1.9),
+                WheelsOnUtc  = t0.AddMinutes(-5),
+            },
+            LastTelemetryFrame = Frame(t0.AddSeconds(-1), onGround: true, heading: 90),
+            ScoreInput = new FlightScoreInput(),
+            ScoreResult = new ScoreResult(100, 92, "A", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
+        });
+
+        // All engines off, beacon off (default) — but parking brake NOT set.
+        var result = await coordinator.ProcessFrameAsync(
+            Frame(t0, onGround: true, parkingBrake: false, engine1Running: false));
+
+        Assert.Null(result.State.BlockTimes.SessionEndTriggeredUtc);
+        Assert.False(result.State.IsComplete);
+    }
+
+    [Fact]
+    public async Task RuntimeCoordinator_SessionEndCondition_FiresOnlyOnce()
+    {
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext(),
+            new RunwayResolver(new StubRunwayDataProvider(null)));
+
+        var t0 = new DateTimeOffset(2026, 4, 15, 15, 0, 0, TimeSpan.Zero);
+
+        coordinator.Restore(new FlightSessionRuntimeState
+        {
+            Context = new FlightSessionContext(),
+            CurrentPhase = FlightPhase.TaxiIn,
+            BlockTimes = new FlightSessionBlockTimes
+            {
+                BlocksOffUtc = t0.AddHours(-2),
+                WheelsOffUtc = t0.AddHours(-1.9),
+                WheelsOnUtc  = t0.AddMinutes(-5),
+            },
+            LastTelemetryFrame = Frame(t0.AddSeconds(-1), onGround: true, heading: 90),
+            ScoreInput = new FlightScoreInput(),
+            ScoreResult = new ScoreResult(100, 92, "A", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
+        });
+
+        var firstSessionEndTime = t0.AddSeconds(10);
+
+        // First qualifying frame — fires the trigger.
+        await coordinator.ProcessFrameAsync(
+            Frame(firstSessionEndTime, onGround: true, parkingBrake: true, engine1Running: false));
+
+        // Second qualifying frame — trigger already fired; timestamp must remain from the first.
+        var secondResult = await coordinator.ProcessFrameAsync(
+            Frame(t0.AddSeconds(20), onGround: true, parkingBrake: true, engine1Running: false));
+
+        Assert.Equal(firstSessionEndTime, secondResult.State.BlockTimes.SessionEndTriggeredUtc);
+    }
+
+    // ── Wind component decomposition ────────────────────────────────────────
+
+    [Fact]
+    public async Task RuntimeCoordinator_TouchdownWindComponents_HeadwindCorrect()
+    {
+        // Runway 18 (heading 180°).  Wind from 180° is a pure headwind.
+        // headwind = speed × cos(0°) = speed;  crosswind = speed × sin(0°) = 0
+        var runway = new RunwayEnd
+        {
+            AirportIcao = "KWIND",
+            RunwayIdentifier = "18",
+            TrueHeadingDegrees = 180,
+            LengthFeet = 10_000,
+            ThresholdLatitude = 40.0,
+            ThresholdLongitude = -75.0,
+            DataSource = RunwayDataSource.OurAirportsFallback,
+        };
+
+        var provider = new StubRunwayDataProvider(new AirportRunwayCatalog
+        {
+            AirportIcao = "KWIND",
+            DataSource = RunwayDataSource.OurAirportsFallback,
+            Runways = new[] { runway },
+        });
+
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext { DepartureAirportIcao = "KDEP", ArrivalAirportIcao = "KWIND" },
+            new RunwayResolver(provider));
+
+        var t0 = new DateTimeOffset(2026, 4, 15, 16, 0, 0, TimeSpan.Zero);
+
+        await coordinator.ProcessFrameAsync(Frame(t0, onGround: true, parkingBrake: true));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(1), onGround: true, parkingBrake: false, groundSpeed: 2));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(30), onGround: true, indicatedAirspeed: 55));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(31), onGround: false, altitudeAgl: 20, indicatedAirspeed: 90, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(40), onGround: false, altitudeAgl: 500, verticalSpeed: 1500, indicatedAirspeed: 160, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(100), onGround: false, altitudeAgl: 35_000, verticalSpeed: 0, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(131), onGround: false, altitudeAgl: 35_000, verticalSpeed: 0, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(200), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(231), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(290), onGround: false, altitudeAgl: 2_800, gearDown: true, verticalSpeed: -500, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(300), onGround: false, altitudeAgl: 100, heading: 180));
+
+        var touchdownPoint = Offset(runway.ThresholdLatitude, runway.ThresholdLongitude, runway.TrueHeadingDegrees, 3_250);
+        var wheelsOn = await coordinator.ProcessFrameAsync(
+            Frame(t0.AddSeconds(310),
+                  onGround: true,
+                  latitude: touchdownPoint.Latitude,
+                  longitude: touchdownPoint.Longitude,
+                  altitudeAgl: 0,
+                  groundSpeed: 100,
+                  heading: 180) with
+            {
+                WindSpeedKnots = 20.0,
+                WindDirectionDegrees = 180.0,   // wind FROM south → direct headwind on RWY 18
+            });
+
+        var landing = wheelsOn.State.ScoreInput.Landing;
+
+        // headwind ≈ 20 kts, crosswind ≈ 0 kts (within floating-point tolerance)
+        Assert.InRange(landing.HeadwindComponentKnots,  19.9,  20.1);
+        Assert.InRange(landing.CrosswindComponentKnots, -0.01,  0.01);
+    }
+
+    [Fact]
+    public async Task RuntimeCoordinator_TouchdownWindComponents_CrosswindCorrect()
+    {
+        // Runway 18 (heading 180°).  Wind from 270° (west) = pure right crosswind.
+        // relAngle = 270 − 180 = 90°
+        // headwind  = speed × cos(90°) = 0;  crosswind = speed × sin(90°) = speed
+        var runway = new RunwayEnd
+        {
+            AirportIcao = "KXWIND",
+            RunwayIdentifier = "18",
+            TrueHeadingDegrees = 180,
+            LengthFeet = 10_000,
+            ThresholdLatitude = 40.0,
+            ThresholdLongitude = -75.0,
+            DataSource = RunwayDataSource.OurAirportsFallback,
+        };
+
+        var provider = new StubRunwayDataProvider(new AirportRunwayCatalog
+        {
+            AirportIcao = "KXWIND",
+            DataSource = RunwayDataSource.OurAirportsFallback,
+            Runways = new[] { runway },
+        });
+
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext { DepartureAirportIcao = "KDEP", ArrivalAirportIcao = "KXWIND" },
+            new RunwayResolver(provider));
+
+        var t0 = new DateTimeOffset(2026, 4, 15, 17, 0, 0, TimeSpan.Zero);
+
+        await coordinator.ProcessFrameAsync(Frame(t0, onGround: true, parkingBrake: true));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(1), onGround: true, parkingBrake: false, groundSpeed: 2));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(30), onGround: true, indicatedAirspeed: 55));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(31), onGround: false, altitudeAgl: 20, indicatedAirspeed: 90, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(40), onGround: false, altitudeAgl: 500, verticalSpeed: 1500, indicatedAirspeed: 160, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(100), onGround: false, altitudeAgl: 35_000, verticalSpeed: 0, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(131), onGround: false, altitudeAgl: 35_000, verticalSpeed: 0, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(200), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(231), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(290), onGround: false, altitudeAgl: 2_800, gearDown: true, verticalSpeed: -500, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(300), onGround: false, altitudeAgl: 100, heading: 180));
+
+        var touchdownPoint = Offset(runway.ThresholdLatitude, runway.ThresholdLongitude, runway.TrueHeadingDegrees, 3_250);
+        var wheelsOn = await coordinator.ProcessFrameAsync(
+            Frame(t0.AddSeconds(310),
+                  onGround: true,
+                  latitude: touchdownPoint.Latitude,
+                  longitude: touchdownPoint.Longitude,
+                  altitudeAgl: 0,
+                  groundSpeed: 100,
+                  heading: 180) with
+            {
+                WindSpeedKnots = 15.0,
+                WindDirectionDegrees = 270.0,   // wind FROM west → pure right crosswind on RWY 18
+            });
+
+        var landing = wheelsOn.State.ScoreInput.Landing;
+
+        // headwind ≈ 0 kts, crosswind ≈ +15 kts (from right — positive)
+        Assert.InRange(landing.HeadwindComponentKnots,  -0.01,  0.01);
+        Assert.InRange(landing.CrosswindComponentKnots,  14.9,  15.1);
+    }
+
     [Fact]
     public async Task RuntimeCoordinator_SendsLivePositionFromFirstFrame()
     {

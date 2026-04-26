@@ -206,6 +206,15 @@ public sealed class TrackerShellHost : IAsyncDisposable
             _activeFlight = flight;
             _activeFlightFetchedUtc = DateTimeOffset.UtcNow;
 
+            // Store the per-session tracker API key returned by the bootstrap endpoint.
+            // Both live-position and session-upload calls will then prefer this key over
+            // the static pilot token for /api/tracker/position and /api/sim-sessions.
+            if (!string.IsNullOrWhiteSpace(flight?.TrackerApiKey) &&
+                _serviceStack.TrackerApiKeyStore is not null)
+            {
+                _serviceStack.TrackerApiKeyStore.ApiKey = flight.TrackerApiKey;
+            }
+
             // Build a FlightSessionContext from the fetched data and push it into
             // the runtime coordinator so departure/arrival ICAO are used for runway
             // resolution and live position uploads.
@@ -269,8 +278,11 @@ public sealed class TrackerShellHost : IAsyncDisposable
         _settings = settings;
 
         // Hot-reload the live position uploader so a newly-entered API token takes effect
-        // immediately without requiring an app restart.
-        var newUploader = _serviceFactory.CreateLivePositionUploader(settings.Api);
+        // immediately without requiring an app restart.  Pass the shared key store so any
+        // tracker API key received from the bootstrap endpoint is still honoured.
+        var newUploader = _serviceFactory.CreateLivePositionUploader(
+            settings.Api,
+            _serviceStack.TrackerApiKeyStore);
         _persistentRuntimeCoordinator.UpdateLivePositionUploader(newUploader);
 
         // Hot-reload the active flight fetcher and immediately pull the latest flight info.

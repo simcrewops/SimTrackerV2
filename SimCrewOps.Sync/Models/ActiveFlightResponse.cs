@@ -26,4 +26,14 @@ public sealed record ActiveFlightResponse
     public string? FlightNumber { get; init; }
     public string? AircraftType { get; init; }
     public string? Airline { get; init; }
+
+    /// <summary>
+    /// Per-session tracker API key issued by the bootstrap endpoint.
+    /// When present, the tracker uses this as the Bearer token on
+    /// <c>POST /api/tracker/position</c> and <c>POST /api/sim-sessions</c>
+    /// instead of the static pilot token — allowing the webapp to validate
+    /// a scoped, short-lived credential for tracker-specific routes.
+    /// Null for older webapp deployments that do not yet return this field.
+    /// </summary>
+    public string? TrackerApiKey { get; init; }
 }

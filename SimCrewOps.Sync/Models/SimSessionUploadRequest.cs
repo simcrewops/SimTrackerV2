@@ -136,6 +136,105 @@ public sealed record SimSessionUploadRequest
     /// </summary>
     [JsonPropertyName("globalFindings")]
     public IReadOnlyList<ScoreFindingUpload>? GlobalFindings { get; init; }
+
+    // ── Session timing ──────────────────────────────────────────────────────────
+
+    [JsonPropertyName("enginesStartedAt")]
+    public DateTimeOffset? EnginesStartedAt { get; init; }
+
+    [JsonPropertyName("wheelsOffAt")]
+    public DateTimeOffset? WheelsOffAt { get; init; }
+
+    [JsonPropertyName("wheelsOnAt")]
+    public DateTimeOffset? WheelsOnAt { get; init; }
+
+    [JsonPropertyName("enginesOffAt")]
+    public DateTimeOffset? EnginesOffAt { get; init; }
+
+    // ── Fuel ───────────────────────────────────────────────────────────────────
+
+    [JsonPropertyName("fuelAtDepartureLbs")]
+    public double FuelAtDepartureLbs { get; init; }
+
+    [JsonPropertyName("fuelAtLandingLbs")]
+    public double FuelAtLandingLbs { get; init; }
+
+    [JsonPropertyName("fuelBurnedLbs")]
+    public double FuelBurnedLbs { get; init; }
+
+    // ── ILS approach quality ────────────────────────────────────────────────────
+
+    [JsonPropertyName("ilsApproachDetected")]
+    public bool IlsApproachDetected { get; init; }
+
+    [JsonPropertyName("ilsMaxGlideslopeDevDots")]
+    public double IlsMaxGlideslopeDevDots { get; init; }
+
+    [JsonPropertyName("ilsAvgGlideslopeDevDots")]
+    public double IlsAvgGlideslopeDevDots { get; init; }
+
+    [JsonPropertyName("ilsMaxLocalizerDevDots")]
+    public double IlsMaxLocalizerDevDots { get; init; }
+
+    [JsonPropertyName("ilsAvgLocalizerDevDots")]
+    public double IlsAvgLocalizerDevDots { get; init; }
+
+    // ── Extended touchdown context ──────────────────────────────────────────────
+
+    [JsonPropertyName("touchdownAutopilotEngaged")]
+    public bool TouchdownAutopilotEngaged { get; init; }
+
+    [JsonPropertyName("touchdownSpoilersDeployed")]
+    public bool TouchdownSpoilersDeployed { get; init; }
+
+    [JsonPropertyName("touchdownReverseThrustUsed")]
+    public bool TouchdownReverseThrustUsed { get; init; }
+
+    [JsonPropertyName("touchdownWindSpeedKts")]
+    public double TouchdownWindSpeedKts { get; init; }
+
+    [JsonPropertyName("touchdownWindDirectionDeg")]
+    public double TouchdownWindDirectionDeg { get; init; }
+
+    [JsonPropertyName("touchdownHeadwindKts")]
+    public double TouchdownHeadwindKts { get; init; }
+
+    [JsonPropertyName("touchdownCrosswindKts")]
+    public double TouchdownCrosswindKts { get; init; }
+
+    [JsonPropertyName("touchdownOatCelsius")]
+    public double TouchdownOatCelsius { get; init; }
+
+    // ── GPS flight-path track ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Downsampled GPS track (one point every ~30 s plus phase-change points).
+    /// Null when no track was recorded (e.g. session started after cruise).
+    /// </summary>
+    [JsonPropertyName("gpsTrack")]
+    public IReadOnlyList<GpsTrackPointUpload>? GpsTrack { get; init; }
+}
+
+/// <summary>A single point in the GPS flight-path track.</summary>
+public sealed record GpsTrackPointUpload
+{
+    [JsonPropertyName("t")]
+    public DateTimeOffset TimestampUtc { get; init; }
+
+    [JsonPropertyName("lat")]
+    public double Latitude { get; init; }
+
+    [JsonPropertyName("lon")]
+    public double Longitude { get; init; }
+
+    [JsonPropertyName("alt")]
+    public double AltitudeFeet { get; init; }
+
+    [JsonPropertyName("gs")]
+    public double GroundSpeedKnots { get; init; }
+
+    [JsonPropertyName("phase")]
+    public string Phase { get; init; } = "";
 }
 
 public sealed record PhaseScoreFindingUpload

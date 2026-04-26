@@ -55,6 +55,44 @@ public sealed class SimSessionUploadRequestMapper
             TouchdownCrabAngleDegrees      = state.ScoreInput.Landing.TouchdownCrabAngleDegrees == 0        ? null : state.ScoreInput.Landing.TouchdownCrabAngleDegrees,
             PhaseFindings  = MapPhaseFindings(state.ScoreResult),
             GlobalFindings = MapFindings(state.ScoreResult.GlobalFindings),
+            // Session timing
+            EnginesStartedAt = state.ScoreInput.Session.EnginesStartedAtUtc,
+            WheelsOffAt      = state.ScoreInput.Session.WheelsOffAtUtc,
+            WheelsOnAt       = state.ScoreInput.Session.WheelsOnAtUtc,
+            EnginesOffAt     = state.ScoreInput.Session.EnginesOffAtUtc,
+            // Fuel
+            FuelAtDepartureLbs = state.ScoreInput.Session.FuelAtDepartureLbs,
+            FuelAtLandingLbs   = state.ScoreInput.Session.FuelAtLandingLbs,
+            FuelBurnedLbs      = state.ScoreInput.Session.FuelBurnedLbs,
+            // ILS approach quality
+            IlsApproachDetected     = state.ScoreInput.Approach.IlsApproachDetected,
+            IlsMaxGlideslopeDevDots = state.ScoreInput.Approach.MaxGlideslopeDeviationDots,
+            IlsAvgGlideslopeDevDots = state.ScoreInput.Approach.AvgGlideslopeDeviationDots,
+            IlsMaxLocalizerDevDots  = state.ScoreInput.Approach.MaxLocalizerDeviationDots,
+            IlsAvgLocalizerDevDots  = state.ScoreInput.Approach.AvgLocalizerDeviationDots,
+            // Extended touchdown context
+            TouchdownAutopilotEngaged = state.ScoreInput.Landing.AutopilotEngagedAtTouchdown,
+            TouchdownSpoilersDeployed = state.ScoreInput.Landing.SpoilersDeployedAtTouchdown,
+            TouchdownReverseThrustUsed = state.ScoreInput.Landing.ReverseThrustUsed,
+            TouchdownWindSpeedKts     = state.ScoreInput.Landing.WindSpeedAtTouchdownKnots,
+            TouchdownWindDirectionDeg = state.ScoreInput.Landing.WindDirectionAtTouchdownDegrees,
+            TouchdownHeadwindKts      = state.ScoreInput.Landing.HeadwindComponentKnots,
+            TouchdownCrosswindKts     = state.ScoreInput.Landing.CrosswindComponentKnots,
+            TouchdownOatCelsius       = state.ScoreInput.Landing.OatCelsiusAtTouchdown,
+            // GPS track (null when empty — avoids sending an empty array)
+            GpsTrack = state.ScoreInput.GpsTrack.Count > 0
+                ? state.ScoreInput.GpsTrack
+                    .Select(p => new GpsTrackPointUpload
+                    {
+                        TimestampUtc     = p.TimestampUtc,
+                        Latitude         = p.Latitude,
+                        Longitude        = p.Longitude,
+                        AltitudeFeet     = p.AltitudeFeet,
+                        GroundSpeedKnots = p.GroundSpeedKnots,
+                        Phase            = p.Phase.ToString(),
+                    })
+                    .ToList()
+                : null,
         };
     }
 

@@ -277,6 +277,43 @@ public sealed class FlightSessionScoringTracker
             !_arrivalSeen || input.Arrival.AllEnginesOffBeforeParkingBrakeSet;
         _arrivalAllEnginesOffByEndOfSession = input.Arrival.AllEnginesOffByEndOfSession;
 
+        // ── Session-level fields ──────────────────────────────────────────────
+        _sessionEnginesStartedAt = input.Session.EnginesStartedAtUtc;
+        _sessionWheelsOffAt      = input.Session.WheelsOffAtUtc;
+        _sessionWheelsOnAt       = input.Session.WheelsOnAtUtc;
+        _sessionEnginesOffAt     = input.Session.EnginesOffAtUtc;
+        _sessionFuelAtDepartureLbs = input.Session.FuelAtDepartureLbs;
+        _sessionFuelAtLandingLbs   = input.Session.FuelAtLandingLbs;
+        // Departure fuel is recorded once the aircraft starts moving — flag as recorded
+        // if we have a non-zero value (so the first live frame doesn't overwrite it).
+        _sessionFuelDepartureRecorded = input.Session.FuelAtDepartureLbs > 0;
+        // Restore GPS track from saved state; set interval timer to avoid duplicates.
+        _gpsTrack.Clear();
+        _gpsTrack.AddRange(input.GpsTrack);
+        _lastGpsTrackPointAt = _gpsTrack.Count > 0
+            ? _gpsTrack[^1].TimestampUtc
+            : DateTimeOffset.MinValue;
+
+        // ── ILS approach quality ──────────────────────────────────────────────
+        _approachIlsDetected   = input.Approach.IlsApproachDetected;
+        _approachMaxGlideslope = input.Approach.MaxGlideslopeDeviationDots;
+        _approachMaxLocalizer  = input.Approach.MaxLocalizerDeviationDots;
+        // Sample sum / count can't be reconstructed from averages alone; reset to zero
+        // so new live samples after reconnect accumulate correctly.
+        _approachGlideslopeSampleSum = 0;
+        _approachLocalizerSampleSum  = 0;
+        _approachIlsSampleCount      = 0;
+
+        // ── Extended touchdown context ────────────────────────────────────────
+        _landingAutopilotAtTouchdown    = input.Landing.AutopilotEngagedAtTouchdown;
+        _landingSpoilersAtTouchdown     = input.Landing.SpoilersDeployedAtTouchdown;
+        _landingReverseThrustUsed       = input.Landing.ReverseThrustUsed;
+        _landingWindSpeedAtTouchdown    = input.Landing.WindSpeedAtTouchdownKnots;
+        _landingWindDirectionAtTouchdown = input.Landing.WindDirectionAtTouchdownDegrees;
+        _landingOatAtTouchdown          = input.Landing.OatCelsiusAtTouchdown;
+        _landingHeadwindComponent       = input.Landing.HeadwindComponentKnots;
+        _landingCrosswindComponent      = input.Landing.CrosswindComponentKnots;
+
         // Give the first several frames after reconnect a chance to reflect the real
         // aircraft state before any "lights off" watchdog checks can trigger.
         _postRestoreGraceFrames = 10;
