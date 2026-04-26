@@ -71,6 +71,21 @@ public sealed record SimSessionUploadRequest
     public string? Arrival { get; init; }
 
     /// <summary>
+    /// ICAO aircraft type code as detected by MSFS (e.g. "A319", "B738").
+    /// Sourced from the ATC MODEL SimVar; null for free flights where no type
+    /// was detected before blocks-on.
+    /// </summary>
+    [JsonPropertyName("aircraftType")]
+    public string? AircraftType { get; init; }
+
+    /// <summary>
+    /// World map size category: "regional", "narrowbody", or "widebody".
+    /// Derived from <see cref="AircraftType"/> at upload time.
+    /// </summary>
+    [JsonPropertyName("aircraftCategory")]
+    public string? AircraftCategory { get; init; }
+
+    /// <summary>
     /// Per-phase score breakdown with all deduction findings.
     /// Allows the website to show pilots exactly why they lost points on each phase.
     /// Only findings with actual deductions (PointsDeducted > 0) or automatic fails are included.
