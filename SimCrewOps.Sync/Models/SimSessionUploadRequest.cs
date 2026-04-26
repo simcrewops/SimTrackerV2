@@ -84,6 +84,30 @@ public sealed record SimSessionUploadRequest
     [JsonPropertyName("touchdownLon")]
     public double TouchdownLon { get; init; }
 
+    [JsonPropertyName("runwayIdentifier")]
+    public string? RunwayIdentifier { get; init; }
+
+    [JsonPropertyName("runwayHeadingTrue")]
+    public double? RunwayHeadingTrue { get; init; }
+
+    [JsonPropertyName("runwayLengthFt")]
+    public double? RunwayLengthFt { get; init; }
+
+    [JsonPropertyName("runwayWidthFt")]
+    public double? RunwayWidthFt { get; init; }
+
+    [JsonPropertyName("runwayThresholdLat")]
+    public double? RunwayThresholdLat { get; init; }
+
+    [JsonPropertyName("runwayThresholdLon")]
+    public double? RunwayThresholdLon { get; init; }
+
+    [JsonPropertyName("touchdownCenterlineDeviationFt")]
+    public double? TouchdownCenterlineDeviationFt { get; init; }
+
+    [JsonPropertyName("touchdownCrabAngleDegrees")]
+    public double? TouchdownCrabAngleDegrees { get; init; }
+
     /// <summary>
     /// ICAO aircraft type code as detected by MSFS (e.g. "A319", "B738").
     /// Sourced from the ATC MODEL SimVar; null for free flights where no type

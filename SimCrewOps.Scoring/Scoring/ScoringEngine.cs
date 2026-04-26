@@ -360,7 +360,55 @@ public sealed class ScoringEngine
             "Landing bounce(s) detected.",
             ScoreMath.PerEventPenalty(metrics.BounceCount, 2.5, weights.Bounce));
 
+        // Only score centerline and crab when runway data was available (non-zero values).
+        if (metrics.TouchdownCenterlineDeviationFeet != 0 || metrics.TouchdownCrabAngleDegrees != 0)
+        {
+            AddPenalty(
+                findings,
+                "LANDING_CENTERLINE",
+                "Touchdown centerline deviation exceeded target.",
+                CenterlinePenalty(metrics.TouchdownCenterlineDeviationFeet, weights.CenterlineDeviation));
+
+            AddPenalty(
+                findings,
+                "LANDING_CRAB_ANGLE",
+                "Touchdown crab angle exceeded target.",
+                CrabAnglePenalty(metrics.TouchdownCrabAngleDegrees, weights.CrabAngle));
+        }
+
         return CreatePhaseResult(FlightPhase.Landing, weights.Total, findings);
+    }
+
+    // Tiered penalty based on real-world aviation centerline standards (metres converted to feet).
+    // Dead zone: 0–1 m (0–3.3 ft) = perfect; >20 m (>65.6 ft) = zero points.
+    private static double CenterlinePenalty(double feet, double maxPoints)
+    {
+        var absFeet = Math.Abs(feet);
+        var fraction = absFeet switch
+        {
+            <= 3.3  => 0.0,   // 10/10 pts — dead zone
+            <= 16.4 => 0.2,   //  8/10 pts
+            <= 32.8 => 0.4,   //  6/10 pts
+            <= 65.6 => 0.7,   //  3/10 pts
+            _       => 1.0,   //  0/10 pts
+        };
+        return fraction * maxPoints;
+    }
+
+    // Tiered penalty based on real-world aviation crab angle standards.
+    // Dead zone: 0–0.5° = perfect; >5° = zero points.
+    private static double CrabAnglePenalty(double degrees, double maxPoints)
+    {
+        var absDeg = Math.Abs(degrees);
+        var fraction = absDeg switch
+        {
+            <= 0.5 => 0.0,   // 10/10 pts — dead zone
+            <= 2.0 => 0.2,   //  8/10 pts
+            <= 3.5 => 0.5,   //  5/10 pts
+            <= 5.0 => 0.8,   //  2/10 pts
+            _      => 1.0,   //  0/10 pts
+        };
+        return fraction * maxPoints;
     }
 
     private static PhaseScoreResult ScoreTaxiIn(TaxiInMetrics metrics, TaxiInWeights weights)

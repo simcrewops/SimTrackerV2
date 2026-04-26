@@ -113,6 +113,8 @@ public sealed class LandingWeights
     public double VerticalSpeed { get; init; } = 6.0;
     public double GForce { get; init; } = 6.0;
     public double Bounce { get; init; } = 3.0;
+    public double CenterlineDeviation { get; init; } = 10.0;
+    public double CrabAngle { get; init; } = 10.0;
 
     /// <summary>VS at or below this threshold earns full marks.</summary>
     public double VerticalSpeedPerfectFpm { get; init; } = 300;
@@ -126,7 +128,7 @@ public sealed class LandingWeights
     /// <summary>G-force above this threshold fails the landing section.</summary>
     public double GForceAutoFail { get; init; } = 2.0;
 
-    public double Total => TouchdownZone + VerticalSpeed + GForce + Bounce;
+    public double Total => TouchdownZone + VerticalSpeed + GForce + Bounce + CenterlineDeviation + CrabAngle;
 }
 
 public sealed class TaxiInWeights : TaxiWeights

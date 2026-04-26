@@ -25,6 +25,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
     private readonly TrackerServiceFactory _serviceFactory;
     private readonly MsfsSimConnectHost _simConnectHost;
     private readonly PersistentRuntimeCoordinator _persistentRuntimeCoordinator;
+    private readonly IRunwayDataProvider _runwayDataProvider;
 
     private TrackerAppSettings _settings;
     private SessionRecoverySnapshot _recoverySnapshot = new();
@@ -55,13 +56,14 @@ public sealed class TrackerShellHost : IAsyncDisposable
         _serviceFactory = new TrackerServiceFactory();
         _settings = serviceStack.Settings;
         _activeFlightFetcher = serviceStack.ActiveFlightFetcher;
+        var managedSimConnectClient = new ManagedSimConnectClient();
         _simConnectHost = new MsfsSimConnectHost(
             new SimulatorProcessDetector(new SystemProcessListProvider()),
-            new AdaptiveSimConnectClient());
-        var runwayDataProvider = CreateRunwayDataProvider(settingsFilePath);
+            new AdaptiveSimConnectClient(new NativeSimConnectClient(), managedSimConnectClient));
+        _runwayDataProvider = CreateRunwayDataProvider(settingsFilePath, managedSimConnectClient);
         var runtimeCoordinator = new RuntimeCoordinator(
             new FlightSessionContext(),
-            new RunwayResolver(runwayDataProvider),
+            new RunwayResolver(_runwayDataProvider),
             livePositionUploader: serviceStack.LivePositionUploader);
         _persistentRuntimeCoordinator = new PersistentRuntimeCoordinator(
             runtimeCoordinator,
@@ -211,11 +213,31 @@ public sealed class TrackerShellHost : IAsyncDisposable
                 : new FlightSessionContext();
 
             _persistentRuntimeCoordinator.UpdateContext(context);
+
+            if (flight is not null)
+            {
+                _ = PreWarmRunwayCacheAsync(flight.Departure, flight.Arrival, cancellationToken);
+            }
         }
         catch
         {
             // Swallow — active flight is optional; don't crash the tracker over it.
         }
+    }
+
+    private async Task PreWarmRunwayCacheAsync(
+        string? departureIcao,
+        string? arrivalIcao,
+        CancellationToken cancellationToken)
+    {
+        var tasks = new List<Task>(2);
+        if (!string.IsNullOrWhiteSpace(departureIcao))
+            tasks.Add(_runwayDataProvider.GetRunwaysAsync(departureIcao, cancellationToken));
+        if (!string.IsNullOrWhiteSpace(arrivalIcao))
+            tasks.Add(_runwayDataProvider.GetRunwaysAsync(arrivalIcao, cancellationToken));
+
+        try { await Task.WhenAll(tasks).ConfigureAwait(false); }
+        catch { /* pre-warm is best-effort */ }
     }
 
     public async Task SaveSettingsAsync(TrackerAppSettings settings, CancellationToken cancellationToken = default)
@@ -311,11 +333,13 @@ public sealed class TrackerShellHost : IAsyncDisposable
         return "narrowbody";
     }
 
-    private static IRunwayDataProvider CreateRunwayDataProvider(string settingsFilePath)
+    private static IRunwayDataProvider CreateRunwayDataProvider(
+        string settingsFilePath,
+        ManagedSimConnectClient managedSimConnectClient)
     {
         var providers = new List<IRunwayDataProvider>
         {
-            new SimConnectFacilityRunwayProvider(),
+            SimConnectFacilityRunwayProvider.ForLiveConnection(managedSimConnectClient),
         };
 
         foreach (var csvPath in GetFallbackCsvPaths(settingsFilePath))

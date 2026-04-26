@@ -89,6 +89,7 @@ public sealed class OurAirportsCsvRunwayDataProvider : IRunwayDataProvider
         var runways = new List<RunwayEnd>(capacity: 2);
         var normalizedIcao = NormalizeAirportIcao(airportIcao);
         var lengthFeet = ReadDouble(fields, headerIndex, "length_ft");
+        var widthFeet = ReadDouble(fields, headerIndex, "width_ft");
 
         AddRunwayEndIfValid("le");
         AddRunwayEndIfValid("he");
@@ -116,6 +117,7 @@ public sealed class OurAirportsCsvRunwayDataProvider : IRunwayDataProvider
                 RunwayIdentifier = ident.Trim(),
                 TrueHeadingDegrees = NormalizeHeading(heading.Value),
                 LengthFeet = lengthFeet,
+                WidthFeet = widthFeet,
                 ThresholdLatitude = threshold.Latitude,
                 ThresholdLongitude = threshold.Longitude,
                 DisplacedThresholdFeet = displacedThresholdFeet,

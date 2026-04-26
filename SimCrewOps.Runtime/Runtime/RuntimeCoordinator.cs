@@ -254,6 +254,13 @@ public sealed class RuntimeCoordinator
                     TouchdownHeadingTrueDegrees = phaseFrame.Raw.HeadingTrueDegrees,
                 },
                 cancellationToken).ConfigureAwait(false);
+
+            if (_landingRunwayResolution is not null)
+            {
+                _scoringTracker.SetTouchdownRunwayMetrics(
+                    _landingRunwayResolution.Projection.CrossTrackDistanceFeet,
+                    _landingRunwayResolution.HeadingDifferenceDegrees);
+            }
         }
 
         var touchdownZoneExcess = phaseFrame.Raw.TouchdownZoneExcessDistanceFeet
@@ -315,6 +322,8 @@ public sealed class RuntimeCoordinator
             Latitude = telemetryFrame.Latitude,
             Longitude = telemetryFrame.Longitude,
             HeadingMagnetic = telemetryFrame.HeadingMagneticDegrees,
+            HeadingTrue     = telemetryFrame.HeadingTrueDegrees,
+            OnGround        = telemetryFrame.OnGround,
             AltitudeFt = telemetryFrame.AltitudeFeet,
             AltitudeAglFt = telemetryFrame.AltitudeAglFeet,
             IndicatedAirspeedKts = telemetryFrame.IndicatedAirspeedKnots,
