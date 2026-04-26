@@ -33,7 +33,7 @@ public sealed class HttpActiveFlightFetcher : IActiveFlightFetcher
 
     public async Task<ActiveFlightResponse?> FetchAsync(CancellationToken cancellationToken = default)
     {
-        var requestUri = new Uri(_options.BaseUri, "/api/tracker/next-trip");
+        var requestUri = new Uri("https://www.simcrewops.com/api/my-flights/next-trip");
 
         try
         {
