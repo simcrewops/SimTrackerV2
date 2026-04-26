@@ -71,6 +71,20 @@ public sealed record SimSessionUploadRequest
     public string? Arrival { get; init; }
 
     /// <summary>
+    /// WGS-84 latitude of the initial wheel contact point, in decimal degrees.
+    /// Zero when no touchdown was recorded (e.g. session ended in the air).
+    /// </summary>
+    [JsonPropertyName("touchdownLat")]
+    public double TouchdownLat { get; init; }
+
+    /// <summary>
+    /// WGS-84 longitude of the initial wheel contact point, in decimal degrees.
+    /// Zero when no touchdown was recorded (e.g. session ended in the air).
+    /// </summary>
+    [JsonPropertyName("touchdownLon")]
+    public double TouchdownLon { get; init; }
+
+    /// <summary>
     /// ICAO aircraft type code as detected by MSFS (e.g. "A319", "B738").
     /// Sourced from the ATC MODEL SimVar; null for free flights where no type
     /// was detected before blocks-on.

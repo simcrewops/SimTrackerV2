@@ -76,6 +76,8 @@ public sealed class FlightSessionScoringTracker
     private double _landingTouchdownIndicatedAirspeedKnots;
     private double _landingTouchdownPitchAngleDegrees;
     private double _landingTouchdownGForce;
+    private double _landingTouchdownLatitude;
+    private double _landingTouchdownLongitude;
     private DateTimeOffset? _lastTouchdownAt;
     private DateTimeOffset? _airborneAfterTouchdownAt;
 
@@ -214,6 +216,8 @@ public sealed class FlightSessionScoringTracker
         _landingTouchdownIndicatedAirspeedKnots = input.Landing.TouchdownIndicatedAirspeedKnots;
         _landingTouchdownPitchAngleDegrees = input.Landing.TouchdownPitchAngleDegrees;
         _landingTouchdownGForce = input.Landing.TouchdownGForce;
+        _landingTouchdownLatitude = input.Landing.TouchdownLatitude;
+        _landingTouchdownLongitude = input.Landing.TouchdownLongitude;
         _lastTouchdownAt = wheelsOnUtc;
         _airborneAfterTouchdownAt = null;
 
@@ -346,6 +350,8 @@ public sealed class FlightSessionScoringTracker
                 TouchdownPitchAngleDegrees = _landingTouchdownPitchAngleDegrees,
                 TouchdownGForce = _landingTouchdownGForce,
                 BounceCount = _landingBounceCount,
+                TouchdownLatitude = _landingTouchdownLatitude,
+                TouchdownLongitude = _landingTouchdownLongitude,
             },
             TaxiIn = new TaxiInMetrics
             {
@@ -674,6 +680,8 @@ public sealed class FlightSessionScoringTracker
                 _landingTouchdownBankAngleDegrees = Math.Abs(frame.BankAngleDegrees);
                 _landingTouchdownIndicatedAirspeedKnots = frame.IndicatedAirspeedKnots;
                 _landingTouchdownPitchAngleDegrees = frame.PitchAngleDegrees;
+                _landingTouchdownLatitude = frame.Latitude;
+                _landingTouchdownLongitude = frame.Longitude;
             }
 
             if (_airborneAfterTouchdownAt is not null &&

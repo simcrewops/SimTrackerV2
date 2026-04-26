@@ -37,8 +37,10 @@ public sealed class SimSessionUploadRequestMapper
             BidId      = string.IsNullOrWhiteSpace(state.Context.BidId) ? null : state.Context.BidId,
             Departure       = string.IsNullOrWhiteSpace(state.Context.DepartureAirportIcao) ? null : state.Context.DepartureAirportIcao,
             Arrival         = string.IsNullOrWhiteSpace(state.Context.ArrivalAirportIcao)   ? null : state.Context.ArrivalAirportIcao,
-            AircraftType    = string.IsNullOrWhiteSpace(state.Context.AircraftType)         ? null : state.Context.AircraftType,
-            AircraftCategory = string.IsNullOrWhiteSpace(state.Context.AircraftCategory)    ? null : state.Context.AircraftCategory,
+            AircraftType     = string.IsNullOrWhiteSpace(state.Context.AircraftType)      ? null : state.Context.AircraftType,
+            AircraftCategory = string.IsNullOrWhiteSpace(state.Context.AircraftCategory)  ? null : state.Context.AircraftCategory,
+            TouchdownLat     = state.ScoreInput.Landing.TouchdownLatitude,
+            TouchdownLon     = state.ScoreInput.Landing.TouchdownLongitude,
             PhaseFindings  = MapPhaseFindings(state.ScoreResult),
             GlobalFindings = MapFindings(state.ScoreResult.GlobalFindings),
         };
