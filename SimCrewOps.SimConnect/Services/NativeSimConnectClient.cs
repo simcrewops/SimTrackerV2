@@ -95,7 +95,7 @@ public sealed class AdaptiveSimConnectClient : ISimConnectClient, ISimConnectCli
     {
     }
 
-    internal AdaptiveSimConnectClient(ISimConnectClient primaryClient, ISimConnectClient fallbackClient)
+    public AdaptiveSimConnectClient(ISimConnectClient primaryClient, ISimConnectClient fallbackClient)
     {
         ArgumentNullException.ThrowIfNull(primaryClient);
         ArgumentNullException.ThrowIfNull(fallbackClient);
