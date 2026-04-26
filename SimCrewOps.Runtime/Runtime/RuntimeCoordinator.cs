@@ -85,6 +85,25 @@ public sealed class RuntimeCoordinator
         }
     }
 
+    /// <summary>
+    /// Updates the aircraft type and category from a SimConnect detection event.
+    /// Unlike <see cref="UpdateContext"/>, this is intentionally NOT gated on blocks-off —
+    /// the ATC MODEL SimVar fires asynchronously and typically arrives a few seconds into
+    /// pushback, after blocks-off has already fired.  The detected type is authoritative
+    /// telemetry (what MSFS actually has loaded) and must always win over any bid or
+    /// previous-session value in the context.
+    /// </summary>
+    public void UpdateAircraftType(string aircraftType, string aircraftCategory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(aircraftType);
+
+        _context = _context with
+        {
+            AircraftType     = aircraftType,
+            AircraftCategory = aircraftCategory,
+        };
+    }
+
     public void Restore(FlightSessionRuntimeState state)
     {
         ArgumentNullException.ThrowIfNull(state);

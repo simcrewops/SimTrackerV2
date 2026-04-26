@@ -72,6 +72,13 @@ public sealed class PersistentRuntimeCoordinator
     public void UpdateContext(FlightSessionContext context)
         => _runtimeCoordinator.UpdateContext(context);
 
+    /// <summary>
+    /// Updates only the aircraft type and category from a SimConnect detection event.
+    /// Bypasses the blocks-off guard — see <see cref="RuntimeCoordinator.UpdateAircraftType"/>.
+    /// </summary>
+    public void UpdateAircraftType(string aircraftType, string aircraftCategory)
+        => _runtimeCoordinator.UpdateAircraftType(aircraftType, aircraftCategory);
+
     public void Restore(FlightSessionRuntimeState state)
     {
         ArgumentNullException.ThrowIfNull(state);
