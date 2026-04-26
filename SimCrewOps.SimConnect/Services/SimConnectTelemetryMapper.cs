@@ -50,6 +50,12 @@ public sealed class SimConnectTelemetryMapper
             Engine2Running = ToBool(rawFrame.Engine2Running),
             Engine3Running = ToBool(rawFrame.Engine3Running),
             Engine4Running = ToBool(rawFrame.Engine4Running),
+            // Convert degree deviations to CDI dot units.
+            // ILS glideslope standard: 1 dot ≈ 0.35° (full-scale ±2.5 dots at ±0.875°).
+            // ILS localizer standard:  1 dot ≈ 0.5°  (full-scale ±2.5 dots at ±1.25°).
+            // Clamp to ±2.5 dots (instrument full-scale deflection).
+            Nav1GlideslopeErrorDots = Math.Clamp(rawFrame.Nav1GlideslopeErrorDegrees / 0.35, -2.5, 2.5),
+            Nav1LocalizerErrorDots  = Math.Clamp(rawFrame.Nav1RadialErrorDegrees / 0.5, -2.5, 2.5),
         };
     }
 

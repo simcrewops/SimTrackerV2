@@ -55,4 +55,18 @@ public sealed record TelemetryFrame
     public double? TouchdownZoneExcessDistanceFeet { get; init; }
     // Reserved for future gate-arrival precision scoring.
     public double? GateArrivalDistanceFeet { get; init; }
+
+    /// <summary>
+    /// NAV1 glideslope deviation in CDI dot units (±2.5 = full deflection).
+    /// Positive = aircraft is above the glidepath, negative = below.
+    /// Reads 0.0 when no ILS is tuned.
+    /// </summary>
+    public double Nav1GlideslopeErrorDots { get; init; }
+
+    /// <summary>
+    /// NAV1 localizer deviation in CDI dot units (±2.5 = full deflection).
+    /// Positive = right of centreline, negative = left.
+    /// Reads 0.0 when no ILS is tuned.
+    /// </summary>
+    public double Nav1LocalizerErrorDots { get; init; }
 }

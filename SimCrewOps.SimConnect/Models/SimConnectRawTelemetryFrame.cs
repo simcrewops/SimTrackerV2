@@ -68,4 +68,16 @@ public sealed record SimConnectRawTelemetryFrame
     /// e.g. "Community\fenix-a319\..." → "fenix-a319". Null until first AircraftLoaded event.
     /// </summary>
     public string? AircraftTitle { get; init; }
+
+    /// <summary>NAV1 glideslope deviation in degrees. Positive = above glidepath, negative = below.</summary>
+    public double Nav1GlideslopeErrorDegrees { get; init; }
+
+    /// <summary>NAV1 radial/LOC deviation in degrees. Positive = right of centreline, negative = left.</summary>
+    public double Nav1RadialErrorDegrees { get; init; }
+
+    /// <summary>
+    /// Destination airport ICAO from the active GPS flight plan (e.g. "KLAX").
+    /// Null when no flight plan is loaded or the SimVar returns an empty / invalid value.
+    /// </summary>
+    public string? GpsDestinationIdent { get; init; }
 }
