@@ -87,4 +87,10 @@ public sealed record SimSessionUploadRequest
 
     [JsonPropertyName("touchdownCrabAngleDegrees")]
     public double? TouchdownCrabAngleDegrees { get; init; }
+
+    [JsonPropertyName("aircraft")]
+    public string? Aircraft { get; init; }
+
+    [JsonPropertyName("aircraftCategory")]
+    public string? AircraftCategory { get; init; }
 }

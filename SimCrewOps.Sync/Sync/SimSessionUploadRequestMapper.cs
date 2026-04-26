@@ -40,6 +40,8 @@ public sealed class SimSessionUploadRequestMapper
             RunwayWidthFt      = state.LandingRunwayResolution?.Runway.WidthFeet,
             RunwayThresholdLat = state.LandingRunwayResolution?.Runway.ThresholdLatitude,
             RunwayThresholdLon = state.LandingRunwayResolution?.Runway.ThresholdLongitude,
+            Aircraft          = string.IsNullOrWhiteSpace(state.Context.AircraftType)     ? null : state.Context.AircraftType,
+            AircraftCategory  = string.IsNullOrWhiteSpace(state.Context.AircraftCategory) ? null : state.Context.AircraftCategory,
             TouchdownCenterlineDeviationFt = state.ScoreInput.Landing.TouchdownCenterlineDeviationFeet == 0 ? null : state.ScoreInput.Landing.TouchdownCenterlineDeviationFeet,
             TouchdownCrabAngleDegrees      = state.ScoreInput.Landing.TouchdownCrabAngleDegrees == 0 ? null : state.ScoreInput.Landing.TouchdownCrabAngleDegrees,
         };
