@@ -78,7 +78,7 @@ public sealed class ScoringEngineTests
         Assert.False(result.AutomaticFail);
         Assert.True(landing.SectionFailed);
         Assert.Equal(0, landing.AwardedPoints);
-        Assert.Equal("B", result.Grade);
+        Assert.Equal("C", result.Grade); // 80/120 = 66.7 % — falls in the C band (60–75 %)
         Assert.Contains(landing.Findings, f => f.Code == "LANDING_VERTICAL_SPEED" && f.IsAutomaticFail);
     }
 
@@ -100,7 +100,7 @@ public sealed class ScoringEngineTests
         Assert.False(result.AutomaticFail);
         Assert.True(landing.SectionFailed);
         Assert.Equal(0, landing.AwardedPoints);
-        Assert.Equal("B", result.Grade);
+        Assert.Equal("C", result.Grade); // 80/120 = 66.7 % — falls in the C band (60–75 %)
         Assert.Contains(landing.Findings, f => f.Code == "LANDING_GFORCE" && f.IsAutomaticFail);
     }
 

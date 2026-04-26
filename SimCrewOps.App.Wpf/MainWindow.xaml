@@ -144,17 +144,19 @@
                             </TextBlock.Style>
                         </TextBlock>
                     </StackPanel>
-                </StackPanel>
 
-                <!-- Refresh flight button — re-fetches active flight assignment from the API -->
-                <Button Command="{Binding RefreshFlightCommand}"
-                        ToolTip="Refresh active flight from SimCrewOps (use after clicking Fly Next)"
-                        Style="{StaticResource SecondaryButtonStyle}"
-                        Padding="8,4"
-                        Margin="10,0,0,0"
-                        VerticalAlignment="Center">
-                    <TextBlock Text="↻" FontSize="14" FontWeight="Bold" />
-                </Button>
+                    <!-- Divider -->
+                    <Border Width="1" Background="{StaticResource BorderDefaultBrush}" Margin="18,4" />
+
+                    <!-- Refresh flight button — re-fetches active flight assignment from the API -->
+                    <Button Command="{Binding RefreshFlightCommand}"
+                            ToolTip="Refresh active flight from SimCrewOps (use after clicking Fly Next)"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Padding="8,4"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="↻" FontSize="14" FontWeight="Bold" />
+                    </Button>
+                </StackPanel>
 
                 <!-- Right: status pills -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">

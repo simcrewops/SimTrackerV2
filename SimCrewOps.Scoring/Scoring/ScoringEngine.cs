@@ -30,7 +30,7 @@ public sealed class ScoringEngine
         var globalDeductions = globalFindings.Sum(finding => finding.PointsDeducted);
         var automaticFail = globalFindings.Any(finding => finding.IsAutomaticFail);
         var finalScore = ScoreMath.Clamp(phaseSubtotal - globalDeductions, 0, maximumScore);
-        var grade = automaticFail ? "F" : GradeFromScore(finalScore);
+        var grade = automaticFail ? "F" : GradeFromScore(finalScore, maximumScore);
 
         return new ScoreResult(maximumScore, finalScore, grade, automaticFail, phaseScores, globalFindings);
     }
@@ -549,13 +549,20 @@ public sealed class ScoringEngine
         findings.Add(new ScoreFinding(code, description, points));
     }
 
-    private static string GradeFromScore(double score) =>
-        score switch
+    /// <summary>
+    /// Converts a raw score into a letter grade using percentage thresholds so the grade
+    /// remains consistent regardless of the maximum possible score (e.g. 100 or 120).
+    /// </summary>
+    private static string GradeFromScore(double score, double maximumScore)
+    {
+        var pct = maximumScore > 0 ? score / maximumScore * 100.0 : score;
+        return pct switch
         {
             >= 90 => "A",
-            >= 80 => "B",
-            >= 70 => "C",
-            >= 60 => "D",
-            _ => "F",
+            >= 75 => "B",
+            >= 60 => "C",
+            >= 50 => "D",
+            _     => "F",
         };
+    }
 }
