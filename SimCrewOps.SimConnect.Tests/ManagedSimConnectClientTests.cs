@@ -111,5 +111,10 @@ public sealed class ManagedSimConnectClientTests
             IsConnected = false;
             return Task.CompletedTask;
         }
+
+        public Task<SimCrewOps.SimConnect.Models.SimConnectAirportFacilitySnapshot?> RequestFacilityDataAsync(
+            string airportIcao,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<SimCrewOps.SimConnect.Models.SimConnectAirportFacilitySnapshot?>(null);
     }
 }
