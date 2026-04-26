@@ -34,6 +34,14 @@ public sealed class SimSessionUploadRequestMapper
             TrackerVersion = trackerVersion,
             FlightMode = state.Context.FlightMode,
             BidId = string.IsNullOrWhiteSpace(state.Context.BidId) ? null : state.Context.BidId,
+            RunwayIdentifier   = state.LandingRunwayResolution?.Runway.RunwayIdentifier,
+            RunwayHeadingTrue  = state.LandingRunwayResolution?.Runway.TrueHeadingDegrees,
+            RunwayLengthFt     = state.LandingRunwayResolution?.Runway.LengthFeet,
+            RunwayWidthFt      = state.LandingRunwayResolution?.Runway.WidthFeet,
+            RunwayThresholdLat = state.LandingRunwayResolution?.Runway.ThresholdLatitude,
+            RunwayThresholdLon = state.LandingRunwayResolution?.Runway.ThresholdLongitude,
+            TouchdownCenterlineDeviationFt = state.ScoreInput.Landing.TouchdownCenterlineDeviationFeet == 0 ? null : state.ScoreInput.Landing.TouchdownCenterlineDeviationFeet,
+            TouchdownCrabAngleDegrees      = state.ScoreInput.Landing.TouchdownCrabAngleDegrees == 0 ? null : state.ScoreInput.Landing.TouchdownCrabAngleDegrees,
         };
     }
 

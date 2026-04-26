@@ -63,4 +63,28 @@ public sealed record SimSessionUploadRequest
 
     [JsonPropertyName("bidId")]
     public string? BidId { get; init; }
+
+    [JsonPropertyName("runwayIdentifier")]
+    public string? RunwayIdentifier { get; init; }
+
+    [JsonPropertyName("runwayHeadingTrue")]
+    public double? RunwayHeadingTrue { get; init; }
+
+    [JsonPropertyName("runwayLengthFt")]
+    public double? RunwayLengthFt { get; init; }
+
+    [JsonPropertyName("runwayWidthFt")]
+    public double? RunwayWidthFt { get; init; }
+
+    [JsonPropertyName("runwayThresholdLat")]
+    public double? RunwayThresholdLat { get; init; }
+
+    [JsonPropertyName("runwayThresholdLon")]
+    public double? RunwayThresholdLon { get; init; }
+
+    [JsonPropertyName("touchdownCenterlineDeviationFt")]
+    public double? TouchdownCenterlineDeviationFt { get; init; }
+
+    [JsonPropertyName("touchdownCrabAngleDegrees")]
+    public double? TouchdownCrabAngleDegrees { get; init; }
 }
