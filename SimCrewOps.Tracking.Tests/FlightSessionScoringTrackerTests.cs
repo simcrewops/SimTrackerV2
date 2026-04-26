@@ -47,7 +47,7 @@ public sealed class FlightSessionScoringTrackerTests
         Assert.Equal(1, input.Landing.BounceCount);
         Assert.Equal(120, input.Landing.TouchdownZoneExcessDistanceFeet);
         Assert.True(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
-        Assert.True(input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown);
+        Assert.True(input.Arrival.AllEnginesOffBeforeParkingBrakeSet);
         Assert.True(input.Arrival.AllEnginesOffByEndOfSession);
     }
 
@@ -98,8 +98,10 @@ public sealed class FlightSessionScoringTrackerTests
     }
 
     [Fact]
-    public void TrackerMarksArrivalViolationWhenAllEnginesShutdownBeforeParkingBrake()
+    public void TrackerPassesArrival_WhenAllEnginesOffBeforeParkingBrake()
     {
+        // SOPs: engines must be shut down BEFORE setting the parking brake.
+        // Engines off first, then PB set → no violation.
         var tracker = new FlightSessionScoringTracker();
         var t0 = new DateTimeOffset(2026, 4, 12, 23, 45, 0, TimeSpan.Zero);
 
@@ -110,7 +112,26 @@ public sealed class FlightSessionScoringTrackerTests
         var input = tracker.BuildScoreInput();
 
         Assert.True(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
-        Assert.False(input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown);
+        Assert.True(input.Arrival.AllEnginesOffBeforeParkingBrakeSet);
+        Assert.True(input.Arrival.AllEnginesOffByEndOfSession);
+    }
+
+    [Fact]
+    public void TrackerMarksArrivalViolation_WhenParkingBrakeSetWhileEngineStillRunning()
+    {
+        // SOPs: parking brake must NOT be set while any engine is still running.
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 13, 0, 15, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0.AddSeconds(0), FlightPhase.TaxiIn, onGround: true, taxiLights: true, landingLights: false, strobes: false, groundSpeed: 8, heading: 180));
+        // Parking brake set while engine1 is still running → violation
+        tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.Arrival, onGround: true, taxiLights: false, landingLights: false, strobes: false, parkingBrake: true, engine1: true, engine2: false));
+        tracker.Ingest(Frame(t0.AddSeconds(10), FlightPhase.Arrival, onGround: true, taxiLights: false, landingLights: false, strobes: false, parkingBrake: true, engine1: false, engine2: false));
+
+        var input = tracker.BuildScoreInput();
+
+        Assert.True(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
+        Assert.False(input.Arrival.AllEnginesOffBeforeParkingBrakeSet);
         Assert.True(input.Arrival.AllEnginesOffByEndOfSession);
     }
 
@@ -129,7 +150,7 @@ public sealed class FlightSessionScoringTrackerTests
         var input = tracker.BuildScoreInput();
 
         Assert.True(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
-        Assert.True(input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown);
+        Assert.True(input.Arrival.AllEnginesOffBeforeParkingBrakeSet);
         Assert.True(input.Arrival.AllEnginesOffByEndOfSession);
     }
 
@@ -146,7 +167,7 @@ public sealed class FlightSessionScoringTrackerTests
         var input = tracker.BuildScoreInput();
 
         Assert.False(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
-        Assert.True(input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown);
+        Assert.True(input.Arrival.AllEnginesOffBeforeParkingBrakeSet);
     }
 
     private static TelemetryFrame Frame(

@@ -62,7 +62,11 @@ public sealed record DescentMetrics
     public double MaxBankAngleDegrees { get; init; }
     public double MaxPitchAngleDegrees { get; init; }
     public double MaxGForce { get; init; }
-    public bool LandingLightsOnByFl180 { get; init; }
+    /// <summary>
+    /// True when landing lights were on by the time the aircraft descended through 9,900 ft.
+    /// Replaces the old FL180 check — lights must be on by FL100, not FL180.
+    /// </summary>
+    public bool LandingLightsOnBy9900 { get; init; }
 }
 
 public sealed record ApproachMetrics
@@ -109,7 +113,11 @@ public sealed record TaxiInMetrics : TaxiMetrics
 public sealed record ArrivalMetrics
 {
     public bool TaxiLightsOffBeforeParkingBrakeSet { get; init; }
-    public bool ParkingBrakeSetBeforeAllEnginesShutdown { get; init; }
+    /// <summary>
+    /// True when all engines were already off before the parking brake was set.
+    /// SOPs require engines shutdown first, then parking brake.
+    /// </summary>
+    public bool AllEnginesOffBeforeParkingBrakeSet { get; init; }
     public bool AllEnginesOffByEndOfSession { get; init; }
 }
 

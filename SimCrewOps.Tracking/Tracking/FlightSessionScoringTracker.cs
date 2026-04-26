@@ -58,7 +58,7 @@ public sealed class FlightSessionScoringTracker
     private double _descentMaxBank;
     private double _descentMaxPitch;
     private double _descentMaxG;
-    private bool _descentLandingLightsOnByFl180 = true;
+    private bool _descentLandingLightsOnBy9900 = true;
 
     private bool _capturedApproach1000Agl;
     private bool _gearDownBy1000Agl;
@@ -97,7 +97,7 @@ public sealed class FlightSessionScoringTracker
     private bool _arrivalSeen;
     private bool _arrivalParkingBrakeObserved;
     private bool _arrivalTaxiLightsOffBeforeParkingBrakeSet;
-    private bool _arrivalParkingBrakeSetBeforeAllEnginesShutdown = true;
+    private bool _arrivalAllEnginesOffBeforeParkingBrakeSet = true;
     private bool _arrivalAllEnginesOffByEndOfSession;
 
     // After a session restore (tracker restart / reconnect) the first few frames from
@@ -200,7 +200,7 @@ public sealed class FlightSessionScoringTracker
         _descentMaxBank = input.Descent.MaxBankAngleDegrees;
         _descentMaxPitch = input.Descent.MaxPitchAngleDegrees;
         _descentMaxG = input.Descent.MaxGForce;
-        _descentLandingLightsOnByFl180 = !_descentSeen || input.Descent.LandingLightsOnByFl180;
+        _descentLandingLightsOnBy9900 = !_descentSeen || input.Descent.LandingLightsOnBy9900;
 
         _capturedApproach1000Agl = input.Approach.GearDownBy1000Agl;
         _gearDownBy1000Agl = input.Approach.GearDownBy1000Agl;
@@ -239,8 +239,8 @@ public sealed class FlightSessionScoringTracker
         _arrivalSeen = currentPhase == FlightPhase.Arrival;
         _arrivalParkingBrakeObserved = currentPhase == FlightPhase.Arrival;
         _arrivalTaxiLightsOffBeforeParkingBrakeSet = input.Arrival.TaxiLightsOffBeforeParkingBrakeSet;
-        _arrivalParkingBrakeSetBeforeAllEnginesShutdown =
-            !_arrivalSeen || input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown;
+        _arrivalAllEnginesOffBeforeParkingBrakeSet =
+            !_arrivalSeen || input.Arrival.AllEnginesOffBeforeParkingBrakeSet;
         _arrivalAllEnginesOffByEndOfSession = input.Arrival.AllEnginesOffByEndOfSession;
 
         // Give the first several frames after reconnect a chance to reflect the real
@@ -331,7 +331,7 @@ public sealed class FlightSessionScoringTracker
                 MaxPitchAngleDegrees = _descentMaxPitch,
                 MaxGForce = _descentMaxG,
                 // Pass if descent hasn't been seen yet — only penalise once we enter it.
-                LandingLightsOnByFl180 = !_descentSeen || _descentLandingLightsOnByFl180,
+                LandingLightsOnBy9900 = !_descentSeen || _descentLandingLightsOnBy9900,
             },
             Approach = new ApproachMetrics
             {
@@ -372,7 +372,7 @@ public sealed class FlightSessionScoringTracker
             {
                 // Pass if the phase hasn't been seen yet — only penalise once we enter it.
                 TaxiLightsOffBeforeParkingBrakeSet = !_arrivalSeen || (_arrivalParkingBrakeObserved && _arrivalTaxiLightsOffBeforeParkingBrakeSet),
-                ParkingBrakeSetBeforeAllEnginesShutdown = !_arrivalSeen || (_arrivalParkingBrakeObserved && _arrivalParkingBrakeSetBeforeAllEnginesShutdown),
+                AllEnginesOffBeforeParkingBrakeSet = !_arrivalSeen || (_arrivalParkingBrakeObserved && _arrivalAllEnginesOffBeforeParkingBrakeSet),
                 AllEnginesOffByEndOfSession = !_arrivalSeen || _arrivalAllEnginesOffByEndOfSession,
             },
             Safety = new SafetyMetrics
@@ -633,9 +633,10 @@ public sealed class FlightSessionScoringTracker
             _descentMaxIasBelowFl100 = Math.Max(_descentMaxIasBelowFl100, frame.IndicatedAirspeedKnots);
         }
 
-        if (_postRestoreGraceFrames <= 0 && frame.IndicatedAltitudeFeet <= 18000 && !frame.LandingLightsOn)
+        // Check at 9,900 ft rather than FL180 — pilots have until FL100 to turn lights on.
+        if (_postRestoreGraceFrames <= 0 && frame.IndicatedAltitudeFeet <= 9900 && !frame.LandingLightsOn)
         {
-            _descentLandingLightsOnByFl180 = false;
+            _descentLandingLightsOnBy9900 = false;
         }
 
         _descentMaxBank = Math.Max(_descentMaxBank, Math.Abs(frame.BankAngleDegrees));
@@ -808,15 +809,14 @@ public sealed class FlightSessionScoringTracker
 
         if (!_arrivalParkingBrakeObserved)
         {
-            if (!frame.ParkingBrakeSet)
+            if (frame.ParkingBrakeSet)
             {
-                if (!AnyEngineRunning(frame))
+                // SOPs require engines off BEFORE setting the parking brake.
+                // Penalise if any engine is still running when the brake is applied.
+                if (AnyEngineRunning(frame))
                 {
-                    _arrivalParkingBrakeSetBeforeAllEnginesShutdown = false;
+                    _arrivalAllEnginesOffBeforeParkingBrakeSet = false;
                 }
-            }
-            else
-            {
                 _arrivalParkingBrakeObserved = true;
             }
         }
