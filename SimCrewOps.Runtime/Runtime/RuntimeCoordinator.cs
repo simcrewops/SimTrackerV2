@@ -229,6 +229,8 @@ public sealed class RuntimeCoordinator
             Latitude = telemetryFrame.Latitude,
             Longitude = telemetryFrame.Longitude,
             HeadingMagnetic = telemetryFrame.HeadingMagneticDegrees,
+            HeadingTrue     = telemetryFrame.HeadingTrueDegrees,
+            OnGround        = telemetryFrame.OnGround,
             AltitudeFt = telemetryFrame.AltitudeFeet,
             AltitudeAglFt = telemetryFrame.AltitudeAglFeet,
             IndicatedAirspeedKts = telemetryFrame.IndicatedAirspeedKnots,
