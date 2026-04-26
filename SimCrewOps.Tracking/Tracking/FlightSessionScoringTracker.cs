@@ -98,6 +98,11 @@ public sealed class FlightSessionScoringTracker
     private double _landingOatAtTouchdown;
     private double _landingHeadwindComponent;
     private double _landingCrosswindComponent;
+    // ── Threshold crossing and touchdown geometry ──────────────────────────────
+    private double _landingTouchdownHeadingDegrees;
+    private double _landingDistanceFromThresholdFt;
+    private double _approachSpeedAtThresholdKnots;
+    private double _approachThresholdCrossingHeightFt;
     private DateTimeOffset? _lastTouchdownAt;
     private DateTimeOffset? _airborneAfterTouchdownAt;
 
@@ -313,6 +318,10 @@ public sealed class FlightSessionScoringTracker
         _landingOatAtTouchdown          = input.Landing.OatCelsiusAtTouchdown;
         _landingHeadwindComponent       = input.Landing.HeadwindComponentKnots;
         _landingCrosswindComponent      = input.Landing.CrosswindComponentKnots;
+        _landingTouchdownHeadingDegrees = input.Landing.TouchdownHeadingDegrees;
+        _landingDistanceFromThresholdFt = input.Landing.TouchdownDistanceFromThresholdFt;
+        _approachSpeedAtThresholdKnots  = input.Landing.SpeedAtThresholdKnots;
+        _approachThresholdCrossingHeightFt = input.Landing.ThresholdCrossingHeightFt;
 
         // Give the first several frames after reconnect a chance to reflect the real
         // aircraft state before any "lights off" watchdog checks can trigger.
@@ -445,6 +454,10 @@ public sealed class FlightSessionScoringTracker
                 HeadwindComponentKnots = _landingHeadwindComponent,
                 CrosswindComponentKnots = _landingCrosswindComponent,
                 OatCelsiusAtTouchdown = _landingOatAtTouchdown,
+                TouchdownHeadingDegrees = _landingTouchdownHeadingDegrees,
+                TouchdownDistanceFromThresholdFt = _landingDistanceFromThresholdFt,
+                SpeedAtThresholdKnots = _approachSpeedAtThresholdKnots,
+                ThresholdCrossingHeightFt = _approachThresholdCrossingHeightFt,
             },
             TaxiIn = new TaxiInMetrics
             {
@@ -508,6 +521,26 @@ public sealed class FlightSessionScoringTracker
     {
         _landingHeadwindComponent = headwindKnots;
         _landingCrosswindComponent = crosswindKnots;
+    }
+
+    /// <summary>
+    /// Called by RuntimeCoordinator at WheelsOn to record the aircraft's true heading
+    /// and the distance from the runway threshold to the touchdown point.
+    /// </summary>
+    public void SetTouchdownGeometry(double headingDegrees, double distanceFromThresholdFt)
+    {
+        _landingTouchdownHeadingDegrees = headingDegrees;
+        _landingDistanceFromThresholdFt = distanceFromThresholdFt;
+    }
+
+    /// <summary>
+    /// Called by RuntimeCoordinator the first frame the aircraft crosses the runway threshold
+    /// during the Approach phase. Captures the reference speed and height for the debrief.
+    /// </summary>
+    public void SetThresholdCrossing(double speedKnots, double heightAglFt)
+    {
+        _approachSpeedAtThresholdKnots     = speedKnots;
+        _approachThresholdCrossingHeightFt = heightAglFt;
     }
 
     private void UpdatePreflight(TelemetryFrame frame)

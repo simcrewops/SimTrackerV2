@@ -213,6 +213,24 @@ public sealed record SimSessionUploadRequest
     /// </summary>
     [JsonPropertyName("gpsTrack")]
     public IReadOnlyList<GpsTrackPointUpload>? GpsTrack { get; init; }
+
+    // ── Structured scoring input ───────────────────────────────────────────────
+
+    /// <summary>
+    /// All raw phase metrics collected during the flight in a structured object.
+    /// Allows the webapp to score or re-score the session with any algorithm.
+    /// </summary>
+    [JsonPropertyName("scoringInput")]
+    public FlightScoreInputV5Upload? ScoreInputV5 { get; init; }
+
+    // ── Landing analysis ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Rich landing geometry including approach path, threshold crossing speed/height,
+    /// and touchdown distance from threshold.  Null when no landing was recorded.
+    /// </summary>
+    [JsonPropertyName("landingAnalysis")]
+    public LandingAnalysisUpload? LandingAnalysis { get; init; }
 }
 
 /// <summary>A single point in the GPS flight-path track.</summary>

@@ -93,6 +93,14 @@ public sealed class SimSessionUploadRequestMapper
                     })
                     .ToList()
                 : null,
+            // Structured raw phase metrics for webapp scoring
+            ScoreInputV5 = MapScoreInputV5(state.ScoreInput),
+            // Landing analysis — omit entirely when no landing was recorded
+            LandingAnalysis = state.ScoreInput.Landing.TouchdownDistanceFromThresholdFt > 0
+                || state.ScoreInput.Landing.TouchdownHeadingDegrees > 0
+                || state.HasResolvedLandingRunway
+                ? MapLandingAnalysis(state)
+                : null,
         };
     }
 
@@ -126,5 +134,143 @@ public sealed class SimSessionUploadRequestMapper
         }
 
         return Math.Round((blockTimes.BlocksOnUtc.Value - blockTimes.BlocksOffUtc.Value).TotalHours, 4);
+    }
+
+    private static FlightScoreInputV5Upload MapScoreInputV5(FlightScoreInput s) =>
+        new()
+        {
+            Preflight = new ScoreInputPreflightV5
+            {
+                BeaconOnBeforeTaxi = s.Preflight.BeaconOnBeforeTaxi,
+            },
+            TaxiOut = new ScoreInputTaxiV5
+            {
+                MaxGroundSpeedKts      = s.TaxiOut.MaxGroundSpeedKnots,
+                ExcessiveTurnSpeedEvents = s.TaxiOut.ExcessiveTurnSpeedEvents,
+                TaxiLightsOn           = s.TaxiOut.TaxiLightsOn,
+            },
+            Takeoff = new ScoreInputTakeoffV5
+            {
+                Bounces                     = s.Takeoff.BounceCount,
+                TailStrike                  = s.Takeoff.TailStrikeDetected,
+                MaxBankDeg                  = s.Takeoff.MaxBankAngleDegrees,
+                MaxPitchDeg                 = s.Takeoff.MaxPitchAngleDegrees,
+                MaxGForce                   = s.Takeoff.MaxGForce,
+                LandingLightsOnBeforeTakeoff = s.Takeoff.LandingLightsOnBeforeTakeoff,
+                LandingLightsOffByFl180     = s.Takeoff.LandingLightsOffByFl180,
+                StrobesOn                   = s.Takeoff.StrobesOnFromTakeoffToLanding,
+            },
+            Climb = new ScoreInputClimbV5
+            {
+                MaxIasBelowFl100Kts = s.Climb.MaxIasBelowFl100Knots,
+                MaxBankDeg          = s.Climb.MaxBankAngleDegrees,
+                MaxGForce           = s.Climb.MaxGForce,
+            },
+            Cruise = new ScoreInputCruiseV5
+            {
+                MaxAltitudeDeviationFt     = s.Cruise.MaxAltitudeDeviationFeet,
+                NewFlightLevelCaptureSeconds = s.Cruise.NewFlightLevelCaptureSeconds,
+                SpeedInstabilityEvents     = s.Cruise.SpeedInstabilityEvents,
+                MaxBankDeg                 = s.Cruise.MaxBankAngleDegrees,
+                MaxGForce                  = s.Cruise.MaxGForce,
+            },
+            Descent = new ScoreInputDescentV5
+            {
+                MaxIasBelowFl100Kts  = s.Descent.MaxIasBelowFl100Knots,
+                MaxBankDeg           = s.Descent.MaxBankAngleDegrees,
+                MaxPitchDeg          = s.Descent.MaxPitchAngleDegrees,
+                MaxGForce            = s.Descent.MaxGForce,
+                LandingLightsOnBy9900 = s.Descent.LandingLightsOnBy9900,
+            },
+            Approach = new ScoreInputApproachV5
+            {
+                GearDownBy1000Agl         = s.Approach.GearDownBy1000Agl,
+                FlapsIndexAt500Agl        = s.Approach.FlapsHandleIndexAt500Agl,
+                VsAt500AglFpm             = s.Approach.VerticalSpeedAt500AglFpm,
+                BankAt500AglDeg           = s.Approach.BankAngleAt500AglDegrees,
+                PitchAt500AglDeg          = s.Approach.PitchAngleAt500AglDegrees,
+                GearDownAt500Agl          = s.Approach.GearDownAt500Agl,
+                IlsDetected               = s.Approach.IlsApproachDetected,
+                IlsMaxGlideslopeDevDots   = s.Approach.MaxGlideslopeDeviationDots,
+                IlsAvgGlideslopeDevDots   = s.Approach.AvgGlideslopeDeviationDots,
+                IlsMaxLocalizerDevDots    = s.Approach.MaxLocalizerDeviationDots,
+                IlsAvgLocalizerDevDots    = s.Approach.AvgLocalizerDeviationDots,
+            },
+            Landing = new ScoreInputLandingV5
+            {
+                Bounces                    = s.Landing.BounceCount,
+                TdzExcessFt                = s.Landing.TouchdownZoneExcessDistanceFeet,
+                TouchdownVsFpm             = s.Landing.TouchdownVerticalSpeedFpm,
+                TouchdownBankDeg           = s.Landing.TouchdownBankAngleDegrees,
+                TouchdownIasKts            = s.Landing.TouchdownIndicatedAirspeedKnots,
+                TouchdownPitchDeg          = s.Landing.TouchdownPitchAngleDegrees,
+                TouchdownGForce            = s.Landing.TouchdownGForce,
+                CenterlineDeviationFt      = s.Landing.TouchdownCenterlineDeviationFeet,
+                CrabAngleDeg               = s.Landing.TouchdownCrabAngleDegrees,
+                TouchdownLat               = s.Landing.TouchdownLatitude,
+                TouchdownLon               = s.Landing.TouchdownLongitude,
+                AutopilotEngaged           = s.Landing.AutopilotEngagedAtTouchdown,
+                SpoilersDeployed           = s.Landing.SpoilersDeployedAtTouchdown,
+                ReverseThrustUsed          = s.Landing.ReverseThrustUsed,
+                WindSpeedKts               = s.Landing.WindSpeedAtTouchdownKnots,
+                WindDirectionDeg           = s.Landing.WindDirectionAtTouchdownDegrees,
+                HeadwindKts                = s.Landing.HeadwindComponentKnots,
+                CrosswindKts               = s.Landing.CrosswindComponentKnots,
+                OatCelsius                 = s.Landing.OatCelsiusAtTouchdown,
+                TouchdownHeadingDeg        = s.Landing.TouchdownHeadingDegrees,
+                DistanceFromThresholdFt    = s.Landing.TouchdownDistanceFromThresholdFt,
+                SpeedAtThresholdKts        = s.Landing.SpeedAtThresholdKnots,
+                ThresholdCrossingHeightFt  = s.Landing.ThresholdCrossingHeightFt,
+            },
+            TaxiIn = new ScoreInputTaxiV5
+            {
+                MaxGroundSpeedKts        = s.TaxiIn.MaxGroundSpeedKnots,
+                ExcessiveTurnSpeedEvents = s.TaxiIn.ExcessiveTurnSpeedEvents,
+                TaxiLightsOn             = s.TaxiIn.TaxiLightsOn,
+            },
+            Arrival = new ScoreInputArrivalV5
+            {
+                TaxiLightsOffBeforeParkingBrakeSet    = s.Arrival.TaxiLightsOffBeforeParkingBrakeSet,
+                AllEnginesOffBeforeParkingBrakeSet    = s.Arrival.AllEnginesOffBeforeParkingBrakeSet,
+                AllEnginesOffByEndOfSession           = s.Arrival.AllEnginesOffByEndOfSession,
+            },
+            Safety = new ScoreInputSafetyV5
+            {
+                CrashDetected            = s.Safety.CrashDetected,
+                OverspeedEvents          = s.Safety.OverspeedEvents,
+                SustainedOverspeedEvents = s.Safety.SustainedOverspeedEvents,
+                StallEvents              = s.Safety.StallEvents,
+                GpwsEvents               = s.Safety.GpwsEvents,
+                EngineShutdownsInFlight  = s.Safety.EngineShutdownsInFlight,
+            },
+        };
+
+    private static LandingAnalysisUpload MapLandingAnalysis(FlightSessionRuntimeState state)
+    {
+        var landing = state.ScoreInput.Landing;
+
+        // Approach-phase GPS points for the runway overlay diagram.
+        var approachPoints = state.ScoreInput.GpsTrack
+            .Where(p => p.Phase == FlightPhase.Approach)
+            .Select(p => new GpsTrackPointUpload
+            {
+                TimestampUtc     = p.TimestampUtc,
+                Latitude         = p.Latitude,
+                Longitude        = p.Longitude,
+                AltitudeFeet     = p.AltitudeFeet,
+                GroundSpeedKnots = p.GroundSpeedKnots,
+                Phase            = p.Phase.ToString(),
+            })
+            .ToList();
+
+        return new LandingAnalysisUpload
+        {
+            TouchdownHeadingDeg            = landing.TouchdownHeadingDegrees,
+            RunwayDesignator               = state.LandingRunwayResolution?.Runway.RunwayIdentifier,
+            ApproachPath                   = approachPoints.Count > 0 ? approachPoints : null,
+            TouchdownDistanceFromThresholdFt = landing.TouchdownDistanceFromThresholdFt,
+            SpeedAtThreshold               = landing.SpeedAtThresholdKnots,
+            ThresholdCrossingHeightFt      = landing.ThresholdCrossingHeightFt,
+        };
     }
 }

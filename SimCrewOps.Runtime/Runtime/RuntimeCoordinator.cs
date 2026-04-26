@@ -33,6 +33,8 @@ public sealed class RuntimeCoordinator
     private double? _lastLivePositionLongitude;
     // Session-end trigger: set once when engines off + beacon off + parking brake set after landing.
     private bool _sessionEndTriggered;
+    // Threshold crossing: set once per approach when the aircraft first crosses the runway threshold.
+    private bool _thresholdCrossedInApproach;
 
     /// <summary>
     /// UTC timestamp of the most recent live-position upload that the server accepted (HTTP 200).
@@ -122,6 +124,8 @@ public sealed class RuntimeCoordinator
         _lastLivePositionLatitude = state.LastTelemetryFrame?.Latitude;
         _lastLivePositionLongitude = state.LastTelemetryFrame?.Longitude;
         _sessionEndTriggered = state.BlockTimes.SessionEndTriggeredUtc is not null;
+        // If WheelsOn already happened the threshold was already crossed.
+        _thresholdCrossedInApproach = state.BlockTimes.WheelsOnUtc is not null;
 
         _phaseEngine.Restore(
             state.CurrentPhase,
@@ -195,11 +199,23 @@ public sealed class RuntimeCoordinator
             // Deviation > 0 → above path (fly down), < 0 → below path (fly up).
             var idealAglFt         = distToThresholdFt * 0.05241;
             _glidepathDeviationFeet = telemetryFrame.AltitudeAglFeet - idealAglFt;
+
+            // Capture speed and height the first frame the aircraft crosses the threshold
+            // (AlongTrackDistanceFeet ≥ 0 means the plane is on or past the threshold).
+            if (!_thresholdCrossedInApproach && projection.AlongTrackDistanceFeet >= 0)
+            {
+                _thresholdCrossedInApproach = true;
+                _scoringTracker.SetThresholdCrossing(
+                    telemetryFrame.IndicatedAirspeedKnots,
+                    telemetryFrame.AltitudeAglFeet);
+            }
         }
         else if (phaseFrame.Phase != FlightPhase.Approach)
         {
             _approachDistanceNm     = null;
             _glidepathDeviationFeet = null;
+            // Reset so a go-around followed by another approach captures fresh values.
+            _thresholdCrossedInApproach = false;
         }
         // ----------------------------------------------------------------
 
@@ -264,6 +280,11 @@ public sealed class RuntimeCoordinator
                 _scoringTracker.SetTouchdownRunwayMetrics(
                     _landingRunwayResolution.Projection.CrossTrackDistanceFeet,
                     _landingRunwayResolution.HeadingDifferenceDegrees);
+
+                // Touchdown heading and distance from threshold for landing analysis.
+                _scoringTracker.SetTouchdownGeometry(
+                    phaseFrame.Raw.HeadingTrueDegrees,
+                    _landingRunwayResolution.Projection.DistanceFromThresholdFeet);
 
                 // Compute headwind and crosswind components from wind data at touchdown.
                 var (headwind, crosswind) = ComputeWindComponents(

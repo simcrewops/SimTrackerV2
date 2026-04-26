@@ -196,6 +196,23 @@ public sealed record LandingMetrics
 
     /// <summary>Outside air temperature in degrees Celsius at touchdown.</summary>
     public double OatCelsiusAtTouchdown { get; init; }
+
+    // ── Threshold crossing and touchdown geometry ──────────────────────────
+
+    /// <summary>Aircraft true heading at the moment of touchdown (degrees).</summary>
+    public double TouchdownHeadingDegrees { get; init; }
+
+    /// <summary>
+    /// Distance along the runway centerline from the threshold to the touchdown point (feet).
+    /// Derived from the runway projection at WheelsOn.
+    /// </summary>
+    public double TouchdownDistanceFromThresholdFt { get; init; }
+
+    /// <summary>Indicated airspeed when the aircraft crossed the runway threshold (knots).</summary>
+    public double SpeedAtThresholdKnots { get; init; }
+
+    /// <summary>Altitude above ground level when the aircraft crossed the runway threshold (feet).</summary>
+    public double ThresholdCrossingHeightFt { get; init; }
 }
 
 public sealed record TaxiInMetrics : TaxiMetrics
