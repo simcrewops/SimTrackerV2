@@ -31,7 +31,11 @@ public sealed class SimSessionUploadRequestMapper
             StallEvents = state.ScoreInput.Safety.StallEvents,
             GpwsEvents = state.ScoreInput.Safety.GpwsEvents,
             Grade = state.ScoreResult.Grade,
-            ScoreFinal = state.ScoreResult.FinalScore,
+            // Normalise to 0–100 so the webapp always receives a consistent scale even
+            // when runway-data scoring raises the raw maximum above 100.
+            ScoreFinal = state.ScoreResult.MaximumScore > 0
+                ? Math.Round(state.ScoreResult.FinalScore / state.ScoreResult.MaximumScore * 100.0, 1)
+                : state.ScoreResult.FinalScore,
             TrackerVersion = trackerVersion,
             FlightMode = state.Context.FlightMode,
             BidId            = string.IsNullOrWhiteSpace(state.Context.BidId)                ? null : state.Context.BidId,

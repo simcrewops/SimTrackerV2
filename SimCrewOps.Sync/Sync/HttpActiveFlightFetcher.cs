@@ -7,13 +7,14 @@ using SimCrewOps.Sync.Models;
 namespace SimCrewOps.Sync.Sync;
 
 /// <summary>
-/// Calls GET /api/tracker/next-trip with the pilot's static API token
-/// and deserialises the response into an <see cref="ActiveFlightResponse"/>.
+/// Calls GET /api/tracker/next-trip (Step 2 of the tracker API flow) with the pilot's
+/// static Bearer token and deserialises the response into an <see cref="ActiveFlightResponse"/>.
 ///
 /// Returns null on auth failure, network error, or when the pilot has no upcoming flight.
 /// </summary>
 public sealed class HttpActiveFlightFetcher : IActiveFlightFetcher
 {
+    internal const string NextTripPath = "/api/tracker/next-trip";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -33,7 +34,7 @@ public sealed class HttpActiveFlightFetcher : IActiveFlightFetcher
 
     public async Task<ActiveFlightResponse?> FetchAsync(CancellationToken cancellationToken = default)
     {
-        var requestUri = new Uri("https://www.simcrewops.com/api/my-flights/next-trip");
+        var requestUri = new Uri(_options.BaseUri, NextTripPath);
 
         try
         {

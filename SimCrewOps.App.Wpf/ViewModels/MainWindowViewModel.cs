@@ -1101,8 +1101,10 @@ public sealed class MainWindowViewModel : ObservableObject
             ? $"{runway.Projection.TouchdownZoneExcessDistanceFeet:0}"
             : runway is not null ? "0" : "--";
 
-        var score = activeState?.ScoreResult.FinalScore ?? 88;
-        ScoreBarWidth = Math.Clamp(score / 100.0 * 200.0, 0, 200);
+        var score    = activeState?.ScoreResult.FinalScore    ?? 88;
+        var maxScore = activeState?.ScoreResult.MaximumScore  ?? 120.0;
+        // Normalize to a 0–100 percentage so the bar width is independent of the raw maximum.
+        ScoreBarWidth = Math.Clamp(score / maxScore * 200.0, 0, 200);
 
         AlertType = phase switch
         {
@@ -1124,7 +1126,11 @@ public sealed class MainWindowViewModel : ObservableObject
         PopulateStatusChips(phase, telemetry);
         PopulateScoreRows(activeState?.ScoreResult);
 
-        ScoreText = activeState?.ScoreResult.FinalScore.ToString("0", CultureInfo.InvariantCulture) ?? "--";
+        // Display score as a normalised 0–100 integer so the number is always in the familiar range
+        // regardless of whether the session had runway data (max=120) or not (max=100).
+        ScoreText = activeState?.ScoreResult is { } sr
+            ? Math.Round(sr.FinalScore / sr.MaximumScore * 100.0).ToString("0", CultureInfo.InvariantCulture)
+            : "--";
         GradeText = activeState?.ScoreResult.Grade is { Length: > 0 } grade ? $"Grade {grade}" : "Grade --";
         ScoreSummary = activeState is null
             ? "No score available until a live session is in progress."
