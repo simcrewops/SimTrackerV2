@@ -89,6 +89,7 @@ public sealed class FlightSessionScoringTracker
     private bool _taxiInLandingLightsOff = true;
     private bool _taxiInStrobesOff = true;
     private bool _taxiInTaxiLightsValid = true;
+    private DateTimeOffset? _taxiInStartedAt;               // when taxi-in phase was first entered
     private DateTimeOffset? _taxiInLightsOffStart;
     private DateTimeOffset? _taxiInLandingLightsOnStart;   // 60 s sustained on → penalty (1 min after vacate)
     private DateTimeOffset? _taxiInStrobesOnStart;          // 60 s sustained on → penalty
@@ -232,6 +233,7 @@ public sealed class FlightSessionScoringTracker
         _taxiInLandingLightsOff = !_taxiInSeen || input.TaxiIn.LandingLightsOff;
         _taxiInStrobesOff = !_taxiInSeen || input.TaxiIn.StrobesOff;
         _taxiInTaxiLightsValid = !_taxiInSeen || input.TaxiIn.TaxiLightsOn;
+        _taxiInStartedAt = null; // grace window re-arms on reconnect
         _taxiInLightsOffStart = null;
         _taxiInLandingLightsOnStart = null;
         _taxiInStrobesOnStart = null;
@@ -762,6 +764,7 @@ public sealed class FlightSessionScoringTracker
         }
 
         _taxiInSeen = true;
+        _taxiInStartedAt ??= frame.TimestampUtc;
         _taxiInMaxGroundSpeed = Math.Max(_taxiInMaxGroundSpeed, frame.GroundSpeedKnots);
 
         // Landing lights — 60-second grace window after runway vacate before penalty locks in.
@@ -794,10 +797,13 @@ public sealed class FlightSessionScoringTracker
             }
         }
 
-        // Only require taxi lights while actively taxiing — below 8 kts (slowing to gate)
-        // lights off is correct procedure, ~1 min before parking brake.
+        // Taxi lights — 60-second grace window after runway vacate, then require lights on
+        // above 8 kts.  Below 8 kts (slowing to gate) lights off is correct procedure.
         // 3-second debounce: an accidental toggle doesn't cause a permanent penalty.
-        if (frame.GroundSpeedKnots >= 8.0 && _postRestoreGraceFrames <= 0)
+        var taxiInElapsed = frame.TimestampUtc - _taxiInStartedAt!.Value;
+        if (taxiInElapsed >= TimeSpan.FromSeconds(60) &&
+            frame.GroundSpeedKnots >= 8.0 &&
+            _postRestoreGraceFrames <= 0)
         {
             if (!frame.TaxiLightsOn)
             {

@@ -154,6 +154,41 @@ public sealed class FlightSessionScoringTrackerTests
     }
 
     [Fact]
+    public void TaxiInTaxiLights_PassWhenOffDuringGraceWindow()
+    {
+        // Taxi lights off immediately after vacating — should pass because the
+        // 60-second grace window has not elapsed yet.
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 13, 2, 0, 0, TimeSpan.Zero);
+
+        // Vacate runway: taxi in starts at t=0 with lights off at speed > 8 kts.
+        tracker.Ingest(Frame(t0.AddSeconds(0),  FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 20, heading: 180));
+        tracker.Ingest(Frame(t0.AddSeconds(30), FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 15, heading: 180));
+        tracker.Ingest(Frame(t0.AddSeconds(59), FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 12, heading: 180));
+
+        var input = tracker.BuildScoreInput();
+
+        // Still within 60 s — no penalty.
+        Assert.True(input.TaxiIn.TaxiLightsOn);
+    }
+
+    [Fact]
+    public void TaxiInTaxiLights_FailWhenOffAfterGraceWindow()
+    {
+        // Taxi lights not turned on within 60 seconds of vacating — should fail.
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 13, 2, 30, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0.AddSeconds(0),  FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 20, heading: 180));
+        // Past 60 s + 3 s debounce, still no taxi lights, still above 8 kts.
+        tracker.Ingest(Frame(t0.AddSeconds(64), FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 12, heading: 180));
+
+        var input = tracker.BuildScoreInput();
+
+        Assert.False(input.TaxiIn.TaxiLightsOn);
+    }
+
+    [Fact]
     public void TrackerPassesArrival_WhenAllEnginesOffBeforeParkingBrake()
     {
         // SOPs: engines must be shut down BEFORE setting the parking brake.
