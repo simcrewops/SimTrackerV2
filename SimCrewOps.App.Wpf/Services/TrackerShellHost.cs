@@ -225,6 +225,18 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
             _persistentRuntimeCoordinator.UpdateContext(context);
 
+            // UpdateContext just pushed the bid aircraft type ("E75L") into the coordinator,
+            // overwriting any SimConnect-confirmed type ("A319").  The poll loop will NOT
+            // re-call UpdateAircraftType because _lastDetectedAircraftTitle hasn't changed.
+            // Re-apply the SimConnect detection now so the live ping always uses what MSFS
+            // actually has loaded, not what the schedule says.
+            if (!string.IsNullOrWhiteSpace(_lastDetectedAircraftTitle))
+            {
+                _persistentRuntimeCoordinator.UpdateAircraftType(
+                    _lastDetectedAircraftTitle,
+                    ResolveAircraftCategory(_lastDetectedAircraftTitle));
+            }
+
             if (flight is not null)
             {
                 _ = PreWarmRunwayCacheAsync(flight.Departure, flight.Arrival, cancellationToken);
@@ -338,7 +350,8 @@ public sealed class TrackerShellHost : IAsyncDisposable
         // Regional jets and turboprops
         if (t.StartsWith("CRJ") || t.StartsWith("E17") || t.StartsWith("E19") ||
             t.StartsWith("AT") || t.StartsWith("DH8") || t.StartsWith("SF3") ||
-            t.StartsWith("E14") || t == "E145" || t == "E135" || t.StartsWith("RJ"))
+            t.StartsWith("E14") || t == "E145" || t == "E135" || t.StartsWith("RJ") ||
+            t == "E75L" || t == "E75S")  // Embraer 175 ICAO type codes
             return "regional";
 
         return "narrowbody";
