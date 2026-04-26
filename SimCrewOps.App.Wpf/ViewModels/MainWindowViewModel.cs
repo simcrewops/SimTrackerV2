@@ -1102,7 +1102,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
         UpdatePersistentInstruments(telemetry);
         PopulatePhasePills(phase);
-        PopulateMetricTiles(phase, telemetry);
+        PopulateMetricTiles(phase, telemetry, activeState);
         PopulateStatusChips(phase, telemetry);
         PopulateScoreRows(activeState?.ScoreResult);
 
@@ -1212,7 +1212,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private void ApplySampleState()
     {
         PopulatePhasePills(FlightPhase.Preflight);
-        PopulateMetricTiles(FlightPhase.Preflight, null);
+        PopulateMetricTiles(FlightPhase.Preflight, null, null);
         PopulateStatusChips(FlightPhase.Preflight, null);
         PopulateScoreRows(null);
         PopulateSampleAcarsMessages();
@@ -1226,17 +1226,17 @@ public sealed class MainWindowViewModel : ObservableObject
         AcarsMessages.Add(new AcarsMessageModel("DISPATCH", "Winds updated: 270/18G24 at destination. Expect ILS 28R arrival. ATIS Kilo.", "22:43 UTC", IsOutbound: false));
     }
 
-    private void PopulateMetricTiles(FlightPhase phase, TelemetryFrame? telemetry)
+    private void PopulateMetricTiles(FlightPhase phase, TelemetryFrame? telemetry, FlightSessionRuntimeState? activeState)
     {
         MetricTiles.Clear();
 
-        foreach (var tile in BuildMetricTiles(phase, telemetry))
+        foreach (var tile in BuildMetricTiles(phase, telemetry, activeState))
         {
             MetricTiles.Add(tile);
         }
     }
 
-    private IReadOnlyList<MetricTileModel> BuildMetricTiles(FlightPhase phase, TelemetryFrame? telemetry) => phase switch
+    private IReadOnlyList<MetricTileModel> BuildMetricTiles(FlightPhase phase, TelemetryFrame? telemetry, FlightSessionRuntimeState? activeState) => phase switch
     {
         FlightPhase.Preflight or FlightPhase.TaxiOut or FlightPhase.TaxiIn => new[]
         {
@@ -1274,14 +1274,36 @@ public sealed class MainWindowViewModel : ObservableObject
             new MetricTileModel("ENG 2", telemetry is null ? "--" : telemetry.Engine2Running ? "ON" : "OFF"),
             new MetricTileModel("TAXI LT", telemetry is null ? "--" : telemetry.TaxiLightsOn ? "ON" : "OFF"),
         },
+        FlightPhase.Approach => new[]
+        {
+            new MetricTileModel("IAS", telemetry is null ? "-- kt" : $"{telemetry.IndicatedAirspeedKnots:0} kt"),
+            new MetricTileModel("VS",  telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm", telemetry is { VerticalSpeedFpm: < -1000 }),
+            new MetricTileModel("ALT AGL", telemetry is null ? "-- ft" : $"{telemetry.AltitudeAglFeet:0} ft"),
+            // G/S: ILS glideslope deviation in CDI dots from NAV1 (positive = above, negative = below).
+            // Alert when deviation exceeds 1 dot — well outside the stable approach envelope.
+            new MetricTileModel("G/S",
+                telemetry is null ? "-- dot" : $"{telemetry.Nav1GlideslopeErrorDots:+0.0;-0.0;0.0} dot",
+                telemetry is not null && Math.Abs(telemetry.Nav1GlideslopeErrorDots) > 1.0),
+            // DIST THR: haversine distance to the pre-resolved runway threshold.
+            // Populated once an arrival airport and heading-matched runway are known.
+            new MetricTileModel("DIST THR",
+                activeState?.ApproachDistanceNm is { } dist ? $"{dist:0.0} nm" : "-- nm"),
+            // LOC: ILS localizer deviation in CDI dots from NAV1 (positive = right, negative = left).
+            new MetricTileModel("LOC",
+                telemetry is null ? "-- dot" : $"{telemetry.Nav1LocalizerErrorDots:+0.0;-0.0;0.0} dot",
+                telemetry is not null && Math.Abs(telemetry.Nav1LocalizerErrorDots) > 1.0),
+            // G/PATH: geometric 3° glidepath deviation in feet (positive = above path, negative = below).
+            // Independent of ILS — computed from AGL vs ideal altitude at this distance from threshold.
+            // Alert when ±200 ft off the ideal 3° path.
+            new MetricTileModel("G/PATH",
+                activeState?.GlidepathDeviationFeet is { } gDev ? $"{gDev:+0;-0;0} ft" : "-- ft",
+                activeState?.GlidepathDeviationFeet is { } gDevAlert && Math.Abs(gDevAlert) > 200),
+        },
         _ => new[]
         {
             new MetricTileModel("IAS", telemetry is null ? "-- kt" : $"{telemetry.IndicatedAirspeedKnots:0} kt"),
-            new MetricTileModel("VS", telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm", telemetry is { VerticalSpeedFpm: < -1000 }),
+            new MetricTileModel("VS",  telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm"),
             new MetricTileModel("ALT AGL", telemetry is null ? "-- ft" : $"{telemetry.AltitudeAglFeet:0} ft"),
-            new MetricTileModel("G/S", "-- dot"),
-            new MetricTileModel("DIST THR", "-- nm"),
-            new MetricTileModel("LOC", "-- dot"),
         },
     };
 

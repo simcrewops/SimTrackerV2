@@ -34,6 +34,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
     private DateTimeOffset _activeFlightFetchedUtc = DateTimeOffset.MinValue;
     private IActiveFlightFetcher? _activeFlightFetcher;
     private string? _lastDetectedAircraftTitle;
+    private string? _lastGpsDestinationIdent;
     private DateTimeOffset? _lastKnownBlocksOffUtc;
 
     // Refresh the active flight from the API every minute while the app is running.
@@ -127,6 +128,24 @@ public sealed class TrackerShellHost : IAsyncDisposable
                 AircraftType     = detectedTitle,
                 AircraftCategory = ResolveAircraftCategory(detectedTitle),
             });
+        }
+
+        // Auto-detect the arrival airport from the GPS flight plan destination.
+        // This fills in ArrivalAirportIcao for free-flight sessions where no bid context
+        // is set, enabling runway resolution and TDZ display after landing.
+        // Only applies when the context has no arrival set (career flights keep their value).
+        var gpsDest = simConnectPoll.RawFrame?.GpsDestinationIdent;
+        if (!string.IsNullOrWhiteSpace(gpsDest) && gpsDest != _lastGpsDestinationIdent)
+        {
+            _lastGpsDestinationIdent = gpsDest;
+            var ctx = _persistentRuntimeCoordinator.CurrentContext;
+            if (string.IsNullOrWhiteSpace(ctx.ArrivalAirportIcao))
+            {
+                _persistentRuntimeCoordinator.UpdateContext(ctx with
+                {
+                    ArrivalAirportIcao = gpsDest,
+                });
+            }
         }
 
         if (simConnectPoll.HasTelemetry)

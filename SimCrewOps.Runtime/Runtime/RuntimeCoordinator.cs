@@ -4,6 +4,7 @@ using SimCrewOps.PhaseEngine.PhaseEngine;
 using SimCrewOps.Runways.Models;
 using SimCrewOps.Runways.Services;
 using SimCrewOps.Runtime.Models;
+using SimCrewOps.Scoring.Models;
 using SimCrewOps.Scoring.Scoring;
 using SimCrewOps.Tracking.Models;
 using SimCrewOps.Tracking.Tracking;
@@ -21,6 +22,11 @@ public sealed class RuntimeCoordinator
 
     private FlightSessionBlockTimes _blockTimes = new();
     private RunwayResolutionResult? _landingRunwayResolution;
+    private RunwayResolutionResult? _approachRunwayResolution;
+    private readonly TouchdownZoneCalculator _tzCalc = new();
+    private FlightPhase _lastKnownPhase = FlightPhase.Preflight;
+    private double? _approachDistanceNm;
+    private double? _glidepathDeviationFeet;
     private TelemetryFrame? _lastTelemetryFrame;
     private DateTimeOffset? _lastLivePositionSentUtc;
     private double? _lastLivePositionLatitude;
@@ -86,6 +92,10 @@ public sealed class RuntimeCoordinator
         _context = state.Context;
         _blockTimes = state.BlockTimes;
         _landingRunwayResolution = state.LandingRunwayResolution;
+        _approachRunwayResolution = state.ApproachRunwayResolution;
+        _approachDistanceNm = state.ApproachDistanceNm;
+        _glidepathDeviationFeet = state.GlidepathDeviationFeet;
+        _lastKnownPhase = state.CurrentPhase;
         _lastTelemetryFrame = state.LastTelemetryFrame;
         _lastLivePositionSentUtc = null;
         _lastLivePositionLatitude = state.LastTelemetryFrame?.Latitude;
@@ -112,6 +122,65 @@ public sealed class RuntimeCoordinator
         ArgumentNullException.ThrowIfNull(telemetryFrame);
 
         var phaseFrame = _phaseEngine.Process(telemetryFrame);
+
+        // --- Approach runway pre-resolution and live approach metrics ---
+        var previousPhase = _lastKnownPhase;
+        _lastKnownPhase = phaseFrame.Phase;
+
+        // Pre-resolve the runway once when entering Approach phase.
+        // Uses heading as the best-match hint so the correct runway end is picked even
+        // before the aircraft is close enough for a precise position-based resolution.
+        if (phaseFrame.Phase == FlightPhase.Approach
+            && previousPhase != FlightPhase.Approach
+            && !string.IsNullOrWhiteSpace(_context.ArrivalAirportIcao))
+        {
+            try
+            {
+                _approachRunwayResolution = await _runwayResolver.ResolveAsync(
+                    new RunwayResolutionRequest
+                    {
+                        ArrivalAirportIcao = _context.ArrivalAirportIcao,
+                        TouchdownLatitude = telemetryFrame.Latitude,
+                        TouchdownLongitude = telemetryFrame.Longitude,
+                        TouchdownHeadingTrueDegrees = telemetryFrame.HeadingTrueDegrees,
+                    },
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Swallow — approach runway resolution is best-effort; missing it
+                // just means DIST THR and G/PATH stay blank for this approach.
+            }
+        }
+
+        // Compute live distance-to-threshold and geometric glidepath deviation every
+        // frame while in Approach.  Clear when leaving Approach so stale values don't
+        // persist into the Landing phase (where the confirmed LandingRunwayResolution
+        // drives the TDZ section instead).
+        if (phaseFrame.Phase == FlightPhase.Approach && _approachRunwayResolution is not null)
+        {
+            var projection = _tzCalc.ProjectTouchdown(
+                _approachRunwayResolution.Runway,
+                telemetryFrame.Latitude,
+                telemetryFrame.Longitude);
+
+            // AlongTrackDistanceFeet is negative when the aircraft is still before
+            // the threshold.  Negate to get a positive "distance to go" value.
+            var distToThresholdFt = Math.Max(0.0, -projection.AlongTrackDistanceFeet);
+            _approachDistanceNm    = distToThresholdFt / 6076.115;
+
+            // Ideal AGL on a 3° glidepath = dist_ft × tan(3°) = dist_ft × 0.05241.
+            // Deviation > 0 → above path (fly down), < 0 → below path (fly up).
+            var idealAglFt         = distToThresholdFt * 0.05241;
+            _glidepathDeviationFeet = telemetryFrame.AltitudeAglFeet - idealAglFt;
+        }
+        else if (phaseFrame.Phase != FlightPhase.Approach)
+        {
+            _approachDistanceNm     = null;
+            _glidepathDeviationFeet = null;
+        }
+        // ----------------------------------------------------------------
+
         var enrichedTelemetryFrame = await EnrichTelemetryFrameAsync(phaseFrame, cancellationToken).ConfigureAwait(false);
         var enrichedPhaseFrame = new PhaseFrame
         {
@@ -136,6 +205,9 @@ public sealed class RuntimeCoordinator
             BlockTimes = _blockTimes,
             LastTelemetryFrame = _lastTelemetryFrame,
             LandingRunwayResolution = _landingRunwayResolution,
+            ApproachRunwayResolution = _approachRunwayResolution,
+            ApproachDistanceNm = _approachDistanceNm,
+            GlidepathDeviationFeet = _glidepathDeviationFeet,
             ScoreInput = scoreInput,
             ScoreResult = scoreResult,
         };
