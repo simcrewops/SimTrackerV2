@@ -149,11 +149,11 @@
                 <!-- Refresh flight button — re-fetches active flight assignment from the API -->
                 <Button Command="{Binding RefreshFlightCommand}"
                         ToolTip="Refresh active flight from SimCrewOps (use after clicking Fly Next)"
-                        Style="{StaticResource IconButtonStyle}"
-                        Width="28" Height="28"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Padding="8,4"
                         Margin="10,0,0,0"
                         VerticalAlignment="Center">
-                    <TextBlock Text="↻" FontSize="16" FontWeight="Bold" />
+                    <TextBlock Text="↻" FontSize="14" FontWeight="Bold" />
                 </Button>
 
                 <!-- Right: status pills -->
