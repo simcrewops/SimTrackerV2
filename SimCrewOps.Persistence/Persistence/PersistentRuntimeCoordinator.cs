@@ -66,8 +66,18 @@ public sealed class PersistentRuntimeCoordinator
     /// Updates the flight session context with data fetched from the web app
     /// (departure/arrival ICAO, flight number, etc.). No-op if a flight is already in progress.
     /// </summary>
+    public FlightSessionContext CurrentContext
+        => _runtimeCoordinator.CurrentContext;
+
     public void UpdateContext(FlightSessionContext context)
         => _runtimeCoordinator.UpdateContext(context);
+
+    /// <summary>
+    /// Updates only the aircraft type and category from a SimConnect detection event.
+    /// Bypasses the blocks-off guard — see <see cref="RuntimeCoordinator.UpdateAircraftType"/>.
+    /// </summary>
+    public void UpdateAircraftType(string aircraftType, string aircraftCategory)
+        => _runtimeCoordinator.UpdateAircraftType(aircraftType, aircraftCategory);
 
     public void Restore(FlightSessionRuntimeState state)
     {

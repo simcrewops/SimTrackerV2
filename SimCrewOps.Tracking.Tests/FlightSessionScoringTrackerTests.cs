@@ -115,8 +115,11 @@ public sealed class FlightSessionScoringTrackerTests
     }
 
     [Fact]
-    public void TrackerRequiresTaxiLightsOffBeforeParkingBrake_NotSameFrame()
+    public void TrackerPassesTaxiLights_WhenOffOnSameFrameAsBrake()
     {
+        // Taxi lights off on the exact frame the parking brake is set — counts as passing.
+        // The checklist order (brake → lights off) is satisfied even if both happen in the
+        // same telemetry frame.
         var tracker = new FlightSessionScoringTracker();
         var t0 = new DateTimeOffset(2026, 4, 13, 0, 0, 0, TimeSpan.Zero);
 
@@ -125,9 +128,25 @@ public sealed class FlightSessionScoringTrackerTests
 
         var input = tracker.BuildScoreInput();
 
-        Assert.False(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
+        Assert.True(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
         Assert.True(input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown);
         Assert.True(input.Arrival.AllEnginesOffByEndOfSession);
+    }
+
+    [Fact]
+    public void TrackerFailsTaxiLights_WhenStillOnAfterParkingBrake()
+    {
+        // Taxi lights left on after parking brake is set — deduction stays until lights go off.
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 13, 0, 0, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0.AddSeconds(0), FlightPhase.TaxiIn, onGround: true, taxiLights: true, landingLights: false, strobes: false, groundSpeed: 5, heading: 270));
+        tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.Arrival, onGround: true, taxiLights: true, landingLights: false, strobes: false, parkingBrake: true, engine1: false, engine2: false));
+
+        var input = tracker.BuildScoreInput();
+
+        Assert.False(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
+        Assert.True(input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown);
     }
 
     private static TelemetryFrame Frame(

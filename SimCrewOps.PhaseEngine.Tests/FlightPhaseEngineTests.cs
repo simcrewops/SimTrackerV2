@@ -282,7 +282,8 @@ public sealed class FlightPhaseEngineTests
         double agl = 0,
         double vs = 0,
         double lat = 0,
-        double lon = 0)
+        double lon = 0,
+        bool engine1Running = true)   // default true: engine running during normal taxi/flight
     {
         return new TelemetryFrame
         {
@@ -297,6 +298,37 @@ public sealed class FlightPhaseEngineTests
             VerticalSpeedFpm = vs,
             Latitude = lat,
             Longitude = lon,
+            Engine1Running = engine1Running,
         };
+    }
+
+    // -------------------------------------------------------------------------
+    //  Test 6 — Pushback: no engine → stays Preflight; engine start → TaxiOut
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Pushback_WithEnginesOff_DoesNotTransitionToTaxiOut()
+    {
+        var engine = new FlightPhaseEngine();
+        var t0 = new DateTimeOffset(2026, 4, 12, 16, 0, 0, TimeSpan.Zero);
+
+        // At gate, brake on, engines off
+        engine.Process(Frame(t0, onGround: true, parkingBrake: true, engine1Running: false));
+
+        // Tug pushback: brake released and aircraft moving — but no engine running.
+        // Should stay Preflight; no BlocksOff should fire.
+        var pushbackFrame1 = engine.Process(Frame(t0.AddSeconds(1), onGround: true, parkingBrake: false, gs: 1.5, engine1Running: false));
+        Assert.Equal(FlightPhase.Preflight, pushbackFrame1.Phase);
+        Assert.Null(pushbackFrame1.BlockEvent);
+
+        var pushbackFrame2 = engine.Process(Frame(t0.AddSeconds(5), onGround: true, parkingBrake: false, gs: 2, engine1Running: false));
+        Assert.Equal(FlightPhase.Preflight, pushbackFrame2.Phase);
+        Assert.Empty(engine.BlockEvents);  // still no block events at all
+
+        // Pilot starts engine and taxis under own power → TaxiOut + BlocksOff fire
+        var taxiOutFrame = engine.Process(Frame(t0.AddSeconds(20), onGround: true, parkingBrake: false, gs: 3, engine1Running: true));
+        Assert.Equal(FlightPhase.TaxiOut, taxiOutFrame.Phase);
+        Assert.NotNull(taxiOutFrame.BlockEvent);
+        Assert.Equal(BlockEventType.BlocksOff, taxiOutFrame.BlockEvent!.Type);
     }
 }

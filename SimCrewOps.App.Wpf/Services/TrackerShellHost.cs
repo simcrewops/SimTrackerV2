@@ -34,9 +34,12 @@ public sealed class TrackerShellHost : IAsyncDisposable
     private ActiveFlightResponse? _activeFlight;
     private DateTimeOffset _activeFlightFetchedUtc = DateTimeOffset.MinValue;
     private IActiveFlightFetcher? _activeFlightFetcher;
+    private string? _lastDetectedAircraftTitle;
+    private string? _lastGpsDestinationIdent;
+    private DateTimeOffset? _lastKnownBlocksOffUtc;
 
-    // Refresh the active flight from the API every 5 minutes while the app is running.
-    private static readonly TimeSpan ActiveFlightRefreshInterval = TimeSpan.FromMinutes(5);
+    // Refresh the active flight from the API every minute while the app is running.
+    private static readonly TimeSpan ActiveFlightRefreshInterval = TimeSpan.FromMinutes(1);
 
     public TrackerShellHost(
         ITrackerAppSettingsStore settingsStore,
@@ -77,6 +80,10 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
         if (_serviceStack.BackgroundSyncCoordinator is not null)
         {
+            // After any successful upload, immediately refresh the active flight so the
+            // tracker picks up the next assignment without waiting for the poll interval.
+            _serviceStack.BackgroundSyncCoordinator.OnSessionsUploadedAsync = RefreshActiveFlightAsync;
+
             _serviceStack.BackgroundSyncCoordinator.Start();
 
             try
@@ -109,6 +116,41 @@ public sealed class TrackerShellHost : IAsyncDisposable
         }
 
         var simConnectPoll = await _simConnectHost.PollAsync(cancellationToken).ConfigureAwait(false);
+
+        // When SimConnect detects a new aircraft title (e.g. "fenix-a319"), push it into
+        // the session context so the live position beacon and session upload both record
+        // the actual aircraft being flown rather than the bid aircraft type.
+        var detectedTitle = simConnectPoll.Status.DetectedAircraftTitle;
+        if (!string.IsNullOrWhiteSpace(detectedTitle) && detectedTitle != _lastDetectedAircraftTitle)
+        {
+            _lastDetectedAircraftTitle = detectedTitle;
+            // Use UpdateAircraftType rather than UpdateContext so the SimConnect-detected
+            // type always wins — UpdateContext is blocked after blocks-off, but the ATC
+            // MODEL SimVar fires asynchronously and typically arrives a few seconds into
+            // pushback, after blocks-off has already fired.
+            _persistentRuntimeCoordinator.UpdateAircraftType(
+                detectedTitle,
+                ResolveAircraftCategory(detectedTitle));
+        }
+
+        // Auto-detect the arrival airport from the GPS flight plan destination.
+        // This fills in ArrivalAirportIcao for free-flight sessions where no bid context
+        // is set, enabling runway resolution and TDZ display after landing.
+        // Only applies when the context has no arrival set (career flights keep their value).
+        var gpsDest = simConnectPoll.RawFrame?.GpsDestinationIdent;
+        if (!string.IsNullOrWhiteSpace(gpsDest) && gpsDest != _lastGpsDestinationIdent)
+        {
+            _lastGpsDestinationIdent = gpsDest;
+            var ctx = _persistentRuntimeCoordinator.CurrentContext;
+            if (string.IsNullOrWhiteSpace(ctx.ArrivalAirportIcao))
+            {
+                _persistentRuntimeCoordinator.UpdateContext(ctx with
+                {
+                    ArrivalAirportIcao = gpsDest,
+                });
+            }
+        }
+
         if (simConnectPoll.HasTelemetry)
         {
             _lastRawTelemetryFrame = simConnectPoll.RawFrame;
@@ -119,6 +161,17 @@ public sealed class TrackerShellHost : IAsyncDisposable
             _recoverySnapshot = await _persistentRuntimeCoordinator
                 .GetRecoverySnapshotAsync(cancellationToken)
                 .ConfigureAwait(false);
+
+            // Trigger an immediate active-flight re-fetch the moment blocks-off fires.
+            // The first few position beacons of every leg go out right after pushback —
+            // without this they would carry the previous leg's context until the 1-minute
+            // timer ticks.
+            var newBlocksOff = _runtimeState.BlockTimes.BlocksOffUtc;
+            if (newBlocksOff is not null && newBlocksOff != _lastKnownBlocksOffUtc)
+            {
+                _lastKnownBlocksOffUtc = newBlocksOff;
+                _activeFlightFetchedUtc = DateTimeOffset.MinValue; // force refresh on next poll
+            }
         }
 
         return BuildSnapshot(simConnectPoll.Status);
@@ -154,6 +207,8 @@ public sealed class TrackerShellHost : IAsyncDisposable
                     FlightNumber         = flight.FlightNumber,
                     AircraftType         = flight.AircraftType,
                     AircraftCategory     = ResolveAircraftCategory(flight.AircraftType),
+                    BidId                = string.IsNullOrWhiteSpace(flight.BidId) ? null : flight.BidId,
+                    ScheduledBlockHours  = flight.ScheduledBlockHours,
                 }
                 : new FlightSessionContext();
 

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -23,6 +24,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
 {
     private const uint FlightCriticalRequestId = 1;
     private const uint OperationalRequestId = 2;
+    private const uint AircraftStateRequestId = 3;
     private const uint FlightCriticalDefinitionId = 11;
     private const uint OperationalDefinitionId = 12;
 
@@ -37,6 +39,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
     private readonly uint _userObjectId;
 
     private LatestSimConnectState _latestState = new();
+    private string? _detectedAircraftTitle;
     private bool _disposed;
 
     // Facility request state — initialized lazily on first RequestFacilityDataAsync call.
@@ -72,10 +75,12 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         _userObjectId = GetUnsignedStaticValue(simConnectType, "SIMCONNECT_OBJECT_ID_USER");
 
         WireEvent(simConnectType, "OnRecvSimobjectData", HandleSimObjectData);
+        WireEvent(simConnectType, "OnRecvSystemState", HandleSystemState);
         WireEvent(simConnectType, "OnRecvException", HandleSimConnectException);
         WireEvent(simConnectType, "OnRecvQuit", HandleSimConnectQuit);
 
         RegisterDefinitions(managedAssembly, simConnectType);
+        RequestAircraftState(simConnectType);
     }
 
     public bool IsConnected => !_disposed;
@@ -628,6 +633,139 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         }
     }
 
+    private void HandleSystemState(object? data)
+    {
+        if (data is null) return;
+        var requestId = Convert.ToUInt32(GetInstanceValue(data, "dwRequestID"));
+        if (requestId != AircraftStateRequestId) return;
+
+        // szString is the aircraft .air file path, e.g. "Community\fenix-a319\..."
+        var aircraftPath = GetInstanceValue(data, "szString")?.ToString() ?? string.Empty;
+        _detectedAircraftTitle = ReadTitleFromAircraftCfg(aircraftPath) ?? ParseAircraftTitle(aircraftPath);
+    }
+
+    private void RequestAircraftState(Type simConnectType)
+    {
+        try
+        {
+            var method = simConnectType.GetMethod("RequestSystemState",
+                BindingFlags.Public | BindingFlags.Instance);
+            method?.Invoke(_simConnect, [AircraftStateRequestId, "AircraftLoaded"]);
+        }
+        catch
+        {
+            // Non-fatal — aircraft title will remain null if unsupported.
+        }
+    }
+
+    private static string? ReadTitleFromAircraftCfg(string aircraftPath)
+    {
+        try
+        {
+            string cfgPath;
+            if (aircraftPath.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase))
+            {
+                cfgPath = aircraftPath;
+            }
+            else
+            {
+                var dir = Path.GetDirectoryName(aircraftPath);
+                if (string.IsNullOrEmpty(dir)) return null;
+                cfgPath = Path.Combine(dir, "aircraft.cfg");
+            }
+
+            if (!File.Exists(cfgPath)) return null;
+
+            string? generalTitle = null;
+            string? firstFltsimTitle = null;
+            var inGeneral = false;
+            var inFirstFltsim = false;
+            var fltsimSeen = false;
+            var lineCount = 0;
+
+            foreach (var rawLine in File.ReadLines(cfgPath))
+            {
+                if (++lineCount > 300) break;
+                var line = rawLine.Trim();
+                if (line.Length == 0 || line[0] == ';') continue;
+
+                if (line[0] == '[')
+                {
+                    inGeneral     = line.Equals("[GENERAL]",  StringComparison.OrdinalIgnoreCase);
+                    inFirstFltsim = !fltsimSeen &&
+                                    line.StartsWith("[FLTSIM.", StringComparison.OrdinalIgnoreCase);
+                    if (inFirstFltsim) fltsimSeen = true;
+                    continue;
+                }
+
+                if ((inGeneral || inFirstFltsim) && line.StartsWith("title", StringComparison.OrdinalIgnoreCase))
+                {
+                    var eq = line.IndexOf('=');
+                    if (eq < 0) continue;
+                    var value = line[(eq + 1)..].Trim().Trim('"');
+                    if (string.IsNullOrWhiteSpace(value)) continue;
+
+                    if (inGeneral)     { generalTitle     = value; break; }
+                    if (inFirstFltsim) { firstFltsimTitle = value; }
+                }
+
+                if (generalTitle is not null && firstFltsimTitle is not null) break;
+            }
+
+            return generalTitle ?? firstFltsimTitle;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ParseAircraftTitle(string aircraftPath)
+    {
+        if (string.IsNullOrWhiteSpace(aircraftPath)) return null;
+
+        var parts = aircraftPath.Replace('/', '\\')
+            .Split('\\', StringSplitOptions.RemoveEmptyEntries);
+
+        // MSFS path layouts:
+        //   ...\Packages\Community\<package>\...          → parts[i+1] after "Community"
+        //   ...\Packages\Official\<channel>\<package>\... → parts[i+2] after "Official"
+        //     where <channel> is OneStore | Steam | Base | Marketplace | etc.
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            if (string.Equals(parts[i], "Community", StringComparison.OrdinalIgnoreCase))
+                return parts[i + 1];
+
+            if (string.Equals(parts[i], "Official", StringComparison.OrdinalIgnoreCase)
+                && i + 2 < parts.Length)
+                return parts[i + 2];
+        }
+
+        // ── Secondary scan: SimObjects vehicle container ───────────────────────
+        var vehicleContainers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Airplanes", "Helicopters", "Rotorcraft", "Boats", "GroundVehicles" };
+
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            if (vehicleContainers.Contains(parts[i]))
+                return parts[i + 1];
+        }
+
+        // ── Final fallback: walk from the end, skip files and generic folders ──
+        var genericFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "config", "data", "sounds", "texture", "model", "panel", "effects", "SimObjects" };
+
+        for (var i = parts.Length - 1; i >= 0; i--)
+        {
+            var seg = parts[i];
+            if (seg.Contains('.')) continue;
+            if (genericFolders.Contains(seg)) continue;
+            return seg;
+        }
+
+        return null;
+    }
+
     private void HandleSimConnectException(object? data)
     {
         var exceptionCode = data is null ? "unknown" : GetInstanceValue(data, "dwException")?.ToString() ?? "unknown";
@@ -735,6 +873,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             Engine2Running = _latestState.Engine2Running,
             Engine3Running = _latestState.Engine3Running,
             Engine4Running = _latestState.Engine4Running,
+            AircraftTitle  = _detectedAircraftTitle,
         });
     }
 

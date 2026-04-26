@@ -37,6 +37,14 @@ public sealed class BackgroundSyncCoordinator : IAsyncDisposable
 
     public BackgroundSyncStatus Status => _status;
 
+    /// <summary>
+    /// Optional callback invoked immediately after any sync pass that successfully
+    /// uploaded at least one session. Register this from the host to trigger
+    /// side-effects — e.g. refreshing the active flight so the tracker picks up the
+    /// next assignment without waiting for the next scheduled poll interval.
+    /// </summary>
+    public Func<CancellationToken, Task>? OnSessionsUploadedAsync { get; set; }
+
     public Task<PendingSessionSyncSummary> RunStartupSyncAsync(CancellationToken cancellationToken = default) =>
         RunSyncAsync("startup", cancellationToken);
 
@@ -121,6 +129,15 @@ public sealed class BackgroundSyncCoordinator : IAsyncDisposable
                 LastErrorMessage = null,
                 ConsecutiveFailureCount = 0,
             };
+
+            // If at least one session was uploaded successfully, invoke the callback so
+            // the host can immediately refresh the active flight rather than waiting for
+            // the next scheduled poll (up to 5 minutes).
+            if (OnSessionsUploadedAsync is { } callback
+                && summary.Results.Any(r => r.Status == SessionUploadStatus.Success))
+            {
+                await callback(cancellationToken).ConfigureAwait(false);
+            }
 
             return summary;
         }

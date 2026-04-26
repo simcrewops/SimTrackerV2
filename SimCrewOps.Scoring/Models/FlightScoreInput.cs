@@ -86,6 +86,18 @@ public sealed record LandingMetrics
     public int BounceCount { get; init; }
     public double TouchdownCenterlineDeviationFeet { get; init; }
     public double TouchdownCrabAngleDegrees { get; init; }
+
+    /// <summary>
+    /// WGS-84 latitude of the initial wheel contact point, in decimal degrees.
+    /// Zero when no touchdown was recorded (e.g. session ended in the air).
+    /// </summary>
+    public double TouchdownLatitude { get; init; }
+
+    /// <summary>
+    /// WGS-84 longitude of the initial wheel contact point, in decimal degrees.
+    /// Zero when no touchdown was recorded (e.g. session ended in the air).
+    /// </summary>
+    public double TouchdownLongitude { get; init; }
 }
 
 public sealed record TaxiInMetrics : TaxiMetrics

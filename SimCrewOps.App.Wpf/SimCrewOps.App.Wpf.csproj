@@ -9,20 +9,22 @@
     <LangVersion>12.0</LangVersion>
     <AssemblyName>SimTrackerV2</AssemblyName>
     <RootNamespace>SimCrewOps.App.Wpf</RootNamespace>
-    <Version>2.0.1-alpha</Version>
-    <AssemblyVersion>2.0.1.0</AssemblyVersion>
-    <FileVersion>2.0.1.0</FileVersion>
-    <InformationalVersion>2.0.1-alpha</InformationalVersion>
+    <Version>2.1.0-beta</Version>
+    <AssemblyVersion>2.1.0.0</AssemblyVersion>
+    <FileVersion>2.1.0.0</FileVersion>
+    <InformationalVersion>2.1.0-beta</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- WebView2 — embeds Chromium so the Live Map page loads simcrewops.com/tracker-map -->
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+    <!-- ExcludeFromSingleFile keeps these alongside the exe instead of bundling them inside.
+         SimConnect.dll is a native DLL that must be next to the executable at runtime. -->
     <None Include="..\lib\SimConnect.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
     <None Include="..\lib\Microsoft.FlightSimulator.SimConnect.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
   </ItemGroup>
 

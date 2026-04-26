@@ -16,6 +16,11 @@ public sealed record SimConnectRawTelemetryFrame
     public double Mach { get; init; }
     public double GroundSpeedKnots { get; init; }
     public double VerticalSpeedFpm { get; init; }
+    /// <summary>
+    /// Physics-engine vertical velocity in ft/s (negative = descending, no barometric lag).
+    /// Sourced from VELOCITY WORLD Y.
+    /// </summary>
+    public double VelocityWorldYFps { get; init; }
     public double BankAngleDegrees { get; init; }
     public double PitchAngleDegrees { get; init; }
     public double HeadingMagneticDegrees { get; init; }
@@ -57,4 +62,22 @@ public sealed record SimConnectRawTelemetryFrame
     public bool LvarBridgeRequired  { get; init; }
     /// <summary>True when the MobiFlight WASM bridge is connected and serving LVAR values.</summary>
     public bool LvarBridgeConnected { get; init; }
+
+    /// <summary>
+    /// Friendly aircraft title parsed from the MSFS AircraftLoaded path.
+    /// e.g. "Community\fenix-a319\..." → "fenix-a319". Null until first AircraftLoaded event.
+    /// </summary>
+    public string? AircraftTitle { get; init; }
+
+    /// <summary>NAV1 glideslope deviation in degrees. Positive = above glidepath, negative = below.</summary>
+    public double Nav1GlideslopeErrorDegrees { get; init; }
+
+    /// <summary>NAV1 radial/LOC deviation in degrees. Positive = right of centreline, negative = left.</summary>
+    public double Nav1RadialErrorDegrees { get; init; }
+
+    /// <summary>
+    /// Destination airport ICAO from the active GPS flight plan (e.g. "KLAX").
+    /// Null when no flight plan is loaded or the SimVar returns an empty / invalid value.
+    /// </summary>
+    public string? GpsDestinationIdent { get; init; }
 }

@@ -18,6 +18,7 @@ public sealed class FlightSessionScoringTracker
     // Distinct from _taxiOutSeen which fires on phase transition during pushback.
     private bool _forwardTaxiStarted;
     private bool _taxiOutTaxiLightsValid = true;
+    private DateTimeOffset? _taxiOutLightsOffStart;
     private double _taxiOutMaxGroundSpeed;
     private int _taxiOutTurnSpeedEvents;
     private DateTimeOffset? _lastTaxiOutTurnEventAt;
@@ -50,6 +51,7 @@ public sealed class FlightSessionScoringTracker
     private double? _pendingCruiseTargetAltitudeFeet;
     private DateTimeOffset? _pendingCruiseTargetStartedAt;
     private double? _newFlightLevelCaptureSeconds;
+    private DateTimeOffset? _lastSignificantCruiseVsAt;
 
     private bool _descentSeen;
     private double _descentMaxIasBelowFl100;
@@ -76,6 +78,8 @@ public sealed class FlightSessionScoringTracker
     private double _landingTouchdownGForce;
     private double _landingTouchdownCenterlineDeviationFeet;
     private double _landingTouchdownCrabAngleDegrees;
+    private double _landingTouchdownLatitude;
+    private double _landingTouchdownLongitude;
     private DateTimeOffset? _lastTouchdownAt;
     private DateTimeOffset? _airborneAfterTouchdownAt;
 
@@ -83,6 +87,9 @@ public sealed class FlightSessionScoringTracker
     private bool _taxiInLandingLightsOff = true;
     private bool _taxiInStrobesOff = true;
     private bool _taxiInTaxiLightsValid = true;
+    private DateTimeOffset? _taxiInLightsOffStart;
+    private DateTimeOffset? _taxiInLandingLightsOnStart;   // 60 s sustained on → penalty (1 min after vacate)
+    private DateTimeOffset? _taxiInStrobesOnStart;          // 60 s sustained on → penalty
     private double _taxiInMaxGroundSpeed;
     private int _taxiInTurnSpeedEvents;
     private DateTimeOffset? _lastTaxiInTurnEventAt;
@@ -143,6 +150,7 @@ public sealed class FlightSessionScoringTracker
         _taxiOutSeen = HasReachedPhase(currentPhase, FlightPhase.TaxiOut);
         _forwardTaxiStarted = _taxiOutSeen;
         _taxiOutTaxiLightsValid = !_taxiOutSeen || input.TaxiOut.TaxiLightsOn;
+        _taxiOutLightsOffStart = null;
         _taxiOutMaxGroundSpeed = input.TaxiOut.MaxGroundSpeedKnots;
         _taxiOutTurnSpeedEvents = input.TaxiOut.ExcessiveTurnSpeedEvents;
         _lastTaxiOutTurnEventAt = null;
@@ -172,6 +180,7 @@ public sealed class FlightSessionScoringTracker
         _pendingCruiseTargetAltitudeFeet = null;
         _pendingCruiseTargetStartedAt = null;
         _newFlightLevelCaptureSeconds = input.Cruise.NewFlightLevelCaptureSeconds;
+        _lastSignificantCruiseVsAt = null;
 
         if (HasReachedPhase(currentPhase, FlightPhase.Cruise) && lastTelemetryFrame is not null)
         {
@@ -211,6 +220,8 @@ public sealed class FlightSessionScoringTracker
         _landingTouchdownGForce = input.Landing.TouchdownGForce;
         _landingTouchdownCenterlineDeviationFeet = input.Landing.TouchdownCenterlineDeviationFeet;
         _landingTouchdownCrabAngleDegrees = input.Landing.TouchdownCrabAngleDegrees;
+        _landingTouchdownLatitude = input.Landing.TouchdownLatitude;
+        _landingTouchdownLongitude = input.Landing.TouchdownLongitude;
         _lastTouchdownAt = wheelsOnUtc;
         _airborneAfterTouchdownAt = null;
 
@@ -218,6 +229,9 @@ public sealed class FlightSessionScoringTracker
         _taxiInLandingLightsOff = !_taxiInSeen || input.TaxiIn.LandingLightsOff;
         _taxiInStrobesOff = !_taxiInSeen || input.TaxiIn.StrobesOff;
         _taxiInTaxiLightsValid = !_taxiInSeen || input.TaxiIn.TaxiLightsOn;
+        _taxiInLightsOffStart = null;
+        _taxiInLandingLightsOnStart = null;
+        _taxiInStrobesOnStart = null;
         _taxiInMaxGroundSpeed = input.TaxiIn.MaxGroundSpeedKnots;
         _taxiInTurnSpeedEvents = input.TaxiIn.ExcessiveTurnSpeedEvents;
         _lastTaxiInTurnEventAt = null;
@@ -273,7 +287,8 @@ public sealed class FlightSessionScoringTracker
         {
             Preflight = new PreflightMetrics
             {
-                BeaconOnBeforeTaxi = _preflightBeaconSeen,
+                // Pass until forward taxi begins — only penalise once the window has closed.
+                BeaconOnBeforeTaxi = !_forwardTaxiStarted || _preflightBeaconSeen,
             },
             TaxiOut = new TaxiMetrics
             {
@@ -341,6 +356,8 @@ public sealed class FlightSessionScoringTracker
                 BounceCount = _landingBounceCount,
                 TouchdownCenterlineDeviationFeet = _landingTouchdownCenterlineDeviationFeet,
                 TouchdownCrabAngleDegrees = _landingTouchdownCrabAngleDegrees,
+                TouchdownLatitude = _landingTouchdownLatitude,
+                TouchdownLongitude = _landingTouchdownLongitude,
             },
             TaxiIn = new TaxiInMetrics
             {
@@ -388,9 +405,9 @@ public sealed class FlightSessionScoringTracker
 
     private void UpdatePreflight(TelemetryFrame frame)
     {
-        // Beacon must be on before forward taxi starts (GS > 6 kt, own-power movement).
+        // Beacon must be on before forward taxi starts (GS ≥ 6 kt, own-power movement).
         // Pushback counts as preflight — the beacon should already be on during pushback.
-        // Keep the window open while we're still within the startup grace period to avoid
+        // Keep the window open while within the startup grace period to avoid
         // stale SimVar false-values permanently closing the window on first-frame reconnect.
         if ((!_forwardTaxiStarted || _postRestoreGraceFrames > 0) && frame.BeaconLightOn)
         {
@@ -411,21 +428,26 @@ public sealed class FlightSessionScoringTracker
         // Forward taxi = aircraft moving under its own power at ≥ 6 kt.
         // Pushback by tug is typically 1–3 kt; 6 kt is safely above any realistic pushback speed.
         // The beacon window closes at this point (pilot should have had beacon on since pushback).
-        // Taxi lights must already be on when forward taxi begins.
         if (!_forwardTaxiStarted && frame.GroundSpeedKnots >= 6.0)
         {
             _forwardTaxiStarted = true;
-            if (_postRestoreGraceFrames <= 0 && !frame.TaxiLightsOn)
-            {
-                _taxiOutTaxiLightsValid = false;
-            }
         }
 
-        // Also enforce taxi lights throughout the taxi roll (once forward taxi is underway).
-        // Also skip during the post-restore grace window to avoid stale SimVar false positives.
-        if (_forwardTaxiStarted && _postRestoreGraceFrames <= 0 && !frame.TaxiLightsOn)
+        // Enforce taxi lights throughout the taxi roll (once forward taxi is underway).
+        // Require 3 consecutive seconds of lights-off before recording a deduction so that
+        // an accidental switch toggle doesn't cause a permanent penalty.
+        if (_forwardTaxiStarted && _postRestoreGraceFrames <= 0)
         {
-            _taxiOutTaxiLightsValid = false;
+            if (!frame.TaxiLightsOn)
+            {
+                _taxiOutLightsOffStart ??= frame.TimestampUtc;
+                if (frame.TimestampUtc - _taxiOutLightsOffStart.Value >= TimeSpan.FromSeconds(3))
+                    _taxiOutTaxiLightsValid = false;
+            }
+            else
+            {
+                _taxiOutLightsOffStart = null;
+            }
         }
 
         CountTurnSpeedEvent(frame, ref _taxiOutTurnSpeedEvents, ref _lastTaxiOutTurnEventAt);
@@ -514,14 +536,21 @@ public sealed class FlightSessionScoringTracker
         var currentAltitude = Math.Round(frame.IndicatedAltitudeFeet / 100.0) * 100.0;
         _cruiseTargetAltitudeFeet ??= currentAltitude;
 
-        // Only accumulate altitude deviation while the aircraft is in level flight.
-        // During a step climb (or descent to a lower cruise level) the VS will be well
-        // above 300 fpm; counting that deviation would penalise an intentional level
-        // change.  The target-altitude adoption logic below handles updating the
-        // reference once the new level is captured.
-        if (Math.Abs(frame.VerticalSpeedFpm) < 300)
+        // Track whenever VS exceeds 300 fpm — used below to suppress false altitude-
+        // deviation penalties during the level-off phase after a step climb/descent.
+        if (Math.Abs(frame.VerticalSpeedFpm) > 300)
+            _lastSignificantCruiseVsAt = frame.TimestampUtc;
+
+        // Only accumulate altitude deviation while the aircraft has been in genuinely
+        // level flight for at least 60 seconds.  If VS was significant within the last
+        // 60 s we're still in (or just completed) a step climb/descent — skip accumulation
+        // so intentional level changes don't register as altitude deviations.
+        if (Math.Abs(frame.VerticalSpeedFpm) < 300 &&
+            (_lastSignificantCruiseVsAt is null ||
+             frame.TimestampUtc - _lastSignificantCruiseVsAt.Value >= TimeSpan.FromSeconds(60)))
         {
-            _cruiseMaxAltitudeDeviation = Math.Max(_cruiseMaxAltitudeDeviation, Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value));
+            var deviation = Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value);
+            _cruiseMaxAltitudeDeviation = Math.Max(_cruiseMaxAltitudeDeviation, deviation);
         }
 
         if (Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value) > 300)
@@ -667,6 +696,8 @@ public sealed class FlightSessionScoringTracker
                 _landingTouchdownBankAngleDegrees = Math.Abs(frame.BankAngleDegrees);
                 _landingTouchdownIndicatedAirspeedKnots = frame.IndicatedAirspeedKnots;
                 _landingTouchdownPitchAngleDegrees = frame.PitchAngleDegrees;
+                _landingTouchdownLatitude = frame.Latitude;
+                _landingTouchdownLongitude = frame.Longitude;
             }
 
             if (_airborneAfterTouchdownAt is not null &&
@@ -705,19 +736,51 @@ public sealed class FlightSessionScoringTracker
         _taxiInSeen = true;
         _taxiInMaxGroundSpeed = Math.Max(_taxiInMaxGroundSpeed, frame.GroundSpeedKnots);
 
-        if (frame.LandingLightsOn)
+        // Landing lights — 60-second grace window after runway vacate before penalty locks in.
+        if (_postRestoreGraceFrames <= 0)
         {
-            _taxiInLandingLightsOff = false;
+            if (frame.LandingLightsOn)
+            {
+                _taxiInLandingLightsOnStart ??= frame.TimestampUtc;
+                if (frame.TimestampUtc - _taxiInLandingLightsOnStart.Value >= TimeSpan.FromSeconds(60))
+                    _taxiInLandingLightsOff = false;
+            }
+            else
+            {
+                _taxiInLandingLightsOnStart = null;
+            }
         }
 
-        if (frame.StrobesOn)
+        // Strobes — same 60-second window.
+        if (_postRestoreGraceFrames <= 0)
         {
-            _taxiInStrobesOff = false;
+            if (frame.StrobesOn)
+            {
+                _taxiInStrobesOnStart ??= frame.TimestampUtc;
+                if (frame.TimestampUtc - _taxiInStrobesOnStart.Value >= TimeSpan.FromSeconds(60))
+                    _taxiInStrobesOff = false;
+            }
+            else
+            {
+                _taxiInStrobesOnStart = null;
+            }
         }
 
-        if (!frame.TaxiLightsOn)
+        // Only require taxi lights while actively taxiing — below 8 kts (slowing to gate)
+        // lights off is correct procedure, ~1 min before parking brake.
+        // 3-second debounce: an accidental toggle doesn't cause a permanent penalty.
+        if (frame.GroundSpeedKnots >= 8.0 && _postRestoreGraceFrames <= 0)
         {
-            _taxiInTaxiLightsValid = false;
+            if (!frame.TaxiLightsOn)
+            {
+                _taxiInLightsOffStart ??= frame.TimestampUtc;
+                if (frame.TimestampUtc - _taxiInLightsOffStart.Value >= TimeSpan.FromSeconds(3))
+                    _taxiInTaxiLightsValid = false;
+            }
+            else
+            {
+                _taxiInLightsOffStart = null;
+            }
         }
 
         CountTurnSpeedEvent(frame, ref _taxiInTurnSpeedEvents, ref _lastTaxiInTurnEventAt);
@@ -747,10 +810,6 @@ public sealed class FlightSessionScoringTracker
         {
             if (!frame.ParkingBrakeSet)
             {
-                // This tracks the last known taxi-light state before the parking brake was set.
-                // A same-frame brake+lights-off update does not prove the required order.
-                _arrivalTaxiLightsOffBeforeParkingBrakeSet = !frame.TaxiLightsOn;
-
                 if (!AnyEngineRunning(frame))
                 {
                     _arrivalParkingBrakeSetBeforeAllEnginesShutdown = false;
@@ -760,6 +819,15 @@ public sealed class FlightSessionScoringTracker
             {
                 _arrivalParkingBrakeObserved = true;
             }
+        }
+
+        // Taxi lights: must be turned off after parking brake is set (shutdown checklist).
+        // Correct flow: taxi with lights on → set brake → turn lights off → passes.
+        // We only update after brake is observed so keeping lights on during taxi never
+        // fires a penalty early; the penalty clears the moment lights go off post-brake.
+        if (_arrivalParkingBrakeObserved && !frame.TaxiLightsOn)
+        {
+            _arrivalTaxiLightsOffBeforeParkingBrakeSet = true;
         }
 
         _arrivalAllEnginesOffByEndOfSession = !AnyEngineRunning(frame);
@@ -841,40 +909,39 @@ public sealed class FlightSessionScoringTracker
 
     private double CalculateTouchdownVerticalSpeed(TelemetryFrame touchdownFrame)
     {
-        // Primary: AGL rate-of-change between the last airborne frame and the touchdown frame.
-        // This gives the true sink rate at wheel contact rather than the barometric VS, which
-        // can spike at gear compression.
+        // Primary: VELOCITY WORLD Y at the moment of wheel contact.
         //
-        // Guard: only use this path when the previous airborne frame was ≤ 15 ft AGL.
-        // At 1 Hz a smooth 120-fpm flare puts the last airborne frame at ~2 ft; even a firm
-        // 700-fpm touch only reaches ~12 ft.  If the gap is larger (e.g. the test skips from
-        // 480 ft straight to on-ground, or the tracker reconnects mid-air) the AGL delta would
-        // be wildly overstated — skip to the barometric fallback instead.
+        // This SimVar is driven by the physics engine and has no barometric lag —
+        // it reads the true instantaneous sink rate at the exact frame OnGround flips.
+        // The VERTICAL SPEED SimVar (barometric) lags real aircraft motion by 1–2 s,
+        // so during a flare where the pilot arrests from 350 → 195 fpm the baro VS
+        // still reads the pre-flare rate at touchdown. VELOCITY WORLD Y does not have
+        // this problem and matches what Volanta and other pro trackers report.
+        if (touchdownFrame.VelocityWorldYFps < 0)
+            return Math.Abs(touchdownFrame.VelocityWorldYFps) * 60.0;
+
+        // Fallback A: VelocityWorldY on the last airborne frame (slightly earlier reading).
+        // Catches the case where the sim briefly reports 0 or positive on the touchdown frame.
+        if (_previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VelocityWorldYFps < 0)
+            return Math.Abs(_previousFrame.VelocityWorldYFps) * 60.0;
+
+        // Fallback B: barometric VS on the last airborne frame (sampled just before contact).
+        // The frame immediately before OnGround is free of gear-compression artefacts.
         if (_previousFrame is not null
             && !_previousFrame.OnGround
-            && _previousFrame.AltitudeAglFeet <= 15
-            && _previousFrame.VerticalSpeedFpm < 0)   // must be descending, not on a bounce peak
+            && _previousFrame.AltitudeAglFeet <= 50
+            && _previousFrame.VerticalSpeedFpm < 0)
         {
-            var dtSeconds = (touchdownFrame.TimestampUtc - _previousFrame.TimestampUtc).TotalSeconds;
-            if (dtSeconds >= 0.05)
-            {
-                var aglSinkFpm = (_previousFrame.AltitudeAglFeet - touchdownFrame.AltitudeAglFeet) / dtSeconds * 60.0;
-                if (aglSinkFpm > 0)
-                    return aglSinkFpm;
-            }
+            return Math.Abs(_previousFrame.VerticalSpeedFpm);
         }
 
-        // Fallback A: barometric VS on the touchdown frame itself (AGL ≈ 0, just contacted).
-        // This is the sim's own reported descent rate at the moment of ground contact and is
-        // more accurate than any earlier approach-phase sample.
+        // Fallback C: barometric VS on the touchdown frame itself.
         if (touchdownFrame.VerticalSpeedFpm < 0)
             return Math.Abs(touchdownFrame.VerticalSpeedFpm);
 
-        // Fallback B: last airborne frame's barometric VS (avoids gear-compression artefact).
-        if (_previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VerticalSpeedFpm < 0)
-            return Math.Abs(_previousFrame.VerticalSpeedFpm);
-
-        // Fallback C: AGL rate-of-change from the flare window in the 2-second rolling buffer.
+        // Fallback B: AGL rate-of-change across the full flare window in the 2-second rolling
+        // buffer.  Using a wider time span (first → last sample in 0.5–30 ft range) smooths
+        // out per-frame noise and gives a stable average sink rate.
         var flareFrames = _recentSamples
             .Where(static s => s.AltitudeAglFeet >= 0.5 && s.AltitudeAglFeet <= 30)
             .OrderBy(static s => s.TimestampUtc)
@@ -892,7 +959,7 @@ public sealed class FlightSessionScoringTracker
             }
         }
 
-        // Last resort: barometric VS from the nearest-to-ground samples.
+        // Last resort: lowest barometric VS from sub-100-ft samples.
         var subHundredSamples = _recentSamples
             .Where(static s => s.AltitudeAglFeet is > 0 and <= 100)
             .ToList();

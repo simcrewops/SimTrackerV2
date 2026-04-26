@@ -64,6 +64,26 @@ public sealed record SimSessionUploadRequest
     [JsonPropertyName("bidId")]
     public string? BidId { get; init; }
 
+    [JsonPropertyName("departure")]
+    public string? Departure { get; init; }
+
+    [JsonPropertyName("arrival")]
+    public string? Arrival { get; init; }
+
+    /// <summary>
+    /// WGS-84 latitude of the initial wheel contact point, in decimal degrees.
+    /// Zero when no touchdown was recorded (e.g. session ended in the air).
+    /// </summary>
+    [JsonPropertyName("touchdownLat")]
+    public double TouchdownLat { get; init; }
+
+    /// <summary>
+    /// WGS-84 longitude of the initial wheel contact point, in decimal degrees.
+    /// Zero when no touchdown was recorded (e.g. session ended in the air).
+    /// </summary>
+    [JsonPropertyName("touchdownLon")]
+    public double TouchdownLon { get; init; }
+
     [JsonPropertyName("runwayIdentifier")]
     public string? RunwayIdentifier { get; init; }
 
@@ -88,9 +108,60 @@ public sealed record SimSessionUploadRequest
     [JsonPropertyName("touchdownCrabAngleDegrees")]
     public double? TouchdownCrabAngleDegrees { get; init; }
 
+    /// <summary>
+    /// ICAO aircraft type code as detected by MSFS (e.g. "A319", "B738").
+    /// Sourced from the ATC MODEL SimVar; null for free flights where no type
+    /// was detected before blocks-on.
+    /// </summary>
     [JsonPropertyName("aircraft")]
-    public string? Aircraft { get; init; }
+    public string? AircraftType { get; init; }
 
+    /// <summary>
+    /// World map size category: "regional", "narrowbody", or "widebody".
+    /// Derived from <see cref="AircraftType"/> at upload time.
+    /// </summary>
     [JsonPropertyName("aircraftCategory")]
     public string? AircraftCategory { get; init; }
+
+    /// <summary>
+    /// Per-phase score breakdown with all deduction findings.
+    /// Allows the website to show pilots exactly why they lost points on each phase.
+    /// Only findings with actual deductions (PointsDeducted > 0) or automatic fails are included.
+    /// </summary>
+    [JsonPropertyName("phaseFindings")]
+    public IReadOnlyList<PhaseScoreFindingUpload>? PhaseFindings { get; init; }
+
+    /// <summary>
+    /// Global safety deductions (overspeed, stall, GPWS) that are not tied to a single phase.
+    /// </summary>
+    [JsonPropertyName("globalFindings")]
+    public IReadOnlyList<ScoreFindingUpload>? GlobalFindings { get; init; }
+}
+
+public sealed record PhaseScoreFindingUpload
+{
+    [JsonPropertyName("phase")]
+    public string Phase { get; init; } = "";
+
+    [JsonPropertyName("maxPoints")]
+    public double MaxPoints { get; init; }
+
+    [JsonPropertyName("awardedPoints")]
+    public double AwardedPoints { get; init; }
+
+    /// <summary>Deduction findings for this phase. Empty list = clean phase.</summary>
+    [JsonPropertyName("findings")]
+    public IReadOnlyList<ScoreFindingUpload> Findings { get; init; } = [];
+}
+
+public sealed record ScoreFindingUpload
+{
+    [JsonPropertyName("description")]
+    public string Description { get; init; } = "";
+
+    [JsonPropertyName("pointsDeducted")]
+    public double PointsDeducted { get; init; }
+
+    [JsonPropertyName("isAutomaticFail")]
+    public bool IsAutomaticFail { get; init; }
 }
