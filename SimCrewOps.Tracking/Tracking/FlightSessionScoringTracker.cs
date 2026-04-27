@@ -875,7 +875,10 @@ public sealed class FlightSessionScoringTracker
                 _cruiseHadSignificantClimb = false;
                 _cruiseLevelingStartedAt = null;
 
-                // Accumulate deviation from the locked target.
+                // |VS| ≤ 100 fpm mask — reaching this line requires absVs ≤ 100 (outer
+                // else-branch), so only genuinely settled ticks contribute to the deviation.
+                // Any tick where |VS| > 100 fpm resets the settling timer above and never
+                // reaches here, satisfying the spec requirement to skip those ticks entirely.
                 var deviation = Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value);
                 _cruiseMaxAltitudeDeviation = Math.Max(_cruiseMaxAltitudeDeviation, deviation);
             }

@@ -131,6 +131,12 @@ public sealed record ClimbMetrics
 
 public sealed record CruiseMetrics
 {
+    /// <summary>
+    /// Maximum altitude deviation in feet from the locked cruise target.
+    /// Only ticks where |VS| ≤ 100 fpm contribute — frames with higher vertical speed
+    /// are masked out because the aircraft is still climbing or descending and has not
+    /// reached a genuinely settled cruise state.
+    /// </summary>
     public double MaxAltitudeDeviationFeet { get; init; }
     public double? NewFlightLevelCaptureSeconds { get; init; }
     public int SpeedInstabilityEvents { get; init; }
