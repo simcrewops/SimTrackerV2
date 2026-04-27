@@ -153,6 +153,20 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
         if (simConnectPoll.HasTelemetry)
         {
+            // If the previous session is complete (e.g. the tracker sat idle at the
+            // gate, SimConnect disconnected, then reconnected for a new flight), reset
+            // the coordinator to Preflight so the new flight gets a fresh session.
+            // Without this, the forward-only phase engine stays stuck in Arrival and
+            // the UI keeps showing the previous completed flight.
+            if (_runtimeState?.IsComplete == true)
+            {
+                await _persistentRuntimeCoordinator
+                    .ResetForNewSessionAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                _runtimeState = null;
+                _lastKnownBlocksOffUtc = null;
+            }
+
             _lastRawTelemetryFrame = simConnectPoll.RawFrame;
             var runtimeFrame = await _persistentRuntimeCoordinator
                 .ProcessFrameAsync(simConnectPoll.TelemetryFrame!, cancellationToken)

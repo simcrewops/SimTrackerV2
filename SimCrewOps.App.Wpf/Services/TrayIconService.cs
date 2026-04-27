@@ -1,4 +1,3 @@
-using System.Drawing;
 using WinForms = System.Windows.Forms;
 
 namespace SimCrewOps.App.Wpf.Services;
@@ -30,7 +29,7 @@ public sealed class TrayIconService : IDisposable
 
         _notifyIcon = new WinForms.NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = AppIcon.CreateNativeIcon(),
             Visible = true,
             ContextMenuStrip = _contextMenu,
             Text = "SimCrewOps Tracker",

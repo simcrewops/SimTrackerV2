@@ -30,9 +30,11 @@ public partial class App : WpfApplication
             _shellHost = bootstrap.ShellHost;
 
             _mainWindowViewModel = new MainWindowViewModel(bootstrap);
+            var wpfIcon = AppIcon.CreateWpfIcon();
             _mainWindow = new MainWindow
             {
                 DataContext = _mainWindowViewModel,
+                Icon = wpfIcon,   // null is fine — WPF uses the default window icon
             };
 
             _trayIconService = new TrayIconService();
@@ -40,7 +42,6 @@ public partial class App : WpfApplication
             _trayIconService.SyncRequested += TrayIconService_SyncRequested;
             _trayIconService.ExitRequested += TrayIconService_ExitRequested;
 
-            _mainWindow.StateChanged += MainWindow_StateChanged;
             _mainWindow.Closing += MainWindow_Closing;
             _mainWindowViewModel.PropertyChanged += MainWindowViewModel_PropertyChanged;
 
@@ -69,7 +70,6 @@ public partial class App : WpfApplication
 
         if (_mainWindow is not null)
         {
-            _mainWindow.StateChanged -= MainWindow_StateChanged;
             _mainWindow.Closing -= MainWindow_Closing;
         }
 
@@ -81,14 +81,6 @@ public partial class App : WpfApplication
         }
 
         base.OnExit(e);
-    }
-
-    private void MainWindow_StateChanged(object? sender, EventArgs e)
-    {
-        if (_mainWindow?.WindowState == WindowState.Minimized)
-        {
-            HideToTray();
-        }
     }
 
     private void MainWindow_Closing(object? sender, CancelEventArgs e)
