@@ -180,8 +180,10 @@ public sealed class FlightSessionScoringTrackerTests
         var t0 = new DateTimeOffset(2026, 4, 13, 2, 30, 0, TimeSpan.Zero);
 
         tracker.Ingest(Frame(t0.AddSeconds(0),  FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 20, heading: 180));
-        // Past 60 s + 3 s debounce, still no taxi lights, still above 8 kts.
+        // 60 s gate opens here; the debounce clock starts now (t=64).
         tracker.Ingest(Frame(t0.AddSeconds(64), FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 12, heading: 180));
+        // 3 s after the gate first opened → debounce completes, penalty latches.
+        tracker.Ingest(Frame(t0.AddSeconds(67), FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 12, heading: 180));
 
         var input = tracker.BuildScoreInput();
 
