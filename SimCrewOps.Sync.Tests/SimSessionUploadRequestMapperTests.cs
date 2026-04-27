@@ -304,18 +304,10 @@ public sealed class SimSessionUploadRequestMapperTests
             Cruise    = new CruiseMetrics   { MaxAltitudeDeviationFeet = 310, MaxBankAngleDegrees = 22.5 },
             Descent   = new DescentMetrics  { MaxIasBelowFl100Knots = 275.0, LandingLightsOnBy9900 = true },
             Approach  = new ApproachMetrics { GearDownBy1000Agl = true, IlsApproachDetected = true, MaxGlideslopeDeviationDots = 0.33 },
-            Landing   = new LandingMetrics
-            {
-                BounceCount              = 0,
-                TouchdownVerticalSpeedFpm = -142,
-                TouchdownHeadingDegrees  = 182.0,
-                TouchdownDistanceFromThresholdFt = 2_840,
-                SpeedAtThresholdKnots    = 135.0,
-                ThresholdCrossingHeightFt = 48.0,
-            },
-            TaxiIn   = new TaxiInMetrics   { MaxGroundSpeedKnots = 18.0 },
-            Arrival  = new ArrivalMetrics  { AllEnginesOffByEndOfSession = true },
-            Safety   = new SafetyMetrics   { OverspeedEvents = 2, StallEvents = 1 },
+            Landing   = new LandingMetrics  { BounceCount = 0, TouchdownVerticalSpeedFpm = -142 },
+            TaxiIn    = new TaxiInMetrics   { MaxGroundSpeedKnots = 18.0 },
+            Arrival   = new ArrivalMetrics  { AllEnginesOffByEndOfSession = true },
+            Safety    = new SafetyMetrics   { OverspeedEvents = 2, StallEvents = 1 },
         });
 
         var mapper = new SimSessionUploadRequestMapper();
@@ -324,10 +316,10 @@ public sealed class SimSessionUploadRequestMapperTests
         Assert.NotNull(v5);
 
         Assert.True(v5!.Preflight.BeaconOnBeforeTaxi);
-        Assert.Equal(28.5, v5.TaxiOut.MaxGroundSpeedKts);
+        Assert.Equal(28.5,  v5.TaxiOut.MaxGroundSpeedKts);
         Assert.True(v5.TaxiOut.TaxiLightsOn);
-        Assert.Equal(1,    v5.Takeoff.Bounces);
-        Assert.Equal(4.2,  v5.Takeoff.MaxBankDeg);
+        Assert.Equal(1,     v5.Takeoff.Bounces);
+        Assert.Equal(4.2,   v5.Takeoff.MaxBankDeg);
         Assert.Equal(268.0, v5.Climb.MaxIasBelowFl100Kts);
         Assert.Equal(310.0, v5.Cruise.MaxAltitudeDeviationFt);
         Assert.Equal(22.5,  v5.Cruise.MaxBankDeg);
@@ -338,10 +330,6 @@ public sealed class SimSessionUploadRequestMapperTests
         Assert.Equal(0.33,  v5.Approach.IlsMaxGlideslopeDevDots);
         Assert.Equal(0,     v5.Landing.Bounces);
         Assert.Equal(-142,  v5.Landing.TouchdownVsFpm);
-        Assert.Equal(182.0, v5.Landing.TouchdownHeadingDeg);
-        Assert.Equal(2_840, v5.Landing.DistanceFromThresholdFt);
-        Assert.Equal(135.0, v5.Landing.SpeedAtThresholdKts);
-        Assert.Equal(48.0,  v5.Landing.ThresholdCrossingHeightFt);
         Assert.Equal(18.0,  v5.TaxiIn.MaxGroundSpeedKts);
         Assert.True(v5.Arrival.AllEnginesOffByEndOfSession);
         Assert.Equal(2, v5.Safety.OverspeedEvents);
@@ -351,50 +339,18 @@ public sealed class SimSessionUploadRequestMapperTests
     // ── LandingAnalysis ──────────────────────────────────────────────────────
 
     [Fact]
-    public void Map_LandingAnalysis_IsPopulatedWithApproachPathAndGeometryFields()
+    public void Map_LandingAnalysis_IsPopulatedFromApproachSampleBuffer()
     {
-        // GPS track has one Approach-phase point sandwiched between non-Approach points.
-        // Only the Approach point should appear in LandingAnalysis.ApproachPath.
-        var t0 = new DateTimeOffset(2026, 4, 15, 10, 0, 0, TimeSpan.Zero);
-
+        // When the FlightScoreInput has approach samples, LandingAnalysis is populated
+        // with those samples mapped to ApproachSampleUpload.
         var state = BaseState(scoreInput: new FlightScoreInput
         {
-            Landing = new LandingMetrics
+            ApproachPath = new[]
             {
-                TouchdownHeadingDegrees          = 183.0,
-                TouchdownDistanceFromThresholdFt = 2_500,
-                SpeedAtThresholdKnots            = 138.0,
-                ThresholdCrossingHeightFt        = 45.0,
-            },
-            GpsTrack = new[]
-            {
-                new GpsTrackPoint
-                {
-                    TimestampUtc     = t0.AddMinutes(-5),
-                    Latitude         = 40.1,
-                    Longitude        = -75.1,
-                    AltitudeFeet     = 4_000,
-                    GroundSpeedKnots = 220,
-                    Phase            = FlightPhase.Descent,
-                },
-                new GpsTrackPoint
-                {
-                    TimestampUtc     = t0.AddMinutes(-2),
-                    Latitude         = 40.05,
-                    Longitude        = -75.05,
-                    AltitudeFeet     = 1_200,
-                    GroundSpeedKnots = 170,
-                    Phase            = FlightPhase.Approach,   // <-- only this one
-                },
-                new GpsTrackPoint
-                {
-                    TimestampUtc     = t0,
-                    Latitude         = 40.0,
-                    Longitude        = -75.0,
-                    AltitudeFeet     = 0,
-                    GroundSpeedKnots = 130,
-                    Phase            = FlightPhase.Landing,
-                },
+                new ApproachSamplePoint { DistanceToThresholdNm = 8.2, AltitudeFeet = 2_600, IndicatedAirspeedKnots = 210, VerticalSpeedFpm = -1_400 },
+                new ApproachSamplePoint { DistanceToThresholdNm = 4.1, AltitudeFeet = 1_300, IndicatedAirspeedKnots = 185, VerticalSpeedFpm = -900  },
+                new ApproachSamplePoint { DistanceToThresholdNm = 0.5, AltitudeFeet = 150,   IndicatedAirspeedKnots = 145, VerticalSpeedFpm = -650  },
+                new ApproachSamplePoint { DistanceToThresholdNm = 0.1, AltitudeFeet = 0,     IndicatedAirspeedKnots = 138, VerticalSpeedFpm = -180  },
             },
         });
 
@@ -404,65 +360,34 @@ public sealed class SimSessionUploadRequestMapperTests
         var analysis = request.LandingAnalysis;
         Assert.NotNull(analysis);
 
-        Assert.Equal(183.0,  analysis!.TouchdownHeadingDeg);
-        Assert.Equal(2_500,  analysis.TouchdownDistanceFromThresholdFt);
-        Assert.Equal(138.0,  analysis.SpeedAtThreshold);
-        Assert.Equal(45.0,   analysis.ThresholdCrossingHeightFt);
+        var path = analysis!.ApproachPath;
+        Assert.NotNull(path);
+        Assert.Equal(4, path!.Count);
 
-        // Approach path must contain only the Approach-phase GPS point.
-        Assert.NotNull(analysis.ApproachPath);
-        Assert.Single(analysis.ApproachPath!);
-        Assert.Equal("Approach", analysis.ApproachPath[0].Phase);
-        Assert.Equal(40.05,   analysis.ApproachPath[0].Latitude);
-        Assert.Equal(-75.05,  analysis.ApproachPath[0].Longitude);
+        Assert.Equal(8.2,    path[0].DistanceToThresholdNm);
+        Assert.Equal(2_600,  path[0].AltitudeFt);
+        Assert.Equal(210,    path[0].IasKts);
+        Assert.Equal(-1_400, path[0].VsFpm);
+
+        // Final (touchdown) sample.
+        Assert.Equal(0.1,  path[3].DistanceToThresholdNm);
+        Assert.Equal(0,    path[3].AltitudeFt);
+        Assert.Equal(138,  path[3].IasKts);
+        Assert.Equal(-180, path[3].VsFpm);
     }
 
     [Fact]
-    public void Map_LandingAnalysis_IsNullWhenNoLandingDataPresent()
+    public void Map_LandingAnalysis_IsNullWhenApproachPathIsEmpty()
     {
-        // When TouchdownDistanceFromThresholdFt == 0, TouchdownHeadingDegrees == 0,
-        // and no runway was resolved, the LandingAnalysis object must be omitted entirely.
+        // LandingAnalysis must be omitted entirely when no approach samples were recorded.
         var state = BaseState(scoreInput: new FlightScoreInput
         {
-            Landing = new LandingMetrics
-            {
-                TouchdownDistanceFromThresholdFt = 0,
-                TouchdownHeadingDegrees          = 0,
-                // All other fields default to 0 / false
-            },
+            ApproachPath = Array.Empty<ApproachSamplePoint>(),
         });
-        // No LandingRunwayResolution set on state (HasResolvedLandingRunway == false).
 
         var mapper = new SimSessionUploadRequestMapper();
         var request = mapper.Map(Session(state), TrackerVersion);
 
         Assert.Null(request.LandingAnalysis);
-    }
-
-    [Fact]
-    public void Map_LandingAnalysis_ApproachPathIsNullWhenNoApproachGpsPoints()
-    {
-        // LandingAnalysis is still emitted when touchdown data is present, but
-        // ApproachPath is null when the GPS track has no Approach-phase points.
-        var state = BaseState(scoreInput: new FlightScoreInput
-        {
-            Landing = new LandingMetrics
-            {
-                TouchdownDistanceFromThresholdFt = 1_800,
-                TouchdownHeadingDegrees          = 270,
-            },
-            GpsTrack = new[]
-            {
-                new GpsTrackPoint { Phase = FlightPhase.Cruise,  AltitudeFeet = 35_000 },
-                new GpsTrackPoint { Phase = FlightPhase.Landing, AltitudeFeet = 0 },
-                // No Approach point
-            },
-        });
-
-        var mapper = new SimSessionUploadRequestMapper();
-        var request = mapper.Map(Session(state), TrackerVersion);
-
-        Assert.NotNull(request.LandingAnalysis);
-        Assert.Null(request.LandingAnalysis!.ApproachPath);
     }
 }

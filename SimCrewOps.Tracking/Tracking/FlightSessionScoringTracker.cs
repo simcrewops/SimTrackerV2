@@ -98,11 +98,10 @@ public sealed class FlightSessionScoringTracker
     private double _landingOatAtTouchdown;
     private double _landingHeadwindComponent;
     private double _landingCrosswindComponent;
-    // ── Threshold crossing and touchdown geometry ──────────────────────────────
-    private double _landingTouchdownHeadingDegrees;
-    private double _landingDistanceFromThresholdFt;
-    private double _approachSpeedAtThresholdKnots;
-    private double _approachThresholdCrossingHeightFt;
+    // ── Approach path (circular buffer, max 300 samples) ─────────────────────
+    private const int ApproachPathMaxSamples = 300;
+    private readonly Queue<ApproachSamplePoint> _approachPathBuffer = new();
+
     private DateTimeOffset? _lastTouchdownAt;
     private DateTimeOffset? _airborneAfterTouchdownAt;
 
@@ -318,10 +317,11 @@ public sealed class FlightSessionScoringTracker
         _landingOatAtTouchdown          = input.Landing.OatCelsiusAtTouchdown;
         _landingHeadwindComponent       = input.Landing.HeadwindComponentKnots;
         _landingCrosswindComponent      = input.Landing.CrosswindComponentKnots;
-        _landingTouchdownHeadingDegrees = input.Landing.TouchdownHeadingDegrees;
-        _landingDistanceFromThresholdFt = input.Landing.TouchdownDistanceFromThresholdFt;
-        _approachSpeedAtThresholdKnots  = input.Landing.SpeedAtThresholdKnots;
-        _approachThresholdCrossingHeightFt = input.Landing.ThresholdCrossingHeightFt;
+
+        // Approach path is not restored — it cannot be reconstructed from saved state.
+        // The buffer starts empty and will accumulate fresh samples if the aircraft
+        // re-enters approach range after a mid-flight reconnect.
+        _approachPathBuffer.Clear();
 
         // Give the first several frames after reconnect a chance to reflect the real
         // aircraft state before any "lights off" watchdog checks can trigger.
@@ -454,10 +454,6 @@ public sealed class FlightSessionScoringTracker
                 HeadwindComponentKnots = _landingHeadwindComponent,
                 CrosswindComponentKnots = _landingCrosswindComponent,
                 OatCelsiusAtTouchdown = _landingOatAtTouchdown,
-                TouchdownHeadingDegrees = _landingTouchdownHeadingDegrees,
-                TouchdownDistanceFromThresholdFt = _landingDistanceFromThresholdFt,
-                SpeedAtThresholdKnots = _approachSpeedAtThresholdKnots,
-                ThresholdCrossingHeightFt = _approachThresholdCrossingHeightFt,
             },
             TaxiIn = new TaxiInMetrics
             {
@@ -494,6 +490,9 @@ public sealed class FlightSessionScoringTracker
                 FuelAtLandingLbs = _sessionFuelAtLandingLbs,
             },
             GpsTrack = _gpsTrack,
+            ApproachPath = _approachPathBuffer.Count > 0
+                ? _approachPathBuffer.ToList()
+                : [],
         };
     }
 
@@ -524,24 +523,31 @@ public sealed class FlightSessionScoringTracker
     }
 
     /// <summary>
-    /// Called by RuntimeCoordinator at WheelsOn to record the aircraft's true heading
-    /// and the distance from the runway threshold to the touchdown point.
+    /// Appends one approach telemetry sample to the rolling buffer.
+    /// If the buffer is at capacity (300 samples) the oldest entry is dropped first.
+    /// Called by RuntimeCoordinator every ~2 s during Descent/Approach when the
+    /// aircraft is within 15 nm of the arrival airport, and once at touchdown.
     /// </summary>
-    public void SetTouchdownGeometry(double headingDegrees, double distanceFromThresholdFt)
+    public void RecordApproachSample(double distanceToThresholdNm, double altitudeFeet,
+                                     double indicatedAirspeedKnots, double verticalSpeedFpm)
     {
-        _landingTouchdownHeadingDegrees = headingDegrees;
-        _landingDistanceFromThresholdFt = distanceFromThresholdFt;
+        if (_approachPathBuffer.Count >= ApproachPathMaxSamples)
+            _approachPathBuffer.Dequeue();
+
+        _approachPathBuffer.Enqueue(new ApproachSamplePoint
+        {
+            DistanceToThresholdNm    = distanceToThresholdNm,
+            AltitudeFeet             = altitudeFeet,
+            IndicatedAirspeedKnots   = indicatedAirspeedKnots,
+            VerticalSpeedFpm         = verticalSpeedFpm,
+        });
     }
 
     /// <summary>
-    /// Called by RuntimeCoordinator the first frame the aircraft crosses the runway threshold
-    /// during the Approach phase. Captures the reference speed and height for the debrief.
+    /// Clears the approach path buffer.  Called by RuntimeCoordinator when a crash
+    /// is detected or the flight is cancelled so no partial data is uploaded.
     /// </summary>
-    public void SetThresholdCrossing(double speedKnots, double heightAglFt)
-    {
-        _approachSpeedAtThresholdKnots     = speedKnots;
-        _approachThresholdCrossingHeightFt = heightAglFt;
-    }
+    public void DiscardApproachPath() => _approachPathBuffer.Clear();
 
     private void UpdatePreflight(TelemetryFrame frame)
     {

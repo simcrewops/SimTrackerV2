@@ -510,18 +510,19 @@ public sealed class RuntimeCoordinatorTests
         Assert.InRange(landing.CrosswindComponentKnots,  14.9,  15.1);
     }
 
-    // ── Threshold crossing and touchdown geometry ───────────────────────────
+    // ── Approach path recording ─────────────────────────────────────────────
 
     [Fact]
-    public async Task RuntimeCoordinator_ThresholdCrossing_CapturesSpeedHeightAndTouchdownGeometry()
+    public async Task RuntimeCoordinator_ApproachPath_RecordsSamplesFromApproachPhase()
     {
-        // Full approach with the aircraft starting NORTH of the threshold so the first
-        // approach frame does NOT trigger the crossing.  A subsequent frame positioned
-        // exactly at the threshold at 52 ft AGL and 137 kts fires the capture.
-        // After touchdown we verify all four new landing geometry fields.
+        // Verifies that:
+        //  • The airport reference coords are resolved on Approach entry.
+        //  • Samples are time-gated (≥ 2 s apart) during Approach.
+        //  • A final sample is recorded at the Landing transition.
+        //  • All sample fields (distNm, altFt, iasKts, vsFpm) are populated.
         var runway = new RunwayEnd
         {
-            AirportIcao = "KTHR",
+            AirportIcao = "KAPTH",
             RunwayIdentifier = "18",
             TrueHeadingDegrees = 180,
             LengthFeet = 10_000,
@@ -532,13 +533,13 @@ public sealed class RuntimeCoordinatorTests
 
         var provider = new StubRunwayDataProvider(new AirportRunwayCatalog
         {
-            AirportIcao = "KTHR",
+            AirportIcao = "KAPTH",
             DataSource = RunwayDataSource.OurAirportsFallback,
             Runways = new[] { runway },
         });
 
         var coordinator = new RuntimeCoordinator(
-            new FlightSessionContext { DepartureAirportIcao = "KDEP", ArrivalAirportIcao = "KTHR" },
+            new FlightSessionContext { DepartureAirportIcao = "KDEP", ArrivalAirportIcao = "KAPTH" },
             new RunwayResolver(provider));
 
         var t0 = new DateTimeOffset(2026, 4, 15, 18, 0, 0, TimeSpan.Zero);
@@ -554,84 +555,90 @@ public sealed class RuntimeCoordinatorTests
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(200), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, heading: 180));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(231), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, heading: 180));
 
-        // Start of approach — aircraft is 600 ft NORTH of the threshold (before it).
-        // The phase engine transitions to Approach here and pre-resolves the runway.
-        // AlongTrackDistanceFeet < 0 at this position, so no threshold crossing fires yet.
-        var northOfThreshold = Offset(runway.ThresholdLatitude, runway.ThresholdLongitude, 0, 600);
+        // Enter Approach from ~5 nm north of the threshold (well within the 15 nm trigger).
+        // Offset to ~5 nm north so the haversine distance lands in range.
+        const double FiveNmInDegLat = 5.0 / 60.0; // ~0.0833 degrees per nm
+        var approachLat = runway.ThresholdLatitude + FiveNmInDegLat;
         await coordinator.ProcessFrameAsync(Frame(
             t0.AddSeconds(290),
             onGround: false,
             altitudeAgl: 2_800,
             gearDown: true,
-            verticalSpeed: -500,
+            verticalSpeed: -700,
+            indicatedAirspeed: 180,
             heading: 180,
-            latitude: northOfThreshold.Latitude,
-            longitude: northOfThreshold.Longitude));
+            latitude: approachLat,
+            longitude: -75.0));
 
-        // Threshold crossing frame — aircraft is at exactly the threshold position.
-        // AlongTrackDistanceFeet ≈ 0 (≥ 0) → crossing fires, capturing 137 kts / 52 ft.
+        // Second Approach frame — 4 s later (≥ 2 s → new sample recorded).
         await coordinator.ProcessFrameAsync(Frame(
-            t0.AddSeconds(300),
+            t0.AddSeconds(294),
             onGround: false,
-            altitudeAgl: 52,
-            indicatedAirspeed: 137,
+            altitudeAgl: 2_500,
+            gearDown: true,
+            verticalSpeed: -700,
+            indicatedAirspeed: 175,
             heading: 180,
-            latitude: runway.ThresholdLatitude,
-            longitude: runway.ThresholdLongitude));
+            latitude: approachLat - 0.01,
+            longitude: -75.0));
 
-        // Touchdown 3 250 ft past the threshold at heading 179°.
-        var touchdownPoint = Offset(runway.ThresholdLatitude, runway.ThresholdLongitude, runway.TrueHeadingDegrees, 3_250);
+        // Third Approach frame — only 1 s later (< 2 s → throttled, no new sample).
+        await coordinator.ProcessFrameAsync(Frame(
+            t0.AddSeconds(295),
+            onGround: false,
+            altitudeAgl: 2_450,
+            gearDown: true,
+            verticalSpeed: -700,
+            indicatedAirspeed: 174,
+            heading: 180,
+            latitude: approachLat - 0.011,
+            longitude: -75.0));
+
+        // Landing transition — one final sample regardless of time guard.
+        var touchdownPoint = Offset(runway.ThresholdLatitude, runway.ThresholdLongitude, runway.TrueHeadingDegrees, 2_000);
         var wheelsOn = await coordinator.ProcessFrameAsync(Frame(
             t0.AddSeconds(310),
             onGround: true,
             latitude: touchdownPoint.Latitude,
             longitude: touchdownPoint.Longitude,
             altitudeAgl: 0,
-            groundSpeed: 100,
-            heading: 179));
+            groundSpeed: 120,
+            indicatedAirspeed: 138,
+            verticalSpeed: -180,
+            heading: 180));
 
-        var landing = wheelsOn.State.ScoreInput.Landing;
+        var approachPath = wheelsOn.State.ScoreInput.ApproachPath;
 
-        // Threshold crossing: speed and height captured from the crossing frame.
-        Assert.Equal(137.0, landing.SpeedAtThresholdKnots);
-        Assert.Equal(52.0,  landing.ThresholdCrossingHeightFt);
+        // Approach entry (t0+290) → sample 1; second frame (t0+294, ≥2s) → sample 2;
+        // third frame (t0+295, <2s) → throttled; Landing entry (t0+310) → final sample.
+        Assert.Equal(3, approachPath.Count);
 
-        // Touchdown geometry: heading from the WheelsOn frame, distance derived from runway projection.
-        Assert.Equal(179.0, landing.TouchdownHeadingDegrees);
-        Assert.InRange(landing.TouchdownDistanceFromThresholdFt, 3_200, 3_300);
+        // First sample: aircraft at approachLat, ~5 nm north of threshold.
+        Assert.InRange(approachPath[0].DistanceToThresholdNm, 4.0, 6.0);
+        Assert.Equal(2_800, approachPath[0].AltitudeFeet);
+        Assert.Equal(180,   approachPath[0].IndicatedAirspeedKnots);
+        Assert.Equal(-700,  approachPath[0].VerticalSpeedFpm);
+
+        // Final (landing) sample: aircraft at touchdownPoint, AGL=0, IAS=138.
+        var last = approachPath[^1];
+        Assert.Equal(0,    last.AltitudeFeet);
+        Assert.Equal(138,  last.IndicatedAirspeedKnots);
+        Assert.Equal(-180, last.VerticalSpeedFpm);
+        // Distance to threshold at touchdown is small (within 1 nm of the 2 000 ft mark)
+        Assert.InRange(last.DistanceToThresholdNm, 0.0, 1.0);
     }
 
     [Fact]
-    public async Task RuntimeCoordinator_ThresholdCrossing_ResetAfterGoAround()
+    public async Task RuntimeCoordinator_ApproachPath_EmptyWhenNoArrivalAirportConfigured()
     {
-        // After a go-around the _thresholdCrossedInApproach flag must reset so that
-        // the second (successful) approach captures its own threshold values, not the
-        // first approach's.
-        var runway = new RunwayEnd
-        {
-            AirportIcao = "KGAR",
-            RunwayIdentifier = "18",
-            TrueHeadingDegrees = 180,
-            LengthFeet = 10_000,
-            ThresholdLatitude = 40.0,
-            ThresholdLongitude = -75.0,
-            DataSource = RunwayDataSource.OurAirportsFallback,
-        };
-
-        var provider = new StubRunwayDataProvider(new AirportRunwayCatalog
-        {
-            AirportIcao = "KGAR",
-            DataSource = RunwayDataSource.OurAirportsFallback,
-            Runways = new[] { runway },
-        });
-
+        // Without an ArrivalAirportIcao the coordinator cannot resolve reference coords
+        // and the approach path must remain empty.
         var coordinator = new RuntimeCoordinator(
-            new FlightSessionContext { DepartureAirportIcao = "KDEP", ArrivalAirportIcao = "KGAR" },
-            new RunwayResolver(provider));
+            new FlightSessionContext(), // no ArrivalAirportIcao
+            new RunwayResolver(new StubRunwayDataProvider(null)));
 
-        var t0 = new DateTimeOffset(2026, 4, 15, 19, 0, 0, TimeSpan.Zero);
+        var t0 = new DateTimeOffset(2026, 4, 15, 20, 0, 0, TimeSpan.Zero);
 
-        // Standard sequence up to cruise.
         await coordinator.ProcessFrameAsync(Frame(t0, onGround: true, parkingBrake: true));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(1), onGround: true, parkingBrake: false, groundSpeed: 2));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(30), onGround: true, indicatedAirspeed: 55));
@@ -641,78 +648,10 @@ public sealed class RuntimeCoordinatorTests
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(131), onGround: false, altitudeAgl: 35_000, verticalSpeed: 0, heading: 180));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(200), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, heading: 180));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(231), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, heading: 180));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(290), onGround: false, altitudeAgl: 2_800, gearDown: true, verticalSpeed: -500, heading: 180));
+        var final = await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(310), onGround: true, altitudeAgl: 0, groundSpeed: 100, heading: 180));
 
-        // ── First approach (go-around) ──────────────────────────────────────
-        // Enter Approach north of threshold.
-        var northOfThreshold = Offset(runway.ThresholdLatitude, runway.ThresholdLongitude, 0, 600);
-        await coordinator.ProcessFrameAsync(Frame(
-            t0.AddSeconds(290),
-            onGround: false,
-            altitudeAgl: 2_800,
-            gearDown: true,
-            verticalSpeed: -500,
-            heading: 180,
-            latitude: northOfThreshold.Latitude,
-            longitude: northOfThreshold.Longitude));
-
-        // Cross the threshold at 200 kts / 55 ft — first approach, values captured here.
-        await coordinator.ProcessFrameAsync(Frame(
-            t0.AddSeconds(300),
-            onGround: false,
-            altitudeAgl: 55,
-            indicatedAirspeed: 200,
-            heading: 180,
-            latitude: runway.ThresholdLatitude,
-            longitude: runway.ThresholdLongitude));
-
-        // Go-around: aircraft climbs through 400 ft AGL while airborne → phase transitions to
-        // Climb and _approachRecoveryActive is set to true.  The RuntimeCoordinator's
-        // else-if branch sees phase != Approach and resets _thresholdCrossedInApproach.
-        // Note: we keep the aircraft below 3 000 ft and do NOT stabilise for 30 s so the
-        // phase engine does not transition to Cruise (which would break the recovery path).
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(310), onGround: false, altitudeAgl: 500,   verticalSpeed: 1_500, indicatedAirspeed: 160, heading: 180));
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(320), onGround: false, altitudeAgl: 2_000, verticalSpeed: 500,   indicatedAirspeed: 180, heading: 180));
-
-        // ── Second approach (landing) ───────────────────────────────────────
-        // Aircraft is still in Climb with _approachRecoveryActive=true.  Lowering the gear
-        // while below 3 000 ft triggers the recovery short-circuit back to Approach —
-        // no need to go through the full Descent→Approach path.
-        var northOfThreshold2 = Offset(runway.ThresholdLatitude, runway.ThresholdLongitude, 0, 800);
-        await coordinator.ProcessFrameAsync(Frame(
-            t0.AddSeconds(330),
-            onGround: false,
-            altitudeAgl: 2_500,
-            gearDown: true,
-            verticalSpeed: -500,
-            heading: 180,
-            latitude: northOfThreshold2.Latitude,
-            longitude: northOfThreshold2.Longitude));
-
-        // Cross threshold on second approach at 142 kts / 48 ft — these values must win.
-        await coordinator.ProcessFrameAsync(Frame(
-            t0.AddSeconds(340),
-            onGround: false,
-            altitudeAgl: 48,
-            indicatedAirspeed: 142,
-            heading: 180,
-            latitude: runway.ThresholdLatitude,
-            longitude: runway.ThresholdLongitude));
-
-        var touchdownPoint = Offset(runway.ThresholdLatitude, runway.ThresholdLongitude, runway.TrueHeadingDegrees, 2_800);
-        var wheelsOn = await coordinator.ProcessFrameAsync(Frame(
-            t0.AddSeconds(350),
-            onGround: true,
-            latitude: touchdownPoint.Latitude,
-            longitude: touchdownPoint.Longitude,
-            altitudeAgl: 0,
-            groundSpeed: 95,
-            heading: 181));
-
-        var landing = wheelsOn.State.ScoreInput.Landing;
-
-        // Values from the SECOND approach must be captured, not the first (200 kts / 55 ft).
-        Assert.Equal(142.0, landing.SpeedAtThresholdKnots);
-        Assert.Equal(48.0,  landing.ThresholdCrossingHeightFt);
+        Assert.Empty(final.State.ScoreInput.ApproachPath);
     }
 
     [Fact]

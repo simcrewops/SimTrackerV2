@@ -95,11 +95,9 @@ public sealed class SimSessionUploadRequestMapper
                 : null,
             // Structured raw phase metrics for webapp scoring
             ScoreInputV5 = MapScoreInputV5(state.ScoreInput),
-            // Landing analysis — omit entirely when no landing was recorded
-            LandingAnalysis = state.ScoreInput.Landing.TouchdownDistanceFromThresholdFt > 0
-                || state.ScoreInput.Landing.TouchdownHeadingDegrees > 0
-                || state.HasResolvedLandingRunway
-                ? MapLandingAnalysis(state)
+            // Landing analysis — omit entirely when no approach path was recorded
+            LandingAnalysis = state.ScoreInput.ApproachPath.Count > 0
+                ? MapLandingAnalysis(state.ScoreInput.ApproachPath)
                 : null,
         };
     }
@@ -217,10 +215,6 @@ public sealed class SimSessionUploadRequestMapper
                 HeadwindKts                = s.Landing.HeadwindComponentKnots,
                 CrosswindKts               = s.Landing.CrosswindComponentKnots,
                 OatCelsius                 = s.Landing.OatCelsiusAtTouchdown,
-                TouchdownHeadingDeg        = s.Landing.TouchdownHeadingDegrees,
-                DistanceFromThresholdFt    = s.Landing.TouchdownDistanceFromThresholdFt,
-                SpeedAtThresholdKts        = s.Landing.SpeedAtThresholdKnots,
-                ThresholdCrossingHeightFt  = s.Landing.ThresholdCrossingHeightFt,
             },
             TaxiIn = new ScoreInputTaxiV5
             {
@@ -245,32 +239,18 @@ public sealed class SimSessionUploadRequestMapper
             },
         };
 
-    private static LandingAnalysisUpload MapLandingAnalysis(FlightSessionRuntimeState state)
-    {
-        var landing = state.ScoreInput.Landing;
-
-        // Approach-phase GPS points for the runway overlay diagram.
-        var approachPoints = state.ScoreInput.GpsTrack
-            .Where(p => p.Phase == FlightPhase.Approach)
-            .Select(p => new GpsTrackPointUpload
-            {
-                TimestampUtc     = p.TimestampUtc,
-                Latitude         = p.Latitude,
-                Longitude        = p.Longitude,
-                AltitudeFeet     = p.AltitudeFeet,
-                GroundSpeedKnots = p.GroundSpeedKnots,
-                Phase            = p.Phase.ToString(),
-            })
-            .ToList();
-
-        return new LandingAnalysisUpload
+    private static LandingAnalysisUpload MapLandingAnalysis(
+        IReadOnlyList<SimCrewOps.Scoring.Models.ApproachSamplePoint> approachPath) =>
+        new()
         {
-            TouchdownHeadingDeg            = landing.TouchdownHeadingDegrees,
-            RunwayDesignator               = state.LandingRunwayResolution?.Runway.RunwayIdentifier,
-            ApproachPath                   = approachPoints.Count > 0 ? approachPoints : null,
-            TouchdownDistanceFromThresholdFt = landing.TouchdownDistanceFromThresholdFt,
-            SpeedAtThreshold               = landing.SpeedAtThresholdKnots,
-            ThresholdCrossingHeightFt      = landing.ThresholdCrossingHeightFt,
+            ApproachPath = approachPath
+                .Select(s => new ApproachSampleUpload
+                {
+                    DistanceToThresholdNm = s.DistanceToThresholdNm,
+                    AltitudeFt            = s.AltitudeFeet,
+                    IasKts                = s.IndicatedAirspeedKnots,
+                    VsFpm                 = s.VerticalSpeedFpm,
+                })
+                .ToList(),
         };
-    }
 }

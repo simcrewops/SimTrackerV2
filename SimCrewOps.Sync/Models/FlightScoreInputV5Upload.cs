@@ -237,17 +237,6 @@ public sealed record ScoreInputLandingV5
     [JsonPropertyName("oatCelsius")]
     public double OatCelsius { get; init; }
 
-    [JsonPropertyName("touchdownHeadingDeg")]
-    public double TouchdownHeadingDeg { get; init; }
-
-    [JsonPropertyName("distanceFromThresholdFt")]
-    public double DistanceFromThresholdFt { get; init; }
-
-    [JsonPropertyName("speedAtThresholdKts")]
-    public double SpeedAtThresholdKts { get; init; }
-
-    [JsonPropertyName("thresholdCrossingHeightFt")]
-    public double ThresholdCrossingHeightFt { get; init; }
 }
 
 public sealed record ScoreInputArrivalV5
@@ -286,38 +275,39 @@ public sealed record ScoreInputSafetyV5
 // ── Landing analysis ───────────────────────────────────────────────────────────
 
 /// <summary>
-/// Rich landing geometry object sent alongside the standard touchdown metrics.
-/// Enables the webapp debrief page to show runway overlay, approach profile,
-/// and threshold-crossing data without requiring additional API calls.
+/// Landing analysis object included in the POST /api/sim-sessions body.
+/// Contains only the raw approach telemetry stream; all runway geometry
+/// (designator, touchdown distance, threshold speed/height, heading) is derived
+/// server-side by the webapp using the touchdown GPS coords and OurAirports data.
 /// </summary>
 public sealed record LandingAnalysisUpload
 {
-    /// <summary>Aircraft true heading at the moment of touchdown (degrees).</summary>
-    [JsonPropertyName("touchdownHeadingDeg")]
-    public double TouchdownHeadingDeg { get; init; }
-
-    /// <summary>ICAO runway designator (e.g. "28L", "18R").</summary>
-    [JsonPropertyName("runwayDesignator")]
-    public string? RunwayDesignator { get; init; }
-
     /// <summary>
-    /// GPS track points recorded during the Approach phase only.
-    /// Subset of the full GPS track filtered by phase, useful for rendering
-    /// the approach path on a runway diagram.
-    /// Null when no approach-phase GPS points were recorded.
+    /// Time-series approach profile sampled every ~2 s from when the aircraft enters
+    /// Descent/Approach within 15 nm of the arrival airport through touchdown.
+    /// Chronological order — farthest sample first, touchdown last.
+    /// Null when no approach data was recorded.
     /// </summary>
     [JsonPropertyName("approachPath")]
-    public IReadOnlyList<GpsTrackPointUpload>? ApproachPath { get; init; }
+    public IReadOnlyList<ApproachSampleUpload>? ApproachPath { get; init; }
+}
 
-    /// <summary>Distance from the runway threshold to the touchdown point (feet).</summary>
-    [JsonPropertyName("touchdownDistanceFromThresholdFt")]
-    public double TouchdownDistanceFromThresholdFt { get; init; }
+/// <summary>A single approach telemetry sample.</summary>
+public sealed record ApproachSampleUpload
+{
+    /// <summary>Haversine distance from the aircraft to the arrival airport reference point (nm).</summary>
+    [JsonPropertyName("distanceToThresholdNm")]
+    public double DistanceToThresholdNm { get; init; }
 
-    /// <summary>Indicated airspeed when the aircraft crossed the runway threshold (knots).</summary>
-    [JsonPropertyName("speedAtThreshold")]
-    public double SpeedAtThreshold { get; init; }
+    /// <summary>Altitude above ground level (feet).</summary>
+    [JsonPropertyName("altitudeFt")]
+    public double AltitudeFt { get; init; }
 
-    /// <summary>Altitude AGL when the aircraft crossed the runway threshold (feet).</summary>
-    [JsonPropertyName("thresholdCrossingHeightFt")]
-    public double ThresholdCrossingHeightFt { get; init; }
+    /// <summary>Indicated airspeed (knots).</summary>
+    [JsonPropertyName("iasKts")]
+    public double IasKts { get; init; }
+
+    /// <summary>Vertical speed (feet per minute; negative = descending).</summary>
+    [JsonPropertyName("vsFpm")]
+    public double VsFpm { get; init; }
 }

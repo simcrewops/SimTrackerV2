@@ -21,6 +21,14 @@ public sealed record FlightScoreInput
     /// Downsampled GPS track for flight-path replay (one point every ~30 seconds).
     /// </summary>
     public IReadOnlyList<GpsTrackPoint> GpsTrack { get; init; } = [];
+
+    /// <summary>
+    /// Time-series approach profile sampled every ~2 s from when the aircraft enters
+    /// Descent/Approach within 15 nm of the arrival airport through touchdown.
+    /// Sent as <c>landingAnalysis.approachPath</c> so the webapp can draw the approach
+    /// chart and derive threshold-crossing metrics server-side.
+    /// </summary>
+    public IReadOnlyList<ApproachSamplePoint> ApproachPath { get; init; } = [];
 }
 
 public sealed record SessionMetrics
@@ -59,6 +67,25 @@ public sealed record GpsTrackPoint
     public double AltitudeFeet { get; init; }
     public double GroundSpeedKnots { get; init; }
     public FlightPhase Phase { get; init; }
+}
+
+/// <summary>
+/// A single time-series sample recorded during the approach.
+/// Sent as part of <c>landingAnalysis.approachPath</c> in the /api/sim-sessions upload.
+/// </summary>
+public sealed record ApproachSamplePoint
+{
+    /// <summary>Haversine distance from the aircraft's current position to the arrival airport reference point (nm).</summary>
+    public double DistanceToThresholdNm { get; init; }
+
+    /// <summary>Altitude above ground level (feet).</summary>
+    public double AltitudeFeet { get; init; }
+
+    /// <summary>Indicated airspeed (knots).</summary>
+    public double IndicatedAirspeedKnots { get; init; }
+
+    /// <summary>Vertical speed (feet per minute; negative = descending).</summary>
+    public double VerticalSpeedFpm { get; init; }
 }
 
 public sealed record PreflightMetrics
@@ -197,22 +224,6 @@ public sealed record LandingMetrics
     /// <summary>Outside air temperature in degrees Celsius at touchdown.</summary>
     public double OatCelsiusAtTouchdown { get; init; }
 
-    // ── Threshold crossing and touchdown geometry ──────────────────────────
-
-    /// <summary>Aircraft true heading at the moment of touchdown (degrees).</summary>
-    public double TouchdownHeadingDegrees { get; init; }
-
-    /// <summary>
-    /// Distance along the runway centerline from the threshold to the touchdown point (feet).
-    /// Derived from the runway projection at WheelsOn.
-    /// </summary>
-    public double TouchdownDistanceFromThresholdFt { get; init; }
-
-    /// <summary>Indicated airspeed when the aircraft crossed the runway threshold (knots).</summary>
-    public double SpeedAtThresholdKnots { get; init; }
-
-    /// <summary>Altitude above ground level when the aircraft crossed the runway threshold (feet).</summary>
-    public double ThresholdCrossingHeightFt { get; init; }
 }
 
 public sealed record TaxiInMetrics : TaxiMetrics
