@@ -145,11 +145,12 @@ public sealed class ScoringEngine
         var findings = new List<ScoreFinding>();
         var speedLimit = metrics.HeavyFourEngineAircraft ? 300 : 250;
 
+        // 10-knot buffer before the penalty ramp starts (250+10 = 260 kts perfect threshold).
         AddPenalty(
             findings,
             "CLIMB_SPEED",
-            $"Climb speed below FL100 exceeded the {speedLimit} knot target.",
-            ScoreMath.LinearPenalty(metrics.MaxIasBelowFl100Knots, speedLimit, speedLimit + 40, weights.SpeedCompliance));
+            $"Climb speed below FL100 exceeded the {speedLimit + 10} knot target.",
+            ScoreMath.LinearPenalty(metrics.MaxIasBelowFl100Knots, speedLimit + 10, speedLimit + 50, weights.SpeedCompliance));
 
         AddPenalty(
             findings,
@@ -210,11 +211,12 @@ public sealed class ScoringEngine
     {
         var findings = new List<ScoreFinding>();
 
+        // 10-knot buffer: penalty ramp starts at 260 kts, full penalty at 300 kts.
         AddPenalty(
             findings,
             "DESCENT_SPEED",
-            "Descent speed below FL100 exceeded the 250 knot target.",
-            ScoreMath.LinearPenalty(metrics.MaxIasBelowFl100Knots, 250, 290, weights.SpeedCompliance));
+            "Descent speed below FL100 exceeded the 260 knot target.",
+            ScoreMath.LinearPenalty(metrics.MaxIasBelowFl100Knots, 260, 300, weights.SpeedCompliance));
 
         AddPenalty(
             findings,
@@ -234,12 +236,12 @@ public sealed class ScoringEngine
             "Descent G-force exceeded the comfort target.",
             ScoreMath.LinearPenalty(metrics.MaxGForce, weights.GForcePerfect, weights.GForceMax, weights.GForce));
 
-        if (!metrics.LandingLightsOnByFl180)
+        if (!metrics.LandingLightsOnBy9900)
         {
             findings.Add(new ScoreFinding(
                 "DESCENT_LANDING_LIGHTS_OFF",
-                "Landing lights were not on by FL180 during descent.",
-                weights.LandingLightsOnByFl180));
+                "Landing lights were not on by 9,900 ft during descent.",
+                weights.LandingLightsOnBy9900));
         }
 
         return CreatePhaseResult(FlightPhase.Descent, weights.Total, findings);
@@ -466,12 +468,12 @@ public sealed class ScoringEngine
                 weights.TaxiLightsOffBeforeParkingBrakeSet));
         }
 
-        if (!metrics.ParkingBrakeSetBeforeAllEnginesShutdown)
+        if (!metrics.AllEnginesOffBeforeParkingBrakeSet)
         {
             findings.Add(new ScoreFinding(
                 "ARRIVAL_PARKING_BRAKE_ORDER",
-                "All engines were shut down before the parking brake was set.",
-                weights.ParkingBrakeBeforeAllEnginesShutdown));
+                "Parking brake was set while engines were still running. Shut down all engines before setting the parking brake.",
+                weights.EnginesOffBeforeParkingBrake));
         }
 
         if (!metrics.AllEnginesOffByEndOfSession)

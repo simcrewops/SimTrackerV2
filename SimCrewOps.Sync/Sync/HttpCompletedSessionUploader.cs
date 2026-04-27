@@ -11,11 +11,13 @@ public sealed class HttpCompletedSessionUploader : ICompletedSessionUploader
     private readonly HttpClient _httpClient;
     private readonly SimCrewOpsApiUploaderOptions _options;
     private readonly SimSessionUploadRequestMapper _requestMapper;
+    private readonly TrackerApiKeyStore? _apiKeyStore;
 
     public HttpCompletedSessionUploader(
         HttpClient httpClient,
         SimCrewOpsApiUploaderOptions options,
-        SimSessionUploadRequestMapper? requestMapper = null)
+        SimSessionUploadRequestMapper? requestMapper = null,
+        TrackerApiKeyStore? apiKeyStore = null)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentNullException.ThrowIfNull(options);
@@ -23,6 +25,7 @@ public sealed class HttpCompletedSessionUploader : ICompletedSessionUploader
         _httpClient = httpClient;
         _options = options;
         _requestMapper = requestMapper ?? new SimSessionUploadRequestMapper();
+        _apiKeyStore = apiKeyStore;
     }
 
     public async Task<CompletedSessionUploadResult> UploadAsync(
@@ -40,7 +43,9 @@ public sealed class HttpCompletedSessionUploader : ICompletedSessionUploader
             {
                 Content = JsonContent.Create(requestBody),
             };
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.PilotApiToken);
+            // Prefer the per-session tracker API key (from bootstrap) when available.
+            var authToken = _apiKeyStore?.ApiKey ?? _options.PilotApiToken;
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authToken);
 
             using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
             var responseBody = response.Content is null

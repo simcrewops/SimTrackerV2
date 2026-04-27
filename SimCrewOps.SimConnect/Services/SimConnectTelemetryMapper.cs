@@ -56,6 +56,19 @@ public sealed class SimConnectTelemetryMapper
             // Clamp to ±2.5 dots (instrument full-scale deflection).
             Nav1GlideslopeErrorDots = Math.Clamp(rawFrame.Nav1GlideslopeErrorDegrees / 0.35, -2.5, 2.5),
             Nav1LocalizerErrorDots  = Math.Clamp(rawFrame.Nav1RadialErrorDegrees / 0.5, -2.5, 2.5),
+            Nav1IlsSignalValid = ToBool(rawFrame.Nav1IlsSignalValid),
+            // Extended context
+            AutopilotEngaged         = ToBool(rawFrame.AutopilotMaster),
+            FuelTotalLbs             = rawFrame.FuelTotalLbs,
+            WindSpeedKnots           = rawFrame.AmbientWindSpeedKnots,
+            WindDirectionDegrees     = rawFrame.AmbientWindDirectionDegrees,
+            OutsideAirTempCelsius    = rawFrame.AmbientTemperatureCelsius,
+            SpoilerHandlePosition    = rawFrame.SpoilerHandlePosition,
+            SpoilersArmed            = ToBool(rawFrame.SpoilersArmed),
+            Engine1N1Pct             = rawFrame.Engine1N1Pct,
+            Engine2N1Pct             = rawFrame.Engine2N1Pct,
+            Engine3N1Pct             = rawFrame.Engine3N1Pct,
+            Engine4N1Pct             = rawFrame.Engine4N1Pct,
         };
     }
 

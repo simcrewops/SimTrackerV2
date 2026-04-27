@@ -825,6 +825,20 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             StallWarning = snapshot.StallWarning,
             GpwsAlert = snapshot.GpwsAlert,
             OverspeedWarning = snapshot.OverspeedWarning,
+            Nav1GlideslopeErrorDegrees = snapshot.Nav1GlideslopeErrorDegrees,
+            Nav1RadialErrorDegrees = snapshot.Nav1RadialErrorDegrees,
+            AutopilotMaster = snapshot.AutopilotMaster,
+            FuelTotalLbs = snapshot.FuelTotalLbs,
+            AmbientWindSpeed = snapshot.AmbientWindSpeed,
+            AmbientWindDirection = snapshot.AmbientWindDirection,
+            AmbientTemperature = snapshot.AmbientTemperature,
+            SpoilerHandlePos = snapshot.SpoilerHandlePos,
+            SpoilersArmed = snapshot.SpoilersArmed,
+            Engine1N1Pct = snapshot.Engine1N1Pct,
+            Engine2N1Pct = snapshot.Engine2N1Pct,
+            Engine3N1Pct = snapshot.Engine3N1Pct,
+            Engine4N1Pct = snapshot.Engine4N1Pct,
+            Nav1IlsValid = snapshot.Nav1IlsValid,
         };
 
         EnqueueFrame();
@@ -874,6 +888,21 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             Engine3Running = _latestState.Engine3Running,
             Engine4Running = _latestState.Engine4Running,
             AircraftTitle  = _detectedAircraftTitle,
+            Nav1GlideslopeErrorDegrees = _latestState.Nav1GlideslopeErrorDegrees,
+            Nav1RadialErrorDegrees   = _latestState.Nav1RadialErrorDegrees,
+            // Extended context
+            AutopilotMaster            = _latestState.AutopilotMaster,
+            FuelTotalLbs               = _latestState.FuelTotalLbs,
+            AmbientWindSpeedKnots      = _latestState.AmbientWindSpeed,
+            AmbientWindDirectionDegrees = _latestState.AmbientWindDirection,
+            AmbientTemperatureCelsius  = _latestState.AmbientTemperature,
+            SpoilerHandlePosition      = _latestState.SpoilerHandlePos,
+            SpoilersArmed              = _latestState.SpoilersArmed,
+            Engine1N1Pct               = _latestState.Engine1N1Pct,
+            Engine2N1Pct               = _latestState.Engine2N1Pct,
+            Engine3N1Pct               = _latestState.Engine3N1Pct,
+            Engine4N1Pct               = _latestState.Engine4N1Pct,
+            Nav1IlsSignalValid         = _latestState.Nav1IlsValid,
         });
     }
 
@@ -1011,6 +1040,23 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         public readonly int StallWarning;
         public readonly int GpwsAlert;
         public readonly int OverspeedWarning;
+        // NAV1 approach — appended to preserve existing layout.
+        // (These correspond to the nav1_glideslope_error and nav1_radial_error catalog entries.)
+        public readonly double Nav1GlideslopeErrorDegrees;
+        public readonly double Nav1RadialErrorDegrees;
+        // ── Extended context — bool → int, float64 → double ───────────────────
+        public readonly int    AutopilotMaster;      // AUTOPILOT MASTER (bool)
+        public readonly double FuelTotalLbs;         // FUEL TOTAL QUANTITY WEIGHT
+        public readonly double AmbientWindSpeed;     // AMBIENT WIND VELOCITY
+        public readonly double AmbientWindDirection; // AMBIENT WIND DIRECTION
+        public readonly double AmbientTemperature;   // AMBIENT TEMPERATURE
+        public readonly double SpoilerHandlePos;     // SPOILERS HANDLE POSITION
+        public readonly int    SpoilersArmed;        // SPOILERS ARMED (bool)
+        public readonly double Engine1N1Pct;         // TURB ENG N1:1
+        public readonly double Engine2N1Pct;         // TURB ENG N1:2
+        public readonly double Engine3N1Pct;         // TURB ENG N1:3
+        public readonly double Engine4N1Pct;         // TURB ENG N1:4
+        public readonly int    Nav1IlsValid;         // NAV HAS GLIDE SLOPE:1 (bool)
     }
 
     private sealed record LatestSimConnectState
@@ -1048,5 +1094,20 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         public double Engine2Running { get; init; }
         public double Engine3Running { get; init; }
         public double Engine4Running { get; init; }
+        // Extended context
+        public double Nav1GlideslopeErrorDegrees { get; init; }
+        public double Nav1RadialErrorDegrees { get; init; }
+        public double AutopilotMaster { get; init; }
+        public double FuelTotalLbs { get; init; }
+        public double AmbientWindSpeed { get; init; }
+        public double AmbientWindDirection { get; init; }
+        public double AmbientTemperature { get; init; }
+        public double SpoilerHandlePos { get; init; }
+        public double SpoilersArmed { get; init; }
+        public double Engine1N1Pct { get; init; }
+        public double Engine2N1Pct { get; init; }
+        public double Engine3N1Pct { get; init; }
+        public double Engine4N1Pct { get; init; }
+        public double Nav1IlsValid { get; init; }
     }
 }

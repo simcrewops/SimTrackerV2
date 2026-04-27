@@ -31,6 +31,17 @@ public sealed class RuntimeCoordinator
     private DateTimeOffset? _lastLivePositionSentUtc;
     private double? _lastLivePositionLatitude;
     private double? _lastLivePositionLongitude;
+    // Session-end trigger: set once when engines off + beacon off + parking brake set after landing.
+    private bool _sessionEndTriggered;
+    // ── Approach path recording ───────────────────────────────────────────────────────────────
+    // Lat/lon of the arrival airport reference point used for haversine distance calculations.
+    // Set on Descent entry (early, using a runway resolution at that point) and refined when
+    // the approach runway pre-resolution fires on Approach entry.
+    private double? _approachAirportRefLat;
+    private double? _approachAirportRefLon;
+    private bool _approachAirportRefResolved;
+    // Time guard: only record a sample when at least 2 s have elapsed since the last one.
+    private DateTimeOffset? _approachPathLastSampleAt;
 
     /// <summary>
     /// UTC timestamp of the most recent live-position upload that the server accepted (HTTP 200).
@@ -119,6 +130,13 @@ public sealed class RuntimeCoordinator
         _lastLivePositionSentUtc = null;
         _lastLivePositionLatitude = state.LastTelemetryFrame?.Latitude;
         _lastLivePositionLongitude = state.LastTelemetryFrame?.Longitude;
+        _sessionEndTriggered = state.BlockTimes.SessionEndTriggeredUtc is not null;
+        // Approach path recording fields reset — the buffer is cleared in the tracker's
+        // Restore() and ref coords will be re-resolved on the next Descent/Approach entry.
+        _approachAirportRefLat = null;
+        _approachAirportRefLon = null;
+        _approachAirportRefResolved = false;
+        _approachPathLastSampleAt = null;
 
         _phaseEngine.Restore(
             state.CurrentPhase,
@@ -146,9 +164,44 @@ public sealed class RuntimeCoordinator
         var previousPhase = _lastKnownPhase;
         _lastKnownPhase = phaseFrame.Phase;
 
+        // ── Approach airport reference coords (for approach-path distance) ──────────────────
+        // On Descent entry, pre-resolve any runway at the arrival airport so we have a
+        // reference lat/lon for haversine distance calculations during Descent (before the
+        // per-approach runway resolution fires on Approach entry).
+        if (phaseFrame.Phase == FlightPhase.Descent
+            && previousPhase != FlightPhase.Descent
+            && !_approachAirportRefResolved
+            && !string.IsNullOrWhiteSpace(_context.ArrivalAirportIcao))
+        {
+            try
+            {
+                var refResolution = await _runwayResolver.ResolveAsync(
+                    new RunwayResolutionRequest
+                    {
+                        ArrivalAirportIcao         = _context.ArrivalAirportIcao,
+                        TouchdownLatitude          = telemetryFrame.Latitude,
+                        TouchdownLongitude         = telemetryFrame.Longitude,
+                        TouchdownHeadingTrueDegrees = telemetryFrame.HeadingTrueDegrees,
+                    },
+                    cancellationToken).ConfigureAwait(false);
+
+                if (refResolution is not null)
+                {
+                    _approachAirportRefLat     = refResolution.Runway.ThresholdLatitude;
+                    _approachAirportRefLon     = refResolution.Runway.ThresholdLongitude;
+                    _approachAirportRefResolved = true;
+                }
+            }
+            catch
+            {
+                // Best-effort — missing ref coords means no Descent approach-path samples.
+            }
+        }
+
         // Pre-resolve the runway once when entering Approach phase.
         // Uses heading as the best-match hint so the correct runway end is picked even
         // before the aircraft is close enough for a precise position-based resolution.
+        // Also refines the approach airport reference coords with the resolved threshold.
         if (phaseFrame.Phase == FlightPhase.Approach
             && previousPhase != FlightPhase.Approach
             && !string.IsNullOrWhiteSpace(_context.ArrivalAirportIcao))
@@ -158,12 +211,21 @@ public sealed class RuntimeCoordinator
                 _approachRunwayResolution = await _runwayResolver.ResolveAsync(
                     new RunwayResolutionRequest
                     {
-                        ArrivalAirportIcao = _context.ArrivalAirportIcao,
-                        TouchdownLatitude = telemetryFrame.Latitude,
-                        TouchdownLongitude = telemetryFrame.Longitude,
+                        ArrivalAirportIcao         = _context.ArrivalAirportIcao,
+                        TouchdownLatitude          = telemetryFrame.Latitude,
+                        TouchdownLongitude         = telemetryFrame.Longitude,
                         TouchdownHeadingTrueDegrees = telemetryFrame.HeadingTrueDegrees,
                     },
                     cancellationToken).ConfigureAwait(false);
+
+                if (_approachRunwayResolution is not null)
+                {
+                    // Use the resolved threshold for all subsequent distance calculations —
+                    // more accurate than the Descent-entry estimate.
+                    _approachAirportRefLat     = _approachRunwayResolution.Runway.ThresholdLatitude;
+                    _approachAirportRefLon     = _approachRunwayResolution.Runway.ThresholdLongitude;
+                    _approachAirportRefResolved = true;
+                }
             }
             catch
             {
@@ -198,6 +260,38 @@ public sealed class RuntimeCoordinator
             _approachDistanceNm     = null;
             _glidepathDeviationFeet = null;
         }
+
+        // ── Approach path recording ──────────────────────────────────────────────────────────
+        // Record a sample every ≥ 2 s while in Descent/Approach and within 15 nm of the
+        // arrival airport reference point.  Record one final sample at the Landing transition.
+        if (_approachAirportRefLat.HasValue && _approachAirportRefLon.HasValue)
+        {
+            var phase = phaseFrame.Phase;
+            bool inApproachRange = phase == FlightPhase.Descent || phase == FlightPhase.Approach;
+            bool enteringLanding = phase == FlightPhase.Landing && previousPhase != FlightPhase.Landing;
+
+            if (inApproachRange || enteringLanding)
+            {
+                var distNm = HaversineNm(
+                    telemetryFrame.Latitude, telemetryFrame.Longitude,
+                    _approachAirportRefLat.Value, _approachAirportRefLon.Value);
+
+                bool withinRange = distNm <= 15.0 || enteringLanding;
+                bool timeOk = enteringLanding
+                    || _approachPathLastSampleAt is null
+                    || (telemetryFrame.TimestampUtc - _approachPathLastSampleAt.Value).TotalSeconds >= 2.0;
+
+                if (withinRange && timeOk)
+                {
+                    _scoringTracker.RecordApproachSample(
+                        distNm,
+                        telemetryFrame.AltitudeAglFeet,
+                        telemetryFrame.IndicatedAirspeedKnots,
+                        telemetryFrame.VerticalSpeedFpm);
+                    _approachPathLastSampleAt = telemetryFrame.TimestampUtc;
+                }
+            }
+        }
         // ----------------------------------------------------------------
 
         var enrichedTelemetryFrame = await EnrichTelemetryFrameAsync(phaseFrame, cancellationToken).ConfigureAwait(false);
@@ -210,8 +304,12 @@ public sealed class RuntimeCoordinator
 
         var labelledFrame = enrichedTelemetryFrame with { Phase = enrichedPhaseFrame.Phase };
         _scoringTracker.Ingest(labelledFrame);
+        // Discard approach path on crash so no partial data is uploaded.
+        if (labelledFrame.CrashDetected)
+            _scoringTracker.DiscardApproachPath();
         _lastTelemetryFrame = labelledFrame;
         CaptureBlockEvent(enrichedPhaseFrame.BlockEvent);
+        CheckSessionEndCondition(labelledFrame);
         TryDispatchLivePosition(labelledFrame, cancellationToken);
 
         var scoreInput = _scoringTracker.BuildScoreInput();
@@ -255,12 +353,7 @@ public sealed class RuntimeCoordinator
                 },
                 cancellationToken).ConfigureAwait(false);
 
-            if (_landingRunwayResolution is not null)
-            {
-                _scoringTracker.SetTouchdownRunwayMetrics(
-                    _landingRunwayResolution.Projection.CrossTrackDistanceFeet,
-                    _landingRunwayResolution.HeadingDifferenceDegrees);
-            }
+            // Runway resolution result is kept for UI/live display overlay via RuntimeFrameResult.
         }
 
         var touchdownZoneExcess = phaseFrame.Raw.TouchdownZoneExcessDistanceFeet
@@ -286,6 +379,39 @@ public sealed class RuntimeCoordinator
             BlockEventType.BlocksOn => _blockTimes with { BlocksOnUtc = blockEvent.TimestampUtc },
             _ => _blockTimes,
         };
+    }
+
+    /// <summary>
+    /// Detects the post-flight session-end condition: all engines off, beacon light off,
+    /// and parking brake set — after a completed landing (WheelsOn recorded).
+    /// Sets <see cref="SessionEndTriggeredUtc"/> once and never again for the session.
+    /// </summary>
+    private void CheckSessionEndCondition(TelemetryFrame frame)
+    {
+        if (_sessionEndTriggered)
+        {
+            return;
+        }
+
+        // Guard: only fire after a landing has been recorded.
+        if (_blockTimes.WheelsOnUtc is null)
+        {
+            return;
+        }
+
+        // Condition: all engines off AND beacon off AND parking brake set.
+        var allEnginesOff = !frame.Engine1Running
+                         && !frame.Engine2Running
+                         && !frame.Engine3Running
+                         && !frame.Engine4Running;
+
+        if (!allEnginesOff || frame.BeaconLightOn || !frame.ParkingBrakeSet)
+        {
+            return;
+        }
+
+        _sessionEndTriggered = true;
+        _blockTimes = _blockTimes with { SessionEndTriggeredUtc = frame.TimestampUtc };
     }
 
     private void TryDispatchLivePosition(TelemetryFrame telemetryFrame, CancellationToken cancellationToken)
@@ -359,6 +485,22 @@ public sealed class RuntimeCoordinator
         {
             Trace.TraceWarning("Tracker live position dispatch failed: {0}", ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Haversine great-circle distance between two WGS-84 coordinates, in nautical miles.
+    /// Used to compute how far the aircraft is from the arrival airport reference point
+    /// for approach-path recording range checks.
+    /// </summary>
+    private static double HaversineNm(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double R = 3440.065; // Earth mean radius in nautical miles
+        var dLat = (lat2 - lat1) * Math.PI / 180.0;
+        var dLon = (lon2 - lon1) * Math.PI / 180.0;
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2)
+              + Math.Cos(lat1 * Math.PI / 180.0) * Math.Cos(lat2 * Math.PI / 180.0)
+              * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        return R * 2.0 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1.0 - a));
     }
 
     private bool IsActiveFlight() =>

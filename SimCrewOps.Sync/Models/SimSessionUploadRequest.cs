@@ -4,20 +4,37 @@ namespace SimCrewOps.Sync.Models;
 
 public sealed record SimSessionUploadRequest
 {
-    [JsonPropertyName("bounces")]
-    public int Bounces { get; init; }
+    [JsonPropertyName("trackerVersion")]
+    public string TrackerVersion { get; init; } = "3.0.0";
 
-    [JsonPropertyName("touchdownVS")]
-    public double TouchdownVS { get; init; }
+    [JsonPropertyName("flightMode")]
+    public string FlightMode { get; init; } = "free_flight";
 
-    [JsonPropertyName("touchdownBank")]
-    public double TouchdownBank { get; init; }
+    [JsonPropertyName("bidId")]
+    public string? BidId { get; init; }
 
-    [JsonPropertyName("touchdownIAS")]
-    public double TouchdownIAS { get; init; }
+    [JsonPropertyName("departure")]
+    public string? Departure { get; init; }
 
-    [JsonPropertyName("touchdownPitch")]
-    public double TouchdownPitch { get; init; }
+    [JsonPropertyName("arrival")]
+    public string? Arrival { get; init; }
+
+    /// <summary>
+    /// ICAO aircraft type code as detected by MSFS (e.g. "A319", "B738").
+    /// Sourced from the ATC MODEL SimVar; null for free flights where no type
+    /// was detected before blocks-on.
+    /// </summary>
+    [JsonPropertyName("aircraft")]
+    public string? AircraftType { get; init; }
+
+    /// <summary>
+    /// World map size category: "regional", "narrowbody", or "widebody".
+    /// Derived from <see cref="AircraftType"/> at upload time.
+    /// </summary>
+    [JsonPropertyName("aircraftCategory")]
+    public string? AircraftCategory { get; init; }
+
+    // ── Block times ─────────────────────────────────────────────────────────────
 
     [JsonPropertyName("actualBlocksOff")]
     public DateTimeOffset? ActualBlocksOff { get; init; }
@@ -37,38 +54,32 @@ public sealed record SimSessionUploadRequest
     [JsonPropertyName("blockTimeScheduled")]
     public double? BlockTimeScheduled { get; init; }
 
-    [JsonPropertyName("crashDetected")]
-    public bool CrashDetected { get; init; }
+    // ── Session timing ──────────────────────────────────────────────────────────
 
-    [JsonPropertyName("overspeedEvents")]
-    public int OverspeedEvents { get; init; }
+    [JsonPropertyName("enginesStartedAt")]
+    public DateTimeOffset? EnginesStartedAt { get; init; }
 
-    [JsonPropertyName("stallEvents")]
-    public int StallEvents { get; init; }
+    [JsonPropertyName("wheelsOffAt")]
+    public DateTimeOffset? WheelsOffAt { get; init; }
 
-    [JsonPropertyName("gpwsEvents")]
-    public int GpwsEvents { get; init; }
+    [JsonPropertyName("wheelsOnAt")]
+    public DateTimeOffset? WheelsOnAt { get; init; }
 
-    [JsonPropertyName("grade")]
-    public string Grade { get; init; } = "F";
+    [JsonPropertyName("enginesOffAt")]
+    public DateTimeOffset? EnginesOffAt { get; init; }
 
-    [JsonPropertyName("scoreFinal")]
-    public double ScoreFinal { get; init; }
+    // ── Fuel ───────────────────────────────────────────────────────────────────
 
-    [JsonPropertyName("trackerVersion")]
-    public string TrackerVersion { get; init; } = "dev";
+    [JsonPropertyName("fuelAtDepartureLbs")]
+    public double FuelAtDepartureLbs { get; init; }
 
-    [JsonPropertyName("flightMode")]
-    public string FlightMode { get; init; } = "free_flight";
+    [JsonPropertyName("fuelAtLandingLbs")]
+    public double FuelAtLandingLbs { get; init; }
 
-    [JsonPropertyName("bidId")]
-    public string? BidId { get; init; }
+    [JsonPropertyName("fuelBurnedLbs")]
+    public double FuelBurnedLbs { get; init; }
 
-    [JsonPropertyName("departure")]
-    public string? Departure { get; init; }
-
-    [JsonPropertyName("arrival")]
-    public string? Arrival { get; init; }
+    // ── Touchdown position ──────────────────────────────────────────────────────
 
     /// <summary>
     /// WGS-84 latitude of the initial wheel contact point, in decimal degrees.
@@ -84,84 +95,57 @@ public sealed record SimSessionUploadRequest
     [JsonPropertyName("touchdownLon")]
     public double TouchdownLon { get; init; }
 
-    [JsonPropertyName("runwayIdentifier")]
-    public string? RunwayIdentifier { get; init; }
+    // ── Crash flag ──────────────────────────────────────────────────────────────
 
-    [JsonPropertyName("runwayHeadingTrue")]
-    public double? RunwayHeadingTrue { get; init; }
+    [JsonPropertyName("crashDetected")]
+    public bool CrashDetected { get; init; }
 
-    [JsonPropertyName("runwayLengthFt")]
-    public double? RunwayLengthFt { get; init; }
-
-    [JsonPropertyName("runwayWidthFt")]
-    public double? RunwayWidthFt { get; init; }
-
-    [JsonPropertyName("runwayThresholdLat")]
-    public double? RunwayThresholdLat { get; init; }
-
-    [JsonPropertyName("runwayThresholdLon")]
-    public double? RunwayThresholdLon { get; init; }
-
-    [JsonPropertyName("touchdownCenterlineDeviationFt")]
-    public double? TouchdownCenterlineDeviationFt { get; init; }
-
-    [JsonPropertyName("touchdownCrabAngleDegrees")]
-    public double? TouchdownCrabAngleDegrees { get; init; }
+    // ── GPS flight-path track ───────────────────────────────────────────────────
 
     /// <summary>
-    /// ICAO aircraft type code as detected by MSFS (e.g. "A319", "B738").
-    /// Sourced from the ATC MODEL SimVar; null for free flights where no type
-    /// was detected before blocks-on.
+    /// Downsampled GPS track (one point every ~30 s plus phase-change points).
+    /// Null when no track was recorded (e.g. session started after cruise).
     /// </summary>
-    [JsonPropertyName("aircraft")]
-    public string? AircraftType { get; init; }
+    [JsonPropertyName("gpsTrack")]
+    public IReadOnlyList<GpsTrackPointUpload>? GpsTrack { get; init; }
+
+    // ── Structured scoring input ───────────────────────────────────────────────
 
     /// <summary>
-    /// World map size category: "regional", "narrowbody", or "widebody".
-    /// Derived from <see cref="AircraftType"/> at upload time.
+    /// All raw phase metrics collected during the flight in a structured object.
+    /// Allows the webapp to score or re-score the session with any algorithm.
     /// </summary>
-    [JsonPropertyName("aircraftCategory")]
-    public string? AircraftCategory { get; init; }
+    [JsonPropertyName("scoringInput")]
+    public FlightScoreInputV5Upload? ScoreInputV5 { get; init; }
+
+    // ── Landing analysis ──────────────────────────────────────────────────────
 
     /// <summary>
-    /// Per-phase score breakdown with all deduction findings.
-    /// Allows the website to show pilots exactly why they lost points on each phase.
-    /// Only findings with actual deductions (PointsDeducted > 0) or automatic fails are included.
+    /// Rich landing geometry including approach path, threshold crossing speed/height,
+    /// and touchdown distance from threshold.  Null when no landing was recorded.
     /// </summary>
-    [JsonPropertyName("phaseFindings")]
-    public IReadOnlyList<PhaseScoreFindingUpload>? PhaseFindings { get; init; }
-
-    /// <summary>
-    /// Global safety deductions (overspeed, stall, GPWS) that are not tied to a single phase.
-    /// </summary>
-    [JsonPropertyName("globalFindings")]
-    public IReadOnlyList<ScoreFindingUpload>? GlobalFindings { get; init; }
+    [JsonPropertyName("landingAnalysis")]
+    public LandingAnalysisUpload? LandingAnalysis { get; init; }
 }
 
-public sealed record PhaseScoreFindingUpload
+/// <summary>A single point in the GPS flight-path track.</summary>
+public sealed record GpsTrackPointUpload
 {
+    [JsonPropertyName("t")]
+    public DateTimeOffset TimestampUtc { get; init; }
+
+    [JsonPropertyName("lat")]
+    public double Latitude { get; init; }
+
+    [JsonPropertyName("lon")]
+    public double Longitude { get; init; }
+
+    [JsonPropertyName("alt")]
+    public double AltitudeFeet { get; init; }
+
+    [JsonPropertyName("gs")]
+    public double GroundSpeedKnots { get; init; }
+
     [JsonPropertyName("phase")]
     public string Phase { get; init; } = "";
-
-    [JsonPropertyName("maxPoints")]
-    public double MaxPoints { get; init; }
-
-    [JsonPropertyName("awardedPoints")]
-    public double AwardedPoints { get; init; }
-
-    /// <summary>Deduction findings for this phase. Empty list = clean phase.</summary>
-    [JsonPropertyName("findings")]
-    public IReadOnlyList<ScoreFindingUpload> Findings { get; init; } = [];
-}
-
-public sealed record ScoreFindingUpload
-{
-    [JsonPropertyName("description")]
-    public string Description { get; init; } = "";
-
-    [JsonPropertyName("pointsDeducted")]
-    public double PointsDeducted { get; init; }
-
-    [JsonPropertyName("isAutomaticFail")]
-    public bool IsAutomaticFail { get; init; }
 }

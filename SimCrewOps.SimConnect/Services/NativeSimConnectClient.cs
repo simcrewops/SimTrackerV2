@@ -686,6 +686,18 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             OverspeedWarning = snapshot.OverspeedWarning,
             Nav1GlideslopeErrorDegrees = snapshot.Nav1GlideslopeErrorDegrees,
             Nav1RadialErrorDegrees = snapshot.Nav1RadialErrorDegrees,
+            AutopilotMaster = snapshot.AutopilotMaster,
+            FuelTotalLbs = snapshot.FuelTotalLbs,
+            AmbientWindSpeed = snapshot.AmbientWindSpeed,
+            AmbientWindDirection = snapshot.AmbientWindDirection,
+            AmbientTemperature = snapshot.AmbientTemperature,
+            SpoilerHandlePos = snapshot.SpoilerHandlePos,
+            SpoilersArmed = snapshot.SpoilersArmed,
+            Engine1N1Pct = snapshot.Engine1N1Pct,
+            Engine2N1Pct = snapshot.Engine2N1Pct,
+            Engine3N1Pct = snapshot.Engine3N1Pct,
+            Engine4N1Pct = snapshot.Engine4N1Pct,
+            Nav1IlsValid = snapshot.Nav1IlsValid,
         };
 
         EnqueueFrame();
@@ -1090,6 +1102,19 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             Nav1GlideslopeErrorDegrees = _latestState.Nav1GlideslopeErrorDegrees,
             Nav1RadialErrorDegrees   = _latestState.Nav1RadialErrorDegrees,
             GpsDestinationIdent      = _gpsDestinationIdent,
+            // Extended context
+            AutopilotMaster            = _latestState.AutopilotMaster,
+            FuelTotalLbs               = _latestState.FuelTotalLbs,
+            AmbientWindSpeedKnots      = _latestState.AmbientWindSpeed,
+            AmbientWindDirectionDegrees = _latestState.AmbientWindDirection,
+            AmbientTemperatureCelsius  = _latestState.AmbientTemperature,
+            SpoilerHandlePosition      = _latestState.SpoilerHandlePos,
+            SpoilersArmed              = _latestState.SpoilersArmed,
+            Engine1N1Pct               = _latestState.Engine1N1Pct,
+            Engine2N1Pct               = _latestState.Engine2N1Pct,
+            Engine3N1Pct               = _latestState.Engine3N1Pct,
+            Engine4N1Pct               = _latestState.Engine4N1Pct,
+            Nav1IlsSignalValid         = _latestState.Nav1IlsValid,
         });
     }
 
@@ -1195,6 +1220,19 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         // NAV1 approach instruments — appended last to preserve existing layout.
         public readonly double Nav1GlideslopeErrorDegrees;   // NAV GLIDE SLOPE ERROR:1
         public readonly double Nav1RadialErrorDegrees;        // NAV RADIAL ERROR:1
+        // ── Extended context — must stay in catalog-definition order ──────────
+        public readonly double AutopilotMaster;      // AUTOPILOT MASTER → 0.0 or 1.0
+        public readonly double FuelTotalLbs;         // FUEL TOTAL QUANTITY WEIGHT in pounds
+        public readonly double AmbientWindSpeed;     // AMBIENT WIND VELOCITY in knots
+        public readonly double AmbientWindDirection; // AMBIENT WIND DIRECTION in degrees
+        public readonly double AmbientTemperature;   // AMBIENT TEMPERATURE in Celsius
+        public readonly double SpoilerHandlePos;     // SPOILERS HANDLE POSITION 0.0–1.0
+        public readonly double SpoilersArmed;        // SPOILERS ARMED → 0.0 or 1.0
+        public readonly double Engine1N1Pct;         // TURB ENG N1:1 in percent (0–110)
+        public readonly double Engine2N1Pct;         // TURB ENG N1:2
+        public readonly double Engine3N1Pct;         // TURB ENG N1:3
+        public readonly double Engine4N1Pct;         // TURB ENG N1:4
+        public readonly double Nav1IlsValid;         // NAV HAS GLIDE SLOPE:1 → 0.0 or 1.0
     }
 
     // SIMCONNECT_DATATYPE_STRING256 payload — 256 ANSI characters, null-terminated.
@@ -1300,6 +1338,19 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public double VelocityWorldYFps { get; init; }
         public double Nav1GlideslopeErrorDegrees { get; init; }
         public double Nav1RadialErrorDegrees { get; init; }
+        // Extended context
+        public double AutopilotMaster { get; init; }
+        public double FuelTotalLbs { get; init; }
+        public double AmbientWindSpeed { get; init; }
+        public double AmbientWindDirection { get; init; }
+        public double AmbientTemperature { get; init; }
+        public double SpoilerHandlePos { get; init; }
+        public double SpoilersArmed { get; init; }
+        public double Engine1N1Pct { get; init; }
+        public double Engine2N1Pct { get; init; }
+        public double Engine3N1Pct { get; init; }
+        public double Engine4N1Pct { get; init; }
+        public double Nav1IlsValid { get; init; }
     }
 }
 

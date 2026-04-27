@@ -65,14 +65,14 @@ var result = engine.Calculate(new FlightScoreInput
     },
     Climb = new ClimbMetrics { MaxIasBelowFl100Knots = 246, MaxBankAngleDegrees = 18, MaxGForce = 1.2 },
     Cruise = new CruiseMetrics { MaxAltitudeDeviationFeet = 45, MaxBankAngleDegrees = 4, MaxGForce = 1.05 },
-    Descent = new DescentMetrics { MaxIasBelowFl100Knots = 247, MaxBankAngleDegrees = 14, MaxPitchAngleDegrees = 5, MaxGForce = 1.15, LandingLightsOnByFl180 = true },
+    Descent = new DescentMetrics { MaxIasBelowFl100Knots = 247, MaxBankAngleDegrees = 14, MaxPitchAngleDegrees = 5, MaxGForce = 1.15, LandingLightsOnBy9900 = true },
     Approach = new ApproachMetrics { GearDownBy1000Agl = true, FlapsHandleIndexAt500Agl = 3, VerticalSpeedAt500AglFpm = 730, BankAngleAt500AglDegrees = 4, PitchAngleAt500AglDegrees = 3, GearDownAt500Agl = true },
     Landing = new LandingMetrics { TouchdownZoneExcessDistanceFeet = 120, TouchdownVerticalSpeedFpm = 145, TouchdownGForce = 1.18, BounceCount = 0 },
     TaxiIn = new TaxiInMetrics { LandingLightsOff = true, StrobesOff = true, MaxGroundSpeedKnots = 18, TaxiLightsOn = true },
     Arrival = new ArrivalMetrics
     {
         TaxiLightsOffBeforeParkingBrakeSet = true,
-        ParkingBrakeSetBeforeAllEnginesShutdown = true,
+        AllEnginesOffBeforeParkingBrakeSet = true,
         AllEnginesOffByEndOfSession = true
     },
     Safety = new SafetyMetrics()

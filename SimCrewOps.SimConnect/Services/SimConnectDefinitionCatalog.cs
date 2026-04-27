@@ -71,6 +71,30 @@ public static class SimConnectDefinitionCatalog
         // Both are optional: if the aircraft has no NAV tuned these will read 0.0.
         Define("nav1_glideslope_error", "NAV GLIDE SLOPE ERROR:1", "degrees", SimConnectUpdateRate.SimFrame, requiredForScoring: false),
         Define("nav1_radial_error", "NAV RADIAL ERROR:1", "degrees", SimConnectUpdateRate.SimFrame, requiredForScoring: false),
+
+        // ── Extended context (all optional — fail gracefully if unsupported) ──────
+        // Autopilot master switch state.
+        Define("autopilot_master",       "AUTOPILOT MASTER",           "bool",     SimConnectUpdateRate.Second, requiredForScoring: false),
+        // Total usable fuel weight in pounds.
+        Define("fuel_total_lbs",         "FUEL TOTAL QUANTITY WEIGHT", "pounds",   SimConnectUpdateRate.Second, requiredForScoring: false),
+        // Ambient wind at the aircraft's current position.
+        Define("ambient_wind_speed",     "AMBIENT WIND VELOCITY",      "knots",    SimConnectUpdateRate.Second, requiredForScoring: false),
+        Define("ambient_wind_direction", "AMBIENT WIND DIRECTION",     "degrees",  SimConnectUpdateRate.Second, requiredForScoring: false),
+        // Outside air temperature in Celsius.
+        Define("ambient_temperature",    "AMBIENT TEMPERATURE",        "celsius",  SimConnectUpdateRate.Second, requiredForScoring: false),
+        // Spoiler/speedbrake handle position (0.0 = retracted, 1.0 = fully deployed).
+        Define("spoiler_handle",         "SPOILERS HANDLE POSITION",   "position", SimConnectUpdateRate.Second, requiredForScoring: false),
+        // True when spoilers are armed for automatic deployment on touchdown.
+        Define("spoilers_armed",         "SPOILERS ARMED",             "bool",     SimConnectUpdateRate.Second, requiredForScoring: false),
+        // Turbine engine N1 fan speed as a raw percentage (0–110 %).
+        // Uses "Percent" unit (not "Percent Over 100") to preserve the 0–110 range.
+        Define("engine1_n1",             "TURB ENG N1:1",              "Percent",  SimConnectUpdateRate.Second, requiredForScoring: false),
+        Define("engine2_n1",             "TURB ENG N1:2",              "Percent",  SimConnectUpdateRate.Second, requiredForScoring: false),
+        Define("engine3_n1",             "TURB ENG N1:3",              "Percent",  SimConnectUpdateRate.Second, requiredForScoring: false),
+        Define("engine4_n1",             "TURB ENG N1:4",              "Percent",  SimConnectUpdateRate.Second, requiredForScoring: false),
+        // True when a valid ILS glideslope signal is being received on NAV1.
+        // Distinguishes a genuine ILS approach from a VOR tuned on the same frequency.
+        Define("nav1_ils_valid",         "NAV HAS GLIDE SLOPE:1",      "bool",     SimConnectUpdateRate.Second, requiredForScoring: false),
     ];
 
     public static IReadOnlyList<SimConnectVariableDefinition> AllVariables =>

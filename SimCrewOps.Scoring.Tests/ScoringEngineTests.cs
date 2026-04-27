@@ -183,7 +183,7 @@ public sealed class ScoringEngineTests
                 MaxBankAngleDegrees = 18,
                 MaxPitchAngleDegrees = 5,
                 MaxGForce = 1.20,
-                LandingLightsOnByFl180 = true,
+                LandingLightsOnBy9900 = true,
             },
             Approach = new ApproachMetrics
             {
@@ -212,7 +212,7 @@ public sealed class ScoringEngineTests
             Arrival = new ArrivalMetrics
             {
                 TaxiLightsOffBeforeParkingBrakeSet = true,
-                ParkingBrakeSetBeforeAllEnginesShutdown = true,
+                AllEnginesOffBeforeParkingBrakeSet = true,
                 AllEnginesOffByEndOfSession = true,
             },
             Safety = new SafetyMetrics(),

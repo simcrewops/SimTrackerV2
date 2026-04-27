@@ -22,6 +22,9 @@ public sealed class FlightSessionScoringTracker
     private double _taxiOutMaxGroundSpeed;
     private int _taxiOutTurnSpeedEvents;
     private DateTimeOffset? _lastTaxiOutTurnEventAt;
+    // v3 new taxi out metrics
+    private double _taxiOutMaxTurnSpeed;
+    private bool _taxiOutStrobeLightOn;
 
     private bool _takeoffSeen;
     private bool _takeoffLandingLightsOnBeforeTakeoff = true;
@@ -33,32 +36,48 @@ public sealed class FlightSessionScoringTracker
     private int _takeoffBounceCount;
     private bool _takeoffTailStrikeDetected;
     private DateTimeOffset? _lastTakeoffLiftoffAt;
+    // v3 new takeoff metrics
+    private bool _takeoffPositiveRateBeforeGearUp = true;
 
     private double _climbMaxIasBelowFl100;
     private double _climbMaxBank;
     private double _climbMaxG;
+    // v3 new climb metrics
+    private double _climbMinG = double.MaxValue;
+    private bool _climbLandingLightsOffAboveFL180 = true;
 
     private double _cruiseMaxAltitudeDeviation;
     private double _cruiseMaxBank;
     private double _cruiseMaxG;
     private int _cruiseSpeedInstabilityEvents;
+    // v3 new cruise metrics
+    private double _cruiseMinG = double.MaxValue;
+    private double _cruiseMaxTurnBank;
+    private double _cruiseMaxIasDeviation;
+    private double _cruiseMaxMachDeviation;
     private DateTimeOffset? _lastCruiseSpeedInstabilityAt;
     private DateTimeOffset? _cruiseSpeedInstabilityStartedAt;
     private bool _cruiseSpeedInstabilityActive;
     private double? _cruiseReferenceIasKnots;
     private double? _cruiseReferenceMach;
     private double? _cruiseTargetAltitudeFeet;
-    private double? _pendingCruiseTargetAltitudeFeet;
-    private DateTimeOffset? _pendingCruiseTargetStartedAt;
     private double? _newFlightLevelCaptureSeconds;
-    private DateTimeOffset? _lastSignificantCruiseVsAt;
+    // Settling: target floats until VS has been ≤ 100 fpm for 30 consecutive seconds.
+    private DateTimeOffset? _cruiseLowVsStartedAt;
+    // Capture timing: set when VS first drops below 300 fpm after a step climb.
+    private DateTimeOffset? _cruiseLevelingStartedAt;
+    private bool _cruiseHadSignificantClimb;
 
     private bool _descentSeen;
     private double _descentMaxIasBelowFl100;
     private double _descentMaxBank;
     private double _descentMaxPitch;
     private double _descentMaxG;
-    private bool _descentLandingLightsOnByFl180 = true;
+    private bool _descentLandingLightsOnBy9900 = true;
+    // v3 new descent metrics
+    private double _descentMinG = double.MaxValue;
+    private double _descentMaxDescentRateFpm;
+    private bool _descentLandingLightsOnBeforeFL180 = true;
 
     private bool _capturedApproach1000Agl;
     private bool _gearDownBy1000Agl;
@@ -68,6 +87,32 @@ public sealed class FlightSessionScoringTracker
     private double _approachBankAt500Agl;
     private double _approachPitchAt500Agl;
     private bool _approachGearDownAt500Agl;
+    // ILS approach quality
+    private bool _approachIlsDetected;
+    private double _approachMaxGlideslope;
+    private double _approachMaxLocalizer;
+    private double _approachGlideslopeSampleSum;
+    private double _approachLocalizerSampleSum;
+    private int _approachIlsSampleCount;
+    // v3 new approach metrics
+    private double _approachIasAt500Agl;
+    private double? _approachGearDownAglFeet;
+    private bool _approachFlapsConfiguredBy1000Agl;
+    private double _approach1000To500MinIas = double.MaxValue;
+    private double _approach1000To500MaxIas;
+    private bool _capturedApproach3000Agl;
+    private double _approachMaxBankAngle3000to500;
+    // v3 stabilized approach (below 500 AGL)
+    private bool _stabilizedApproachActive;
+    private double _stabilizedMaxIasDev;
+    private double _stabilizedMaxDescentRate;
+    private bool _stabilizedConfigChanged;
+    private double _stabilizedHeadingAt500Agl;
+    private double _stabilizedMaxHeadingDev;
+    private bool _stabilizedIlsAvailable;
+    private double _stabilizedMaxGlideslope;
+    private int _stabilizedFlapsAt500Agl;
+    private bool _stabilizedGearAt500Agl;
 
     private int _landingBounceCount;
     private double _landingTouchdownZoneExcessDistanceFeet;
@@ -80,6 +125,22 @@ public sealed class FlightSessionScoringTracker
     private double _landingTouchdownCrabAngleDegrees;
     private double _landingTouchdownLatitude;
     private double _landingTouchdownLongitude;
+    // Extended touchdown context
+    private bool _landingAutopilotAtTouchdown;
+    private bool _landingSpoilersAtTouchdown;
+    private bool _landingReverseThrustUsed;
+    private double _landingWindSpeedAtTouchdown;
+    private double _landingWindDirectionAtTouchdown;
+    private double _landingOatAtTouchdown;
+    private double _landingHeadwindComponent;
+    private double _landingCrosswindComponent;
+    // v3 new landing metrics
+    private bool _landingGearUpAtTouchdown;
+    private double _landingMaxPitchDuringRollout;
+    // ── Approach path (circular buffer, max 300 samples) ─────────────────────
+    private const int ApproachPathMaxSamples = 300;
+    private readonly Queue<ApproachSamplePoint> _approachPathBuffer = new();
+
     private DateTimeOffset? _lastTouchdownAt;
     private DateTimeOffset? _airborneAfterTouchdownAt;
 
@@ -87,24 +148,53 @@ public sealed class FlightSessionScoringTracker
     private bool _taxiInLandingLightsOff = true;
     private bool _taxiInStrobesOff = true;
     private bool _taxiInTaxiLightsValid = true;
+    private DateTimeOffset? _taxiInStartedAt;               // when taxi-in phase was first entered
     private DateTimeOffset? _taxiInLightsOffStart;
     private DateTimeOffset? _taxiInLandingLightsOnStart;   // 60 s sustained on → penalty (1 min after vacate)
     private DateTimeOffset? _taxiInStrobesOnStart;          // 60 s sustained on → penalty
     private double _taxiInMaxGroundSpeed;
     private int _taxiInTurnSpeedEvents;
     private DateTimeOffset? _lastTaxiInTurnEventAt;
+    // v3 new taxi in metrics
+    private double _taxiInMaxTurnSpeed;
+    private bool _taxiInStrobeLightOn;
+    private bool _taxiInSmoothDeceleration = true;
+    private DateTimeOffset? _taxiInPrevSpeedSampleAt;
+    private double _taxiInPrevGroundSpeed;
 
     private bool _arrivalSeen;
     private bool _arrivalParkingBrakeObserved;
     private bool _arrivalTaxiLightsOffBeforeParkingBrakeSet;
-    private bool _arrivalParkingBrakeSetBeforeAllEnginesShutdown = true;
+    private bool _arrivalAllEnginesOffBeforeParkingBrakeSet = true;
     private bool _arrivalAllEnginesOffByEndOfSession;
+
+    // ── Session-level metrics ──────────────────────────────────────────────
+    private DateTimeOffset? _sessionEnginesStartedAt;
+    private DateTimeOffset? _sessionWheelsOffAt;
+    private DateTimeOffset? _sessionWheelsOnAt;
+    private DateTimeOffset? _sessionEnginesOffAt;
+    private double _sessionFuelAtDepartureLbs;
+    private double _sessionFuelAtLandingLbs;
+    private bool _sessionFuelDepartureRecorded;
+    // GPS track — one point every GPS_TRACK_INTERVAL_SECONDS
+    private DateTimeOffset _lastGpsTrackPointAt;
+    private readonly List<GpsTrackPoint> _gpsTrack = [];
+    private const double GpsTrackIntervalSeconds = 30;
 
     // After a session restore (tracker restart / reconnect) the first few frames from
     // SimConnect may carry stale boolean SimVar values (all false) before MSFS has
     // fully populated the aircraft state.  We skip "negative" watchdog checks for
     // this many frames to prevent false deductions on reconnect.
     private int _postRestoreGraceFrames;
+
+    // v3 lights systems (whole-flight)
+    private bool _lightsBeaconOnThroughout = true;
+    private bool _lightsNavOnThroughout = true;
+    private bool _lightsStrobesCorrect = true;
+    private bool _lightsStrobeWindowOpen;
+    private int _lightsLandingCompliantSamples;
+    private int _lightsLandingTotalSamples;
+    private DateTimeOffset? _lightsLastComplianceSampleAt;
 
     private bool _crashDetected;
     private int _overspeedEvents;
@@ -177,10 +267,11 @@ public sealed class FlightSessionScoringTracker
         _lastCruiseSpeedInstabilityAt = null;
         _cruiseSpeedInstabilityStartedAt = null;
         _cruiseSpeedInstabilityActive = false;
-        _pendingCruiseTargetAltitudeFeet = null;
-        _pendingCruiseTargetStartedAt = null;
         _newFlightLevelCaptureSeconds = input.Cruise.NewFlightLevelCaptureSeconds;
-        _lastSignificantCruiseVsAt = null;
+        // Settling state is not persisted — live frames will re-establish it.
+        _cruiseLowVsStartedAt = null;
+        _cruiseLevelingStartedAt = null;
+        _cruiseHadSignificantClimb = false;
 
         if (HasReachedPhase(currentPhase, FlightPhase.Cruise) && lastTelemetryFrame is not null)
         {
@@ -200,7 +291,7 @@ public sealed class FlightSessionScoringTracker
         _descentMaxBank = input.Descent.MaxBankAngleDegrees;
         _descentMaxPitch = input.Descent.MaxPitchAngleDegrees;
         _descentMaxG = input.Descent.MaxGForce;
-        _descentLandingLightsOnByFl180 = !_descentSeen || input.Descent.LandingLightsOnByFl180;
+        _descentLandingLightsOnBy9900 = !_descentSeen || input.Descent.LandingLightsOnBy9900;
 
         _capturedApproach1000Agl = input.Approach.GearDownBy1000Agl;
         _gearDownBy1000Agl = input.Approach.GearDownBy1000Agl;
@@ -229,6 +320,7 @@ public sealed class FlightSessionScoringTracker
         _taxiInLandingLightsOff = !_taxiInSeen || input.TaxiIn.LandingLightsOff;
         _taxiInStrobesOff = !_taxiInSeen || input.TaxiIn.StrobesOff;
         _taxiInTaxiLightsValid = !_taxiInSeen || input.TaxiIn.TaxiLightsOn;
+        _taxiInStartedAt = null; // grace window re-arms on reconnect
         _taxiInLightsOffStart = null;
         _taxiInLandingLightsOnStart = null;
         _taxiInStrobesOnStart = null;
@@ -239,9 +331,51 @@ public sealed class FlightSessionScoringTracker
         _arrivalSeen = currentPhase == FlightPhase.Arrival;
         _arrivalParkingBrakeObserved = currentPhase == FlightPhase.Arrival;
         _arrivalTaxiLightsOffBeforeParkingBrakeSet = input.Arrival.TaxiLightsOffBeforeParkingBrakeSet;
-        _arrivalParkingBrakeSetBeforeAllEnginesShutdown =
-            !_arrivalSeen || input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown;
+        _arrivalAllEnginesOffBeforeParkingBrakeSet =
+            !_arrivalSeen || input.Arrival.AllEnginesOffBeforeParkingBrakeSet;
         _arrivalAllEnginesOffByEndOfSession = input.Arrival.AllEnginesOffByEndOfSession;
+
+        // ── Session-level fields ──────────────────────────────────────────────
+        _sessionEnginesStartedAt = input.Session.EnginesStartedAtUtc;
+        _sessionWheelsOffAt      = input.Session.WheelsOffAtUtc;
+        _sessionWheelsOnAt       = input.Session.WheelsOnAtUtc;
+        _sessionEnginesOffAt     = input.Session.EnginesOffAtUtc;
+        _sessionFuelAtDepartureLbs = input.Session.FuelAtDepartureLbs;
+        _sessionFuelAtLandingLbs   = input.Session.FuelAtLandingLbs;
+        // Departure fuel is recorded once the aircraft starts moving — flag as recorded
+        // if we have a non-zero value (so the first live frame doesn't overwrite it).
+        _sessionFuelDepartureRecorded = input.Session.FuelAtDepartureLbs > 0;
+        // Restore GPS track from saved state; set interval timer to avoid duplicates.
+        _gpsTrack.Clear();
+        _gpsTrack.AddRange(input.GpsTrack);
+        _lastGpsTrackPointAt = _gpsTrack.Count > 0
+            ? _gpsTrack[^1].TimestampUtc
+            : DateTimeOffset.MinValue;
+
+        // ── ILS approach quality ──────────────────────────────────────────────
+        _approachIlsDetected   = input.Approach.IlsApproachDetected;
+        _approachMaxGlideslope = input.Approach.MaxGlideslopeDeviationDots;
+        _approachMaxLocalizer  = input.Approach.MaxLocalizerDeviationDots;
+        // Sample sum / count can't be reconstructed from averages alone; reset to zero
+        // so new live samples after reconnect accumulate correctly.
+        _approachGlideslopeSampleSum = 0;
+        _approachLocalizerSampleSum  = 0;
+        _approachIlsSampleCount      = 0;
+
+        // ── Extended touchdown context ────────────────────────────────────────
+        _landingAutopilotAtTouchdown    = input.Landing.AutopilotEngagedAtTouchdown;
+        _landingSpoilersAtTouchdown     = input.Landing.SpoilersDeployedAtTouchdown;
+        _landingReverseThrustUsed       = input.Landing.ReverseThrustUsed;
+        _landingWindSpeedAtTouchdown    = input.Landing.WindSpeedAtTouchdownKnots;
+        _landingWindDirectionAtTouchdown = input.Landing.WindDirectionAtTouchdownDegrees;
+        _landingOatAtTouchdown          = input.Landing.OatCelsiusAtTouchdown;
+        _landingHeadwindComponent       = input.Landing.HeadwindComponentKnots;
+        _landingCrosswindComponent      = input.Landing.CrosswindComponentKnots;
+
+        // Approach path is not restored — it cannot be reconstructed from saved state.
+        // The buffer starts empty and will accumulate fresh samples if the aircraft
+        // re-enters approach range after a mid-flight reconnect.
+        _approachPathBuffer.Clear();
 
         // Give the first several frames after reconnect a chance to reflect the real
         // aircraft state before any "lights off" watchdog checks can trigger.
@@ -277,6 +411,8 @@ public sealed class FlightSessionScoringTracker
         UpdateArrivalLifecycle(frame);
         UpdateArrival(frame);
         UpdateSafety(frame);
+        UpdateSession(frame);
+        UpdateLightsSystems(frame);
 
         _previousFrame = frame;
     }
@@ -296,6 +432,8 @@ public sealed class FlightSessionScoringTracker
                 ExcessiveTurnSpeedEvents = _taxiOutTurnSpeedEvents,
                 // Pass if the phase hasn't been seen yet — only penalise once we enter it.
                 TaxiLightsOn = !_taxiOutSeen || _taxiOutTaxiLightsValid,
+                MaxTurnSpeedKnots = _taxiOutMaxTurnSpeed,
+                StrobeLightOnDuringTaxi = _taxiOutStrobeLightOn,
             },
             Takeoff = new TakeoffMetrics
             {
@@ -308,6 +446,7 @@ public sealed class FlightSessionScoringTracker
                 LandingLightsOnBeforeTakeoff = !_takeoffSeen || _takeoffLandingLightsOnBeforeTakeoff,
                 LandingLightsOffByFl180 = !_takeoffSeen || _takeoffLandingLightsOffByFl180,
                 StrobesOnFromTakeoffToLanding = !_takeoffSeen || _takeoffStrobesOnFromTakeoffToLanding,
+                PositiveRateBeforeGearUp = _takeoffPositiveRateBeforeGearUp,
             },
             Climb = new ClimbMetrics
             {
@@ -315,6 +454,8 @@ public sealed class FlightSessionScoringTracker
                 MaxIasBelowFl100Knots = _climbMaxIasBelowFl100,
                 MaxBankAngleDegrees = _climbMaxBank,
                 MaxGForce = _climbMaxG,
+                MinGForce = _climbMinG == double.MaxValue ? 0 : _climbMinG,
+                LandingLightsOffAboveFL180 = _climbLandingLightsOffAboveFL180,
             },
             Cruise = new CruiseMetrics
             {
@@ -323,6 +464,13 @@ public sealed class FlightSessionScoringTracker
                 SpeedInstabilityEvents = _cruiseSpeedInstabilityEvents,
                 MaxBankAngleDegrees = _cruiseMaxBank,
                 MaxGForce = _cruiseMaxG,
+                CruiseAltitudeFeet = _cruiseTargetAltitudeFeet,
+                MachTarget = _cruiseReferenceMach,
+                MaxMachDeviation = _cruiseMaxMachDeviation,
+                IasTarget = _cruiseReferenceIasKnots,
+                MaxIasDeviationKnots = _cruiseMaxIasDeviation,
+                MaxTurnBankAngleDegrees = _cruiseMaxTurnBank,
+                MinGForce = _cruiseMinG == double.MaxValue ? 0 : _cruiseMinG,
             },
             Descent = new DescentMetrics
             {
@@ -331,7 +479,10 @@ public sealed class FlightSessionScoringTracker
                 MaxPitchAngleDegrees = _descentMaxPitch,
                 MaxGForce = _descentMaxG,
                 // Pass if descent hasn't been seen yet — only penalise once we enter it.
-                LandingLightsOnByFl180 = !_descentSeen || _descentLandingLightsOnByFl180,
+                LandingLightsOnBy9900 = !_descentSeen || _descentLandingLightsOnBy9900,
+                MinGForce = _descentMinG == double.MaxValue ? 0 : _descentMinG,
+                MaxDescentRateFpm = _descentMaxDescentRateFpm,
+                LandingLightsOnBeforeFL180 = !_descentSeen || _descentLandingLightsOnBeforeFL180,
             },
             Approach = new ApproachMetrics
             {
@@ -344,6 +495,29 @@ public sealed class FlightSessionScoringTracker
                 BankAngleAt500AglDegrees = _approachBankAt500Agl,
                 PitchAngleAt500AglDegrees = _approachPitchAt500Agl,
                 GearDownAt500Agl = !_capturedApproach500Agl || _approachGearDownAt500Agl,
+                IlsApproachDetected = _approachIlsDetected,
+                MaxGlideslopeDeviationDots = _approachMaxGlideslope,
+                AvgGlideslopeDeviationDots = _approachIlsSampleCount > 0
+                    ? _approachGlideslopeSampleSum / _approachIlsSampleCount : 0,
+                MaxLocalizerDeviationDots = _approachMaxLocalizer,
+                AvgLocalizerDeviationDots = _approachIlsSampleCount > 0
+                    ? _approachLocalizerSampleSum / _approachIlsSampleCount : 0,
+                ApproachSpeedKnots = _approachIasAt500Agl,
+                MaxIasDeviationKnots = (_approach1000To500MaxIas > 0 && _approach1000To500MinIas != double.MaxValue)
+                    ? _approach1000To500MaxIas - _approach1000To500MinIas : 0,
+                GearDownAglFeet = _approachGearDownAglFeet,
+                FlapsConfiguredBy1000Agl = _approachFlapsConfiguredBy1000Agl,
+                MaxBankAngleDegrees3000to500 = _approachMaxBankAngle3000to500,
+            },
+            StabilizedApproach = new StabilizedApproachMetrics
+            {
+                ApproachSpeedKnots = _approachIasAt500Agl,
+                MaxIasDeviationKnots = _stabilizedMaxIasDev,
+                MaxDescentRateFpm = _stabilizedMaxDescentRate,
+                ConfigChanged = _stabilizedConfigChanged,
+                MaxHeadingDeviationDegrees = _stabilizedMaxHeadingDev,
+                IlsAvailable = _stabilizedIlsAvailable,
+                MaxGlideslopeDeviationDots = _stabilizedMaxGlideslope,
             },
             Landing = new LandingMetrics
             {
@@ -358,6 +532,16 @@ public sealed class FlightSessionScoringTracker
                 TouchdownCrabAngleDegrees = _landingTouchdownCrabAngleDegrees,
                 TouchdownLatitude = _landingTouchdownLatitude,
                 TouchdownLongitude = _landingTouchdownLongitude,
+                AutopilotEngagedAtTouchdown = _landingAutopilotAtTouchdown,
+                SpoilersDeployedAtTouchdown = _landingSpoilersAtTouchdown,
+                ReverseThrustUsed = _landingReverseThrustUsed,
+                WindSpeedAtTouchdownKnots = _landingWindSpeedAtTouchdown,
+                WindDirectionAtTouchdownDegrees = _landingWindDirectionAtTouchdown,
+                HeadwindComponentKnots = _landingHeadwindComponent,
+                CrosswindComponentKnots = _landingCrosswindComponent,
+                OatCelsiusAtTouchdown = _landingOatAtTouchdown,
+                GearUpAtTouchdown = _landingGearUpAtTouchdown,
+                MaxPitchDuringRolloutDegrees = _landingMaxPitchDuringRollout,
             },
             TaxiIn = new TaxiInMetrics
             {
@@ -367,12 +551,15 @@ public sealed class FlightSessionScoringTracker
                 MaxGroundSpeedKnots = _taxiInMaxGroundSpeed,
                 ExcessiveTurnSpeedEvents = _taxiInTurnSpeedEvents,
                 TaxiLightsOn = !_taxiInSeen || _taxiInTaxiLightsValid,
+                MaxTurnSpeedKnots = _taxiInMaxTurnSpeed,
+                StrobeLightOnDuringTaxi = _taxiInStrobeLightOn,
+                SmoothDeceleration = _taxiInSmoothDeceleration,
             },
             Arrival = new ArrivalMetrics
             {
                 // Pass if the phase hasn't been seen yet — only penalise once we enter it.
                 TaxiLightsOffBeforeParkingBrakeSet = !_arrivalSeen || (_arrivalParkingBrakeObserved && _arrivalTaxiLightsOffBeforeParkingBrakeSet),
-                ParkingBrakeSetBeforeAllEnginesShutdown = !_arrivalSeen || (_arrivalParkingBrakeObserved && _arrivalParkingBrakeSetBeforeAllEnginesShutdown),
+                AllEnginesOffBeforeParkingBrakeSet = !_arrivalSeen || (_arrivalParkingBrakeObserved && _arrivalAllEnginesOffBeforeParkingBrakeSet),
                 AllEnginesOffByEndOfSession = !_arrivalSeen || _arrivalAllEnginesOffByEndOfSession,
             },
             Safety = new SafetyMetrics
@@ -384,6 +571,28 @@ public sealed class FlightSessionScoringTracker
                 GpwsEvents = _gpwsEvents,
                 EngineShutdownsInFlight = _engineShutdownsInFlight,
             },
+            LightsSystems = new LightsSystemsMetrics
+            {
+                BeaconOnThroughoutFlight = _lightsBeaconOnThroughout,
+                NavLightsOnThroughoutFlight = _lightsNavOnThroughout,
+                StrobesCorrect = _lightsStrobesCorrect,
+                LandingLightsCompliance = _lightsLandingTotalSamples > 0
+                    ? (double)_lightsLandingCompliantSamples / _lightsLandingTotalSamples
+                    : 1.0,
+            },
+            Session = new SessionMetrics
+            {
+                EnginesStartedAtUtc = _sessionEnginesStartedAt,
+                WheelsOffAtUtc = _sessionWheelsOffAt,
+                WheelsOnAtUtc = _sessionWheelsOnAt,
+                EnginesOffAtUtc = _sessionEnginesOffAt,
+                FuelAtDepartureLbs = _sessionFuelAtDepartureLbs,
+                FuelAtLandingLbs = _sessionFuelAtLandingLbs,
+            },
+            GpsTrack = _gpsTrack,
+            ApproachPath = _approachPathBuffer.Count > 0
+                ? _approachPathBuffer.ToList()
+                : [],
         };
     }
 
@@ -394,14 +603,31 @@ public sealed class FlightSessionScoringTracker
     }
 
     /// <summary>
-    /// Called by RuntimeCoordinator immediately after touchdown runway resolution
-    /// completes, to record centerline deviation and crab angle for scoring.
+    /// Appends one approach telemetry sample to the rolling buffer.
+    /// If the buffer is at capacity (300 samples) the oldest entry is dropped first.
+    /// Called by RuntimeCoordinator every ~2 s during Descent/Approach when the
+    /// aircraft is within 15 nm of the arrival airport, and once at touchdown.
     /// </summary>
-    public void SetTouchdownRunwayMetrics(double centerlineDeviationFeet, double crabAngleDegrees)
+    public void RecordApproachSample(double distanceToThresholdNm, double altitudeFeet,
+                                     double indicatedAirspeedKnots, double verticalSpeedFpm)
     {
-        _landingTouchdownCenterlineDeviationFeet = centerlineDeviationFeet;
-        _landingTouchdownCrabAngleDegrees = crabAngleDegrees;
+        if (_approachPathBuffer.Count >= ApproachPathMaxSamples)
+            _approachPathBuffer.Dequeue();
+
+        _approachPathBuffer.Enqueue(new ApproachSamplePoint
+        {
+            DistanceToThresholdNm    = distanceToThresholdNm,
+            AltitudeFeet             = altitudeFeet,
+            IndicatedAirspeedKnots   = indicatedAirspeedKnots,
+            VerticalSpeedFpm         = verticalSpeedFpm,
+        });
     }
+
+    /// <summary>
+    /// Clears the approach path buffer.  Called by RuntimeCoordinator when a crash
+    /// is detected or the flight is cancelled so no partial data is uploaded.
+    /// </summary>
+    public void DiscardApproachPath() => _approachPathBuffer.Clear();
 
     private void UpdatePreflight(TelemetryFrame frame)
     {
@@ -451,6 +677,21 @@ public sealed class FlightSessionScoringTracker
         }
 
         CountTurnSpeedEvent(frame, ref _taxiOutTurnSpeedEvents, ref _lastTaxiOutTurnEventAt);
+
+        // v3: track max turn speed (GS when heading changes significantly)
+        if (_previousFrame is not null && _previousFrame.Phase == FlightPhase.TaxiOut)
+        {
+            var headingDelta = NormalizeHeadingDelta(frame.HeadingTrueDegrees - _previousFrame.HeadingTrueDegrees);
+            var dtSeconds = (frame.TimestampUtc - _previousFrame.TimestampUtc).TotalSeconds;
+            if (dtSeconds > 0 && Math.Abs(headingDelta) / dtSeconds > 5.0)
+            {
+                _taxiOutMaxTurnSpeed = Math.Max(_taxiOutMaxTurnSpeed, frame.GroundSpeedKnots);
+            }
+        }
+
+        // v3: latch strobes on during taxi out
+        if (frame.StrobesOn)
+            _taxiOutStrobeLightOn = true;
     }
 
     private void UpdateTakeoff(TelemetryFrame frame)
@@ -471,6 +712,7 @@ public sealed class FlightSessionScoringTracker
             {
                 _takeoffTailStrikeDetected = true;
             }
+
         }
 
         if (frame.Phase is FlightPhase.Takeoff or FlightPhase.Climb or FlightPhase.Cruise or FlightPhase.Descent or FlightPhase.Approach or FlightPhase.Landing)
@@ -505,6 +747,15 @@ public sealed class FlightSessionScoringTracker
         {
             _takeoffBounceCount++;
         }
+
+        // v3: detect gear retraction after liftoff to check positive-rate-before-gear-up
+        if (_previousFrame.GearDown && !frame.GearDown &&
+            (frame.Phase == FlightPhase.Takeoff || frame.Phase == FlightPhase.Climb) &&
+            !frame.OnGround)
+        {
+            _takeoffPositiveRateBeforeGearUp =
+                frame.VerticalSpeedFpm > 100 || _previousFrame.VerticalSpeedFpm > 100;
+        }
     }
 
     private void UpdateClimb(TelemetryFrame frame)
@@ -521,6 +772,11 @@ public sealed class FlightSessionScoringTracker
 
         _climbMaxBank = Math.Max(_climbMaxBank, Math.Abs(frame.BankAngleDegrees));
         _climbMaxG = Math.Max(_climbMaxG, frame.GForce);
+
+        // v3 new metrics
+        _climbMinG = Math.Min(_climbMinG, frame.GForce);
+        if (frame.IndicatedAltitudeFeet >= 18000 && frame.LandingLightsOn)
+            _climbLandingLightsOffAboveFL180 = false;
     }
 
     private void UpdateCruise(TelemetryFrame frame)
@@ -533,52 +789,79 @@ public sealed class FlightSessionScoringTracker
         _cruiseMaxBank = Math.Max(_cruiseMaxBank, Math.Abs(frame.BankAngleDegrees));
         _cruiseMaxG = Math.Max(_cruiseMaxG, frame.GForce);
 
+        // v3 new metrics
+        _cruiseMinG = Math.Min(_cruiseMinG, frame.GForce);
+
+        var absVs = Math.Abs(frame.VerticalSpeedFpm);
         var currentAltitude = Math.Round(frame.IndicatedAltitudeFeet / 100.0) * 100.0;
-        _cruiseTargetAltitudeFeet ??= currentAltitude;
 
-        // Track whenever VS exceeds 300 fpm — used below to suppress false altitude-
-        // deviation penalties during the level-off phase after a step climb/descent.
-        if (Math.Abs(frame.VerticalSpeedFpm) > 300)
-            _lastSignificantCruiseVsAt = frame.TimestampUtc;
-
-        // Only accumulate altitude deviation while the aircraft has been in genuinely
-        // level flight for at least 60 seconds.  If VS was significant within the last
-        // 60 s we're still in (or just completed) a step climb/descent — skip accumulation
-        // so intentional level changes don't register as altitude deviations.
-        if (Math.Abs(frame.VerticalSpeedFpm) < 300 &&
-            (_lastSignificantCruiseVsAt is null ||
-             frame.TimestampUtc - _lastSignificantCruiseVsAt.Value >= TimeSpan.FromSeconds(60)))
+        // ── Altitude target settling ──────────────────────────────────────────
+        // The cruise altitude target "floats" to follow the aircraft until VS has
+        // been ≤ 100 fpm for 30 consecutive seconds.  Re-arms on every climb or
+        // descent so both the initial level-off and all step climbs are excluded
+        // from altitude deviation tracking.
+        if (absVs > 100)
         {
-            var deviation = Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value);
-            _cruiseMaxAltitudeDeviation = Math.Max(_cruiseMaxAltitudeDeviation, deviation);
-        }
+            // Aircraft is climbing or descending — reset settling timer and keep
+            // the target following.
+            _cruiseLowVsStartedAt = null;
+            _cruiseTargetAltitudeFeet = currentAltitude;
 
-        if (Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value) > 300)
-        {
-            if (_pendingCruiseTargetAltitudeFeet is null ||
-                Math.Abs(frame.IndicatedAltitudeFeet - _pendingCruiseTargetAltitudeFeet.Value) > 100)
+            if (absVs > 300)
             {
-                _pendingCruiseTargetAltitudeFeet = currentAltitude;
-                _pendingCruiseTargetStartedAt = frame.TimestampUtc;
+                // Significant VS: a step climb/descent is in progress.
+                // Reset the leveling timer until VS drops back below 300 fpm.
+                _cruiseHadSignificantClimb = true;
+                _cruiseLevelingStartedAt = null;
             }
-            else if (_pendingCruiseTargetStartedAt is not null &&
-                     frame.TimestampUtc - _pendingCruiseTargetStartedAt >= TimeSpan.FromSeconds(60))
+            else if (_cruiseHadSignificantClimb)
             {
-                _newFlightLevelCaptureSeconds = (_newFlightLevelCaptureSeconds is null)
-                    ? (frame.TimestampUtc - _pendingCruiseTargetStartedAt.Value).TotalSeconds
-                    : Math.Max(_newFlightLevelCaptureSeconds.Value, (frame.TimestampUtc - _pendingCruiseTargetStartedAt.Value).TotalSeconds);
-
-                _cruiseTargetAltitudeFeet = _pendingCruiseTargetAltitudeFeet;
-                _pendingCruiseTargetAltitudeFeet = null;
-                _pendingCruiseTargetStartedAt = null;
+                // VS is 100–300 fpm: leveling off after a step climb.
+                // Start the capture timer on the first such frame.
+                _cruiseLevelingStartedAt ??= frame.TimestampUtc;
             }
         }
         else
         {
-            _pendingCruiseTargetAltitudeFeet = null;
-            _pendingCruiseTargetStartedAt = null;
+            // VS ≤ 100 fpm — accumulate consecutive seconds of level flight.
+            _cruiseLowVsStartedAt ??= frame.TimestampUtc;
+
+            // If we came from a step climb, start the capture timer now.
+            if (_cruiseHadSignificantClimb)
+                _cruiseLevelingStartedAt ??= frame.TimestampUtc;
+
+            var settledSeconds = (frame.TimestampUtc - _cruiseLowVsStartedAt.Value).TotalSeconds;
+
+            if (settledSeconds < 30)
+            {
+                // Still within the settling window — keep target following.
+                _cruiseTargetAltitudeFeet = currentAltitude;
+            }
+            else
+            {
+                // Fully settled: lock the target and start tracking deviations.
+                _cruiseTargetAltitudeFeet ??= currentAltitude;
+
+                // Record step-climb capture time (time from leveling-off start to
+                // fully settled), so the scoring engine can penalise slow captures.
+                if (_cruiseHadSignificantClimb && _cruiseLevelingStartedAt is not null)
+                {
+                    var captureSeconds = (frame.TimestampUtc - _cruiseLevelingStartedAt.Value).TotalSeconds;
+                    _newFlightLevelCaptureSeconds = _newFlightLevelCaptureSeconds is null
+                        ? captureSeconds
+                        : Math.Max(_newFlightLevelCaptureSeconds.Value, captureSeconds);
+                }
+
+                _cruiseHadSignificantClimb = false;
+                _cruiseLevelingStartedAt = null;
+
+                // Accumulate deviation from the locked target.
+                var deviation = Math.Abs(frame.IndicatedAltitudeFeet - _cruiseTargetAltitudeFeet.Value);
+                _cruiseMaxAltitudeDeviation = Math.Max(_cruiseMaxAltitudeDeviation, deviation);
+            }
         }
 
+        // ── Speed instability ─────────────────────────────────────────────────
         if (_previousFrame is null || _previousFrame.Phase != FlightPhase.Cruise)
         {
             _cruiseReferenceIasKnots = frame.IndicatedAirspeedKnots;
@@ -594,6 +877,21 @@ public sealed class FlightSessionScoringTracker
         var machDelta = Math.Abs(frame.Mach - _cruiseReferenceMach.Value);
         var iasDelta = Math.Abs(frame.IndicatedAirspeedKnots - _cruiseReferenceIasKnots.Value);
         var unstable = machDelta > 0.03 || iasDelta > 15;
+
+        // v3: track max deviations
+        _cruiseMaxMachDeviation = Math.Max(_cruiseMaxMachDeviation, machDelta);
+        _cruiseMaxIasDeviation = Math.Max(_cruiseMaxIasDeviation, iasDelta);
+
+        // v3: track turn bank (bank when heading is changing)
+        if (_previousFrame is not null)
+        {
+            var headingDelta = NormalizeHeadingDelta(frame.HeadingTrueDegrees - _previousFrame.HeadingTrueDegrees);
+            var dtSeconds = (frame.TimestampUtc - _previousFrame.TimestampUtc).TotalSeconds;
+            if (dtSeconds > 0 && Math.Abs(headingDelta) / dtSeconds > 1.0)
+            {
+                _cruiseMaxTurnBank = Math.Max(_cruiseMaxTurnBank, Math.Abs(frame.BankAngleDegrees));
+            }
+        }
 
         if (unstable)
         {
@@ -633,22 +931,43 @@ public sealed class FlightSessionScoringTracker
             _descentMaxIasBelowFl100 = Math.Max(_descentMaxIasBelowFl100, frame.IndicatedAirspeedKnots);
         }
 
-        if (_postRestoreGraceFrames <= 0 && frame.IndicatedAltitudeFeet <= 18000 && !frame.LandingLightsOn)
+        // Check at 9,900 ft rather than FL180 — pilots have until FL100 to turn lights on.
+        if (_postRestoreGraceFrames <= 0 && frame.IndicatedAltitudeFeet <= 9900 && !frame.LandingLightsOn)
         {
-            _descentLandingLightsOnByFl180 = false;
+            _descentLandingLightsOnBy9900 = false;
         }
 
         _descentMaxBank = Math.Max(_descentMaxBank, Math.Abs(frame.BankAngleDegrees));
         _descentMaxPitch = Math.Max(_descentMaxPitch, Math.Abs(frame.PitchAngleDegrees));
         _descentMaxG = Math.Max(_descentMaxG, frame.GForce);
+
+        // v3 new metrics
+        _descentMinG = Math.Min(_descentMinG, frame.GForce);
+        _descentMaxDescentRateFpm = Math.Max(_descentMaxDescentRateFpm, Math.Abs(frame.VerticalSpeedFpm));
+        if (_postRestoreGraceFrames <= 0 && frame.IndicatedAltitudeFeet <= 18000 && !frame.LandingLightsOn)
+            _descentLandingLightsOnBeforeFL180 = false;
     }
 
     private void UpdateApproach(TelemetryFrame frame)
     {
         if (frame.Phase != FlightPhase.Approach)
         {
+            // Run stabilized approach tracking also during Landing phase (below 500 AGL)
+            if (frame.Phase == FlightPhase.Landing)
+                UpdateStabilizedApproach(frame);
             return;
         }
+
+        // v3: track bank from 3000 AGL down to 500 AGL
+        if (!_capturedApproach3000Agl && frame.AltitudeAglFeet <= 3000)
+            _capturedApproach3000Agl = true;
+
+        if (_capturedApproach3000Agl && frame.AltitudeAglFeet >= 500)
+            _approachMaxBankAngle3000to500 = Math.Max(_approachMaxBankAngle3000to500, Math.Abs(frame.BankAngleDegrees));
+
+        // v3: gear-down transition — record actual AGL at which gear was extended
+        if (_previousFrame is not null && !_previousFrame.GearDown && frame.GearDown)
+            _approachGearDownAglFeet = frame.AltitudeAglFeet;
 
         if (_previousFrame is not null)
         {
@@ -658,6 +977,18 @@ public sealed class FlightSessionScoringTracker
             {
                 _capturedApproach1000Agl = true;
                 _gearDownBy1000Agl = frame.GearDown;
+                // v3: record flaps configured at 1000 AGL
+                _approachFlapsConfiguredBy1000Agl = frame.FlapsHandleIndex > 0;
+                // v3: start tracking IAS for 1000-500 AGL window
+                _approach1000To500MinIas = frame.IndicatedAirspeedKnots;
+                _approach1000To500MaxIas = frame.IndicatedAirspeedKnots;
+            }
+
+            // v3: accumulate IAS range in the 1000-500 AGL window
+            if (_capturedApproach1000Agl && !_capturedApproach500Agl && frame.AltitudeAglFeet > 500)
+            {
+                _approach1000To500MinIas = Math.Min(_approach1000To500MinIas, frame.IndicatedAirspeedKnots);
+                _approach1000To500MaxIas = Math.Max(_approach1000To500MaxIas, frame.IndicatedAirspeedKnots);
             }
 
             if (!_capturedApproach500Agl &&
@@ -670,7 +1001,59 @@ public sealed class FlightSessionScoringTracker
                 _approachBankAt500Agl = Math.Abs(frame.BankAngleDegrees);
                 _approachPitchAt500Agl = Math.Abs(frame.PitchAngleDegrees);
                 _approachGearDownAt500Agl = frame.GearDown;
+                // v3: record approach speed and stabilized approach reference data at 500 AGL
+                _approachIasAt500Agl = frame.IndicatedAirspeedKnots;
+                _stabilizedHeadingAt500Agl = frame.HeadingTrueDegrees;
+                _stabilizedFlapsAt500Agl = frame.FlapsHandleIndex;
+                _stabilizedGearAt500Agl = frame.GearDown;
+                _stabilizedApproachActive = true;
             }
+        }
+
+        // ILS quality — accumulate glideslope and localizer deviation while a valid
+        // signal is present, from 1000 ft AGL downwards.
+        if (frame.Nav1IlsSignalValid && frame.AltitudeAglFeet <= 1000)
+        {
+            _approachIlsDetected = true;
+            var gs = Math.Abs(frame.Nav1GlideslopeErrorDots);
+            var loc = Math.Abs(frame.Nav1LocalizerErrorDots);
+            _approachMaxGlideslope = Math.Max(_approachMaxGlideslope, gs);
+            _approachMaxLocalizer  = Math.Max(_approachMaxLocalizer,  loc);
+            _approachGlideslopeSampleSum += gs;
+            _approachLocalizerSampleSum  += loc;
+            _approachIlsSampleCount++;
+        }
+
+        // v3: stabilized approach tracking below 500 AGL
+        if (frame.AltitudeAglFeet <= 500)
+            UpdateStabilizedApproach(frame);
+    }
+
+    private void UpdateStabilizedApproach(TelemetryFrame frame)
+    {
+        if (!_stabilizedApproachActive)
+            return;
+
+        // IAS deviation from approach speed captured at 500 AGL
+        if (_approachIasAt500Agl > 0)
+            _stabilizedMaxIasDev = Math.Max(_stabilizedMaxIasDev,
+                Math.Abs(frame.IndicatedAirspeedKnots - _approachIasAt500Agl));
+
+        _stabilizedMaxDescentRate = Math.Max(_stabilizedMaxDescentRate, Math.Abs(frame.VerticalSpeedFpm));
+
+        // Config change detection: gear or flaps changed below 500 AGL
+        if (_stabilizedGearAt500Agl != frame.GearDown || _stabilizedFlapsAt500Agl != frame.FlapsHandleIndex)
+            _stabilizedConfigChanged = true;
+
+        // Heading deviation from heading at 500 AGL
+        var headingDev = Math.Abs(NormalizeHeadingDelta(frame.HeadingTrueDegrees - _stabilizedHeadingAt500Agl));
+        _stabilizedMaxHeadingDev = Math.Max(_stabilizedMaxHeadingDev, headingDev);
+
+        // ILS tracking
+        if (frame.Nav1IlsSignalValid)
+        {
+            _stabilizedIlsAvailable = true;
+            _stabilizedMaxGlideslope = Math.Max(_stabilizedMaxGlideslope, Math.Abs(frame.Nav1GlideslopeErrorDots));
         }
     }
 
@@ -693,11 +1076,21 @@ public sealed class FlightSessionScoringTracker
             _landingTouchdownGForce = Math.Max(_landingTouchdownGForce, CalculateTouchdownGForce());
             if (_landingTouchdownIndicatedAirspeedKnots == 0)
             {
+                // First touchdown — record all point-in-time context.
                 _landingTouchdownBankAngleDegrees = Math.Abs(frame.BankAngleDegrees);
                 _landingTouchdownIndicatedAirspeedKnots = frame.IndicatedAirspeedKnots;
                 _landingTouchdownPitchAngleDegrees = frame.PitchAngleDegrees;
                 _landingTouchdownLatitude = frame.Latitude;
                 _landingTouchdownLongitude = frame.Longitude;
+                _landingAutopilotAtTouchdown = frame.AutopilotEngaged;
+                _landingSpoilersAtTouchdown = frame.SpoilersArmed || frame.SpoilerHandlePosition > 0.1;
+                _landingWindSpeedAtTouchdown = frame.WindSpeedKnots;
+                _landingWindDirectionAtTouchdown = frame.WindDirectionDegrees;
+                _landingOatAtTouchdown = frame.OutsideAirTempCelsius;
+                _sessionFuelAtLandingLbs = frame.FuelTotalLbs;
+                _sessionWheelsOnAt = frame.TimestampUtc;
+                // v3: gear-up at touchdown
+                _landingGearUpAtTouchdown = !frame.GearDown;
             }
 
             if (_airborneAfterTouchdownAt is not null &&
@@ -724,6 +1117,21 @@ public sealed class FlightSessionScoringTracker
         {
             _landingTouchdownZoneExcessDistanceFeet = Math.Max(_landingTouchdownZoneExcessDistanceFeet, frame.TouchdownZoneExcessDistanceFeet.Value);
         }
+
+        // Reverse thrust — detect sustained N1 above idle while on the ground after landing.
+        // A spoiler handle > 0.5 during rollout also confirms speedbrake deployment.
+        if (frame.OnGround && _lastTouchdownAt is not null && frame.GroundSpeedKnots > 10)
+        {
+            var maxN1 = Math.Max(
+                Math.Max(frame.Engine1N1Pct, frame.Engine2N1Pct),
+                Math.Max(frame.Engine3N1Pct, frame.Engine4N1Pct));
+            if (maxN1 > 20)
+                _landingReverseThrustUsed = true;
+        }
+
+        // v3: track max pitch during landing rollout (on ground after touchdown)
+        if (frame.OnGround && _lastTouchdownAt is not null)
+            _landingMaxPitchDuringRollout = Math.Max(_landingMaxPitchDuringRollout, Math.Abs(frame.PitchAngleDegrees));
     }
 
     private void UpdateTaxiIn(TelemetryFrame frame)
@@ -734,6 +1142,7 @@ public sealed class FlightSessionScoringTracker
         }
 
         _taxiInSeen = true;
+        _taxiInStartedAt ??= frame.TimestampUtc;
         _taxiInMaxGroundSpeed = Math.Max(_taxiInMaxGroundSpeed, frame.GroundSpeedKnots);
 
         // Landing lights — 60-second grace window after runway vacate before penalty locks in.
@@ -766,10 +1175,13 @@ public sealed class FlightSessionScoringTracker
             }
         }
 
-        // Only require taxi lights while actively taxiing — below 8 kts (slowing to gate)
-        // lights off is correct procedure, ~1 min before parking brake.
+        // Taxi lights — 60-second grace window after runway vacate, then require lights on
+        // above 8 kts.  Below 8 kts (slowing to gate) lights off is correct procedure.
         // 3-second debounce: an accidental toggle doesn't cause a permanent penalty.
-        if (frame.GroundSpeedKnots >= 8.0 && _postRestoreGraceFrames <= 0)
+        var taxiInElapsed = frame.TimestampUtc - _taxiInStartedAt!.Value;
+        if (taxiInElapsed >= TimeSpan.FromSeconds(60) &&
+            frame.GroundSpeedKnots >= 8.0 &&
+            _postRestoreGraceFrames <= 0)
         {
             if (!frame.TaxiLightsOn)
             {
@@ -784,6 +1196,35 @@ public sealed class FlightSessionScoringTracker
         }
 
         CountTurnSpeedEvent(frame, ref _taxiInTurnSpeedEvents, ref _lastTaxiInTurnEventAt);
+
+        // v3: track max turn speed for taxi in
+        if (_previousFrame is not null && _previousFrame.Phase == FlightPhase.TaxiIn)
+        {
+            var headingDelta = NormalizeHeadingDelta(frame.HeadingTrueDegrees - _previousFrame.HeadingTrueDegrees);
+            var dtSeconds = (frame.TimestampUtc - _previousFrame.TimestampUtc).TotalSeconds;
+            if (dtSeconds > 0 && Math.Abs(headingDelta) / dtSeconds > 5.0)
+            {
+                _taxiInMaxTurnSpeed = Math.Max(_taxiInMaxTurnSpeed, frame.GroundSpeedKnots);
+            }
+        }
+
+        // v3: latch strobes on during taxi in
+        if (frame.StrobesOn)
+            _taxiInStrobeLightOn = true;
+
+        // v3: deceleration smoothness — check if decel rate exceeds 3 kts/s
+        if (_taxiInPrevSpeedSampleAt is not null)
+        {
+            var dtSeconds = (frame.TimestampUtc - _taxiInPrevSpeedSampleAt.Value).TotalSeconds;
+            if (dtSeconds > 0)
+            {
+                var decelRate = (_taxiInPrevGroundSpeed - frame.GroundSpeedKnots) / dtSeconds;
+                if (decelRate > 3.0)
+                    _taxiInSmoothDeceleration = false;
+            }
+        }
+        _taxiInPrevSpeedSampleAt = frame.TimestampUtc;
+        _taxiInPrevGroundSpeed = frame.GroundSpeedKnots;
     }
 
     private void UpdateArrival(TelemetryFrame frame)
@@ -808,15 +1249,14 @@ public sealed class FlightSessionScoringTracker
 
         if (!_arrivalParkingBrakeObserved)
         {
-            if (!frame.ParkingBrakeSet)
+            if (frame.ParkingBrakeSet)
             {
-                if (!AnyEngineRunning(frame))
+                // SOPs require engines off BEFORE setting the parking brake.
+                // Penalise if any engine is still running when the brake is applied.
+                if (AnyEngineRunning(frame))
                 {
-                    _arrivalParkingBrakeSetBeforeAllEnginesShutdown = false;
+                    _arrivalAllEnginesOffBeforeParkingBrakeSet = false;
                 }
-            }
-            else
-            {
                 _arrivalParkingBrakeObserved = true;
             }
         }
@@ -831,6 +1271,45 @@ public sealed class FlightSessionScoringTracker
         }
 
         _arrivalAllEnginesOffByEndOfSession = !AnyEngineRunning(frame);
+    }
+
+    private void UpdateSession(TelemetryFrame frame)
+    {
+        // Engine start time — first frame where any engine is running.
+        if (_sessionEnginesStartedAt is null && AnyEngineRunning(frame))
+            _sessionEnginesStartedAt = frame.TimestampUtc;
+
+        // Wheels-off — first liftoff.
+        if (_sessionWheelsOffAt is null && _previousFrame is { OnGround: true } && !frame.OnGround)
+            _sessionWheelsOffAt = frame.TimestampUtc;
+
+        // Engines-off time — first frame where all engines stop (airborne or on ground).
+        if (_sessionEnginesOffAt is null && _sessionEnginesStartedAt is not null && !AnyEngineRunning(frame))
+            _sessionEnginesOffAt = frame.TimestampUtc;
+
+        // Departure fuel — snapshot when the aircraft first starts moving forward under own power.
+        if (!_sessionFuelDepartureRecorded && _forwardTaxiStarted)
+        {
+            _sessionFuelAtDepartureLbs = frame.FuelTotalLbs;
+            _sessionFuelDepartureRecorded = true;
+        }
+
+        // GPS track — one point every 30 seconds (or on phase changes).
+        var phaseChanged = _previousFrame is not null && _previousFrame.Phase != frame.Phase;
+        var intervalElapsed = (frame.TimestampUtc - _lastGpsTrackPointAt).TotalSeconds >= GpsTrackIntervalSeconds;
+        if (intervalElapsed || phaseChanged)
+        {
+            _gpsTrack.Add(new GpsTrackPoint
+            {
+                TimestampUtc = frame.TimestampUtc,
+                Latitude = frame.Latitude,
+                Longitude = frame.Longitude,
+                AltitudeFeet = frame.AltitudeFeet,
+                GroundSpeedKnots = frame.GroundSpeedKnots,
+                Phase = frame.Phase,
+            });
+            _lastGpsTrackPointAt = frame.TimestampUtc;
+        }
     }
 
     private void UpdateSafety(TelemetryFrame frame)
@@ -1027,6 +1506,50 @@ public sealed class FlightSessionScoringTracker
         }
 
         return normalized;
+    }
+
+    private void UpdateLightsSystems(TelemetryFrame frame)
+    {
+        if (_postRestoreGraceFrames > 0)
+            return;
+
+        var anyEngineOn = AnyEngineRunning(frame);
+
+        // Beacon must be on whenever any engine is running.
+        if (anyEngineOn && !frame.BeaconLightOn)
+            _lightsBeaconOnThroughout = false;
+
+        // Nav lights proxy (TaxiLightsOn) — must be on when any engine is running.
+        if (anyEngineOn && !frame.TaxiLightsOn)
+            _lightsNavOnThroughout = false;
+
+        // Strobe window: open when airborne during flight phases.
+        var airborneFlightPhase = frame.Phase is FlightPhase.Takeoff or FlightPhase.Climb or
+            FlightPhase.Cruise or FlightPhase.Descent or FlightPhase.Approach or FlightPhase.Landing
+            && !frame.OnGround;
+        _lightsStrobeWindowOpen = airborneFlightPhase;
+
+        if (_lightsStrobeWindowOpen && !frame.StrobesOn)
+            _lightsStrobesCorrect = false;
+        if (!_lightsStrobeWindowOpen && frame.StrobesOn &&
+            frame.Phase is FlightPhase.TaxiOut or FlightPhase.TaxiIn or FlightPhase.Arrival)
+            _lightsStrobesCorrect = false;
+
+        // Landing lights compliance — sample every 30 s.
+        // Correct: lights on when below FL180, lights off when at or above FL180.
+        if (_lightsLastComplianceSampleAt is null ||
+            (frame.TimestampUtc - _lightsLastComplianceSampleAt.Value).TotalSeconds >= 30)
+        {
+            if (frame.Phase is FlightPhase.Climb or FlightPhase.Cruise or
+                FlightPhase.Descent or FlightPhase.Approach)
+            {
+                _lightsLandingTotalSamples++;
+                var belowFl180 = frame.IndicatedAltitudeFeet < 18000;
+                if ((belowFl180 && frame.LandingLightsOn) || (!belowFl180 && !frame.LandingLightsOn))
+                    _lightsLandingCompliantSamples++;
+                _lightsLastComplianceSampleAt = frame.TimestampUtc;
+            }
+        }
     }
 
     private sealed record RecentSample(DateTimeOffset TimestampUtc, double VerticalSpeedFpm, double GForce, double AltitudeAglFeet);

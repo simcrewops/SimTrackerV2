@@ -42,7 +42,15 @@ public sealed class TrackerServiceFactory
     /// Returns null if no API token is configured.
     /// Used for hot-reloading after settings change without restarting the app.
     /// </summary>
-    public ILivePositionUploader? CreateLivePositionUploader(TrackerApiSettings apiSettings)
+    /// <param name="apiSettings">Current API settings (base URI, pilot token, etc.).</param>
+    /// <param name="apiKeyStore">
+    /// Optional shared <see cref="TrackerApiKeyStore"/>.  Pass the same store that was created
+    /// by <see cref="Create"/> so hot-reloaded uploaders continue to honour any tracker API key
+    /// that was previously received from the bootstrap endpoint.
+    /// </param>
+    public ILivePositionUploader? CreateLivePositionUploader(
+        TrackerApiSettings apiSettings,
+        TrackerApiKeyStore? apiKeyStore = null)
     {
         ArgumentNullException.ThrowIfNull(apiSettings);
 
@@ -57,7 +65,8 @@ public sealed class TrackerServiceFactory
                 SimSessionsPath = apiSettings.SimSessionsPath,
                 PilotApiToken = apiSettings.PilotApiToken!,
                 TrackerVersion = apiSettings.TrackerVersion,
-            });
+            },
+            apiKeyStore);
     }
 
     public TrackerServiceStack Create(TrackerAppSettings settings)
@@ -71,7 +80,13 @@ public sealed class TrackerServiceFactory
             CompletedSessionsDirectoryName = settings.Storage.CompletedSessionsDirectoryName,
         });
 
-        var livePositionUploader = string.IsNullOrWhiteSpace(settings.Api.PilotApiToken)
+        // One shared store per service stack — all uploaders reference the same object so
+        // updating ApiKey once is enough to affect both live-position and session uploads.
+        var apiKeyStore = string.IsNullOrWhiteSpace(settings.Api.PilotApiToken)
+            ? null
+            : new TrackerApiKeyStore();
+
+        var livePositionUploader = apiKeyStore is null
             ? null
             : new HttpLivePositionUploader(
                 _httpClientFactory(),
@@ -81,7 +96,8 @@ public sealed class TrackerServiceFactory
                     SimSessionsPath = settings.Api.SimSessionsPath,
                     PilotApiToken = settings.Api.PilotApiToken!,
                     TrackerVersion = settings.Api.TrackerVersion,
-                });
+                },
+                apiKeyStore);
 
         var activeFlightFetcher = string.IsNullOrWhiteSpace(settings.Api.PilotApiToken)
             ? null
@@ -111,6 +127,7 @@ public sealed class TrackerServiceFactory
                 LivePositionUploader = livePositionUploader,
                 ActiveFlightFetcher = activeFlightFetcher,
                 LiveMapService = liveMapService,
+                TrackerApiKeyStore = apiKeyStore,
             };
         }
 
@@ -122,7 +139,8 @@ public sealed class TrackerServiceFactory
                 SimSessionsPath = settings.Api.SimSessionsPath,
                 PilotApiToken = settings.Api.PilotApiToken!,
                 TrackerVersion = settings.Api.TrackerVersion,
-            });
+            },
+            apiKeyStore: apiKeyStore);
 
         var syncService = new CompletedSessionSyncService(flightSessionStore, uploader);
         var backgroundSyncCoordinator = new BackgroundSyncCoordinator(
@@ -140,6 +158,7 @@ public sealed class TrackerServiceFactory
             BackgroundSyncCoordinator = backgroundSyncCoordinator,
             ActiveFlightFetcher = activeFlightFetcher,
             LiveMapService = liveMapService,
+            TrackerApiKeyStore = apiKeyStore,
         };
     }
 }
