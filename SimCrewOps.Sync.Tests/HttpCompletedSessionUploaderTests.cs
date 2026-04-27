@@ -38,9 +38,9 @@ public sealed class HttpCompletedSessionUploaderTests
         Assert.Equal(2, request.ScoreInputV5.Landing.BounceCount);
         Assert.Equal(1.8, request.ScoreInputV5.Landing.TouchdownBankDeg);
         Assert.True(request.ScoreInputV5.Safety.CrashDetected);
-        Assert.Equal(3, request.ScoreInputV5.Safety.OverspeedEvents);
-        Assert.Equal(1, request.ScoreInputV5.Safety.StallEvents);
-        Assert.Equal(2, request.ScoreInputV5.Safety.GpwsEvents);
+        Assert.Equal(3, request.ScoreInputV5.Safety.OverspeedWarningCount);
+        Assert.Equal(1, request.ScoreInputV5.Safety.StallWarningCount);
+        Assert.Equal(2, request.ScoreInputV5.Safety.GpwsAlertCount);
     }
 
     [Fact]
