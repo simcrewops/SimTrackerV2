@@ -9,10 +9,12 @@ public sealed record FlightScoreInput
     public CruiseMetrics Cruise { get; init; } = new();
     public DescentMetrics Descent { get; init; } = new();
     public ApproachMetrics Approach { get; init; } = new();
+    public StabilizedApproachMetrics StabilizedApproach { get; init; } = new();
     public LandingMetrics Landing { get; init; } = new();
     public TaxiInMetrics TaxiIn { get; init; } = new();
     public ArrivalMetrics Arrival { get; init; } = new();
     public SafetyMetrics Safety { get; init; } = new();
+    public LightsSystemsMetrics LightsSystems { get; init; } = new();
 
     // ── Session-level data ─────────────────────────────────────────────────
     public SessionMetrics Session { get; init; } = new();
@@ -98,6 +100,8 @@ public record TaxiMetrics
     public double MaxGroundSpeedKnots { get; init; }
     public int ExcessiveTurnSpeedEvents { get; init; }
     public bool TaxiLightsOn { get; init; }
+    public double MaxTurnSpeedKnots { get; init; }
+    public bool StrobeLightOnDuringTaxi { get; init; }
 }
 
 public sealed record TakeoffMetrics
@@ -110,6 +114,7 @@ public sealed record TakeoffMetrics
     public bool LandingLightsOnBeforeTakeoff { get; init; }
     public bool LandingLightsOffByFl180 { get; init; }
     public bool StrobesOnFromTakeoffToLanding { get; init; }
+    public bool PositiveRateBeforeGearUp { get; init; } = true;
 }
 
 public sealed record ClimbMetrics
@@ -118,6 +123,8 @@ public sealed record ClimbMetrics
     public double MaxIasBelowFl100Knots { get; init; }
     public double MaxBankAngleDegrees { get; init; }
     public double MaxGForce { get; init; }
+    public double MinGForce { get; init; }
+    public bool LandingLightsOffAboveFL180 { get; init; } = true;
 }
 
 public sealed record CruiseMetrics
@@ -127,6 +134,13 @@ public sealed record CruiseMetrics
     public int SpeedInstabilityEvents { get; init; }
     public double MaxBankAngleDegrees { get; init; }
     public double MaxGForce { get; init; }
+    public double? CruiseAltitudeFeet { get; init; }
+    public double? MachTarget { get; init; }
+    public double MaxMachDeviation { get; init; }
+    public double? IasTarget { get; init; }
+    public double MaxIasDeviationKnots { get; init; }
+    public double MaxTurnBankAngleDegrees { get; init; }
+    public double MinGForce { get; init; }
 }
 
 public sealed record DescentMetrics
@@ -140,6 +154,9 @@ public sealed record DescentMetrics
     /// Replaces the old FL180 check — lights must be on by FL100, not FL180.
     /// </summary>
     public bool LandingLightsOnBy9900 { get; init; }
+    public double MinGForce { get; init; }
+    public double MaxDescentRateFpm { get; init; }
+    public bool LandingLightsOnBeforeFL180 { get; init; } = true;
 }
 
 public sealed record ApproachMetrics
@@ -166,6 +183,13 @@ public sealed record ApproachMetrics
 
     /// <summary>Average absolute localizer deviation in CDI dot units during the approach.</summary>
     public double AvgLocalizerDeviationDots { get; init; }
+
+    // ── v3 new fields ──────────────────────────────────────────────────────
+    public double ApproachSpeedKnots { get; init; }
+    public double MaxIasDeviationKnots { get; init; }
+    public double? GearDownAglFeet { get; init; }
+    public bool FlapsConfiguredBy1000Agl { get; init; }
+    public double MaxBankAngleDegrees3000to500 { get; init; }
 }
 
 public sealed record LandingMetrics
@@ -224,12 +248,16 @@ public sealed record LandingMetrics
     /// <summary>Outside air temperature in degrees Celsius at touchdown.</summary>
     public double OatCelsiusAtTouchdown { get; init; }
 
+    // ── v3 new fields ──────────────────────────────────────────────────────
+    public bool GearUpAtTouchdown { get; init; }
+    public double MaxPitchDuringRolloutDegrees { get; init; }
 }
 
 public sealed record TaxiInMetrics : TaxiMetrics
 {
     public bool LandingLightsOff { get; init; }
     public bool StrobesOff { get; init; }
+    public bool SmoothDeceleration { get; init; } = true;
 }
 
 public sealed record ArrivalMetrics
@@ -251,4 +279,23 @@ public sealed record SafetyMetrics
     public int StallEvents { get; init; }
     public int GpwsEvents { get; init; }
     public int EngineShutdownsInFlight { get; init; }
+}
+
+public sealed record StabilizedApproachMetrics
+{
+    public double ApproachSpeedKnots { get; init; }
+    public double MaxIasDeviationKnots { get; init; }
+    public double MaxDescentRateFpm { get; init; }
+    public bool ConfigChanged { get; init; }
+    public double MaxHeadingDeviationDegrees { get; init; }
+    public bool IlsAvailable { get; init; }
+    public double MaxGlideslopeDeviationDots { get; init; }
+}
+
+public sealed record LightsSystemsMetrics
+{
+    public bool BeaconOnThroughoutFlight { get; init; } = true;
+    public bool NavLightsOnThroughoutFlight { get; init; } = true;
+    public bool StrobesCorrect { get; init; } = true;
+    public double LandingLightsCompliance { get; init; } = 1.0;
 }

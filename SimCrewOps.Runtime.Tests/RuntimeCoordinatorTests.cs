@@ -440,11 +440,11 @@ public sealed class RuntimeCoordinatorTests
                 WindDirectionDegrees = 180.0,   // wind FROM south → direct headwind on RWY 18
             });
 
+        // Wind component decomposition is now done server-side in v3.
+        // Verify the raw wind data is captured at touchdown.
         var landing = wheelsOn.State.ScoreInput.Landing;
-
-        // headwind ≈ 20 kts, crosswind ≈ 0 kts (within floating-point tolerance)
-        Assert.InRange(landing.HeadwindComponentKnots,  19.9,  20.1);
-        Assert.InRange(landing.CrosswindComponentKnots, -0.01,  0.01);
+        Assert.Equal(20.0, landing.WindSpeedAtTouchdownKnots);
+        Assert.Equal(180.0, landing.WindDirectionAtTouchdownDegrees);
     }
 
     [Fact]
@@ -503,11 +503,11 @@ public sealed class RuntimeCoordinatorTests
                 WindDirectionDegrees = 270.0,   // wind FROM west → pure right crosswind on RWY 18
             });
 
+        // Wind component decomposition is now done server-side in v3.
+        // Verify the raw wind data is captured at touchdown.
         var landing = wheelsOn.State.ScoreInput.Landing;
-
-        // headwind ≈ 0 kts, crosswind ≈ +15 kts (from right — positive)
-        Assert.InRange(landing.HeadwindComponentKnots,  -0.01,  0.01);
-        Assert.InRange(landing.CrosswindComponentKnots,  14.9,  15.1);
+        Assert.Equal(15.0, landing.WindSpeedAtTouchdownKnots);
+        Assert.Equal(270.0, landing.WindDirectionAtTouchdownDegrees);
     }
 
     // ── Approach path recording ─────────────────────────────────────────────

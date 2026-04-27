@@ -357,19 +357,7 @@ public sealed class RuntimeCoordinator
                 },
                 cancellationToken).ConfigureAwait(false);
 
-            if (_landingRunwayResolution is not null)
-            {
-                _scoringTracker.SetTouchdownRunwayMetrics(
-                    _landingRunwayResolution.Projection.CrossTrackDistanceFeet,
-                    _landingRunwayResolution.HeadingDifferenceDegrees);
-
-                // Compute headwind and crosswind components from wind data at touchdown.
-                var (headwind, crosswind) = ComputeWindComponents(
-                    phaseFrame.Raw.WindSpeedKnots,
-                    phaseFrame.Raw.WindDirectionDegrees,
-                    _landingRunwayResolution.Runway.TrueHeadingDegrees);
-                _scoringTracker.SetTouchdownWindComponents(headwind, crosswind);
-            }
+            // Runway resolution result is kept for UI/live display overlay via RuntimeFrameResult.
         }
 
         var touchdownZoneExcess = phaseFrame.Raw.TouchdownZoneExcessDistanceFeet
@@ -501,31 +489,6 @@ public sealed class RuntimeCoordinator
         {
             Trace.TraceWarning("Tracker live position dispatch failed: {0}", ex.Message);
         }
-    }
-
-    /// <summary>
-    /// Decomposes wind speed and direction into headwind and crosswind components
-    /// relative to the runway.
-    /// </summary>
-    /// <param name="windSpeedKnots">Ambient wind speed in knots.</param>
-    /// <param name="windDirectionDegrees">Direction the wind is coming FROM, in degrees true.</param>
-    /// <param name="runwayTrueHeadingDegrees">Runway heading in degrees true (direction of landing roll).</param>
-    /// <returns>
-    /// HeadwindKnots: positive = headwind component (opposing motion).
-    /// CrosswindKnots: positive = wind from the right side of the runway.
-    /// </returns>
-    private static (double HeadwindKnots, double CrosswindKnots) ComputeWindComponents(
-        double windSpeedKnots,
-        double windDirectionDegrees,
-        double runwayTrueHeadingDegrees)
-    {
-        // Relative angle: wind-from minus runway heading.
-        // At 0° relative angle the wind is on the nose (pure headwind).
-        // At 90° relative angle the wind is from the right (pure crosswind right).
-        var relAngleRad = (windDirectionDegrees - runwayTrueHeadingDegrees) * Math.PI / 180.0;
-        var headwind  = windSpeedKnots * Math.Cos(relAngleRad);  // positive = headwind
-        var crosswind = windSpeedKnots * Math.Sin(relAngleRad);  // positive = from the right
-        return (headwind, crosswind);
     }
 
     /// <summary>

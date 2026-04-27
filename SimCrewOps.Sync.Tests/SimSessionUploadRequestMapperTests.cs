@@ -8,7 +8,7 @@ namespace SimCrewOps.Sync.Tests;
 
 public sealed class SimSessionUploadRequestMapperTests
 {
-    private static readonly string TrackerVersion = "1.2.3";
+    private static readonly string TrackerVersion = "3.0.0";
 
     // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -91,66 +91,6 @@ public sealed class SimSessionUploadRequestMapperTests
         Assert.Equal(11_300, request.FuelBurnedLbs);   // 42500 − 31200
     }
 
-    // ── ILS approach quality ─────────────────────────────────────────────────
-
-    [Fact]
-    public void Map_MapsIlsApproachFields()
-    {
-        var state = BaseState(scoreInput: new FlightScoreInput
-        {
-            Approach = new ApproachMetrics
-            {
-                IlsApproachDetected         = true,
-                MaxGlideslopeDeviationDots  = 0.45,
-                AvgGlideslopeDeviationDots  = 0.18,
-                MaxLocalizerDeviationDots   = 0.32,
-                AvgLocalizerDeviationDots   = 0.11,
-            },
-        });
-
-        var mapper = new SimSessionUploadRequestMapper();
-        var request = mapper.Map(Session(state), TrackerVersion);
-
-        Assert.True(request.IlsApproachDetected);
-        Assert.Equal(0.45, request.IlsMaxGlideslopeDevDots);
-        Assert.Equal(0.18, request.IlsAvgGlideslopeDevDots);
-        Assert.Equal(0.32, request.IlsMaxLocalizerDevDots);
-        Assert.Equal(0.11, request.IlsAvgLocalizerDevDots);
-    }
-
-    // ── Extended touchdown context ────────────────────────────────────────────
-
-    [Fact]
-    public void Map_MapsTouchdownContextFields()
-    {
-        var state = BaseState(scoreInput: new FlightScoreInput
-        {
-            Landing = new LandingMetrics
-            {
-                AutopilotEngagedAtTouchdown   = true,
-                SpoilersDeployedAtTouchdown   = true,
-                ReverseThrustUsed             = false,
-                WindSpeedAtTouchdownKnots     = 12.5,
-                WindDirectionAtTouchdownDegrees = 240,
-                HeadwindComponentKnots        = 10.8,
-                CrosswindComponentKnots       = -6.2,
-                OatCelsiusAtTouchdown         = 8.3,
-            },
-        });
-
-        var mapper = new SimSessionUploadRequestMapper();
-        var request = mapper.Map(Session(state), TrackerVersion);
-
-        Assert.True(request.TouchdownAutopilotEngaged);
-        Assert.True(request.TouchdownSpoilersDeployed);
-        Assert.False(request.TouchdownReverseThrustUsed);
-        Assert.Equal(12.5,  request.TouchdownWindSpeedKts);
-        Assert.Equal(240,   request.TouchdownWindDirectionDeg);
-        Assert.Equal(10.8,  request.TouchdownHeadwindKts);
-        Assert.Equal(-6.2,  request.TouchdownCrosswindKts);
-        Assert.Equal(8.3,   request.TouchdownOatCelsius);
-    }
-
     // ── GPS track ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -217,40 +157,6 @@ public sealed class SimSessionUploadRequestMapperTests
         Assert.Null(request.GpsTrack);
     }
 
-    // ── Score normalisation ──────────────────────────────────────────────────
-
-    [Fact]
-    public void Map_NormalisesScoreTo100ScaleWhenMaximumExceeds100()
-    {
-        // When runway-data scoring adds bonus points the raw maximum may exceed 100.
-        // The mapper must normalise ScoreFinal to a 0–100 scale.
-        var state = BaseState() with
-        {
-            ScoreResult = new ScoreResult(120, 108, "A", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
-        };
-
-        var mapper = new SimSessionUploadRequestMapper();
-        var request = mapper.Map(Session(state), TrackerVersion);
-
-        // 108 / 120 * 100 = 90.0
-        Assert.Equal(90.0, request.ScoreFinal);
-    }
-
-    [Fact]
-    public void Map_NormalisesScoreTo100ScaleWhenMaximumIs100()
-    {
-        var state = BaseState() with
-        {
-            ScoreResult = new ScoreResult(100, 85, "B", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
-        };
-
-        var mapper = new SimSessionUploadRequestMapper();
-        var request = mapper.Map(Session(state), TrackerVersion);
-
-        // 85 / 100 * 100 = 85.0
-        Assert.Equal(85.0, request.ScoreFinal);
-    }
-
     // ── Block-time calculation ───────────────────────────────────────────────
 
     [Fact]
@@ -288,26 +194,34 @@ public sealed class SimSessionUploadRequestMapperTests
         Assert.Null(request.BlockTimeActual);
     }
 
-    // ── ScoreInputV5 (structured phase metrics) ──────────────────────────────
+    // ── Tracker version ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void Map_UsesSuppliedTrackerVersion()
+    {
+        var state = BaseState();
+        var mapper = new SimSessionUploadRequestMapper();
+        var request = mapper.Map(Session(state), "3.0.0");
+        Assert.Equal("3.0.0", request.TrackerVersion);
+    }
+
+    // ── ScoreInputV5 (v3 structured phase metrics) ────────────────────────────
 
     [Fact]
     public void Map_ScoreInputV5_MapsPhaseMetricsFromEverySection()
     {
-        // Populate a representative field from each phase section so we can verify
-        // the mapper covers the full FlightScoreInput → FlightScoreInputV5Upload path.
         var state = BaseState(scoreInput: new FlightScoreInput
         {
-            Preflight = new PreflightMetrics { BeaconOnBeforeTaxi = true },
-            TaxiOut   = new TaxiMetrics     { MaxGroundSpeedKnots = 28.5, TaxiLightsOn = true },
-            Takeoff   = new TakeoffMetrics  { BounceCount = 1, MaxBankAngleDegrees = 4.2 },
-            Climb     = new ClimbMetrics    { MaxIasBelowFl100Knots = 268.0 },
-            Cruise    = new CruiseMetrics   { MaxAltitudeDeviationFeet = 310, MaxBankAngleDegrees = 22.5 },
-            Descent   = new DescentMetrics  { MaxIasBelowFl100Knots = 275.0, LandingLightsOnBy9900 = true },
-            Approach  = new ApproachMetrics { GearDownBy1000Agl = true, IlsApproachDetected = true, MaxGlideslopeDeviationDots = 0.33 },
-            Landing   = new LandingMetrics  { BounceCount = 0, TouchdownVerticalSpeedFpm = -142 },
-            TaxiIn    = new TaxiInMetrics   { MaxGroundSpeedKnots = 18.0 },
-            Arrival   = new ArrivalMetrics  { AllEnginesOffByEndOfSession = true },
-            Safety    = new SafetyMetrics   { OverspeedEvents = 2, StallEvents = 1 },
+            TaxiOut  = new TaxiMetrics  { MaxGroundSpeedKnots = 28.5, TaxiLightsOn = true, MaxTurnSpeedKnots = 18.0, StrobeLightOnDuringTaxi = false },
+            Takeoff  = new TakeoffMetrics { BounceCount = 1, MaxBankAngleDegrees = 4.2, PositiveRateBeforeGearUp = true },
+            Climb    = new ClimbMetrics { MaxIasBelowFl100Knots = 268.0, HeavyFourEngineAircraft = true, LandingLightsOffAboveFL180 = true },
+            Cruise   = new CruiseMetrics { MaxAltitudeDeviationFeet = 310, MaxBankAngleDegrees = 22.5, SpeedInstabilityEvents = 1 },
+            Descent  = new DescentMetrics { MaxIasBelowFl100Knots = 275.0, LandingLightsOnBeforeFL180 = true },
+            Approach = new ApproachMetrics { FlapsConfiguredBy1000Agl = true, IlsApproachDetected = true, MaxGlideslopeDeviationDots = 0.33 },
+            Landing  = new LandingMetrics { BounceCount = 0, TouchdownVerticalSpeedFpm = 142 },
+            TaxiIn   = new TaxiInMetrics { MaxGroundSpeedKnots = 18.0, SmoothDeceleration = true },
+            Safety   = new SafetyMetrics { OverspeedEvents = 2, StallEvents = 1 },
+            LightsSystems = new LightsSystemsMetrics { BeaconOnThroughoutFlight = true, StrobesCorrect = true, LandingLightsCompliance = 0.9 },
         });
 
         var mapper = new SimSessionUploadRequestMapper();
@@ -315,25 +229,51 @@ public sealed class SimSessionUploadRequestMapperTests
 
         Assert.NotNull(v5);
 
-        Assert.True(v5!.Preflight.BeaconOnBeforeTaxi);
-        Assert.Equal(28.5,  v5.TaxiOut.MaxGroundSpeedKts);
-        Assert.True(v5.TaxiOut.TaxiLightsOn);
-        Assert.Equal(1,     v5.Takeoff.Bounces);
-        Assert.Equal(4.2,   v5.Takeoff.MaxBankDeg);
+        // TaxiOut
+        Assert.Equal(28.5, v5!.TaxiOut.MaxGroundSpeedKts);
+        Assert.True(v5.TaxiOut.NavLightsOn);
+        Assert.Equal(18.0, v5.TaxiOut.MaxTurnSpeedKts);
+
+        // Takeoff
+        Assert.True(v5.Takeoff.BounceOnRotation);
+        Assert.Equal(4.2, v5.Takeoff.MaxBankBelow1000AglDeg);
+        Assert.True(v5.Takeoff.PositiveRateBeforeGearUp);
+
+        // Climb
+        Assert.True(v5.Climb.IsHeavy);
         Assert.Equal(268.0, v5.Climb.MaxIasBelowFl100Kts);
+        Assert.True(v5.Climb.LandingLightsOffAboveFL180);
+
+        // Cruise
         Assert.Equal(310.0, v5.Cruise.MaxAltitudeDeviationFt);
         Assert.Equal(22.5,  v5.Cruise.MaxBankDeg);
+        Assert.Equal(1,     v5.Cruise.SpeedInstabilityEvents);
+
+        // Descent
         Assert.Equal(275.0, v5.Descent.MaxIasBelowFl100Kts);
-        Assert.True(v5.Descent.LandingLightsOnBy9900);
-        Assert.True(v5.Approach.GearDownBy1000Agl);
+        Assert.True(v5.Descent.LandingLightsOnBeforeFL180);
+
+        // Approach
+        Assert.True(v5.Approach.FlapsConfiguredBy1000Agl);
         Assert.True(v5.Approach.IlsDetected);
-        Assert.Equal(0.33,  v5.Approach.IlsMaxGlideslopeDevDots);
-        Assert.Equal(0,     v5.Landing.Bounces);
-        Assert.Equal(-142,  v5.Landing.TouchdownVsFpm);
-        Assert.Equal(18.0,  v5.TaxiIn.MaxGroundSpeedKts);
-        Assert.True(v5.Arrival.AllEnginesOffByEndOfSession);
+        Assert.Equal(0.33, v5.Approach.IlsMaxGlideslopeDevDots);
+
+        // Landing (v3: touchdownRateFpm, bounceCount)
+        Assert.Equal(0,   v5.Landing.BounceCount);
+        Assert.Equal(142, v5.Landing.TouchdownRateFpm);
+
+        // TaxiIn
+        Assert.Equal(18.0, v5.TaxiIn.MaxGroundSpeedKts);
+        Assert.True(v5.TaxiIn.SmoothDeceleration);
+
+        // Safety
         Assert.Equal(2, v5.Safety.OverspeedEvents);
         Assert.Equal(1, v5.Safety.StallEvents);
+
+        // LightsSystems
+        Assert.True(v5.LightsSystems.BeaconOnThroughoutFlight);
+        Assert.True(v5.LightsSystems.StrobesCorrect);
+        Assert.Equal(0.9, v5.LightsSystems.LandingLightsCompliance);
     }
 
     // ── LandingAnalysis ──────────────────────────────────────────────────────
@@ -341,8 +281,6 @@ public sealed class SimSessionUploadRequestMapperTests
     [Fact]
     public void Map_LandingAnalysis_IsPopulatedFromApproachSampleBuffer()
     {
-        // When the FlightScoreInput has approach samples, LandingAnalysis is populated
-        // with those samples mapped to ApproachSampleUpload.
         var state = BaseState(scoreInput: new FlightScoreInput
         {
             ApproachPath = new[]
@@ -379,7 +317,6 @@ public sealed class SimSessionUploadRequestMapperTests
     [Fact]
     public void Map_LandingAnalysis_IsNullWhenApproachPathIsEmpty()
     {
-        // LandingAnalysis must be omitted entirely when no approach samples were recorded.
         var state = BaseState(scoreInput: new FlightScoreInput
         {
             ApproachPath = Array.Empty<ApproachSamplePoint>(),

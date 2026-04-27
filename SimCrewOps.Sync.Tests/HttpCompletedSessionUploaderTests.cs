@@ -19,13 +19,8 @@ public sealed class HttpCompletedSessionUploaderTests
         var session = CreatePendingSession();
         var mapper = new SimSessionUploadRequestMapper();
 
-        var request = mapper.Map(session, "1.2.3");
+        var request = mapper.Map(session, "3.0.0");
 
-        Assert.Equal(2, request.Bounces);
-        Assert.Equal(188, request.TouchdownVS);
-        Assert.Equal(1.8, request.TouchdownBank);
-        Assert.Equal(134, request.TouchdownIAS);
-        Assert.Equal(2.4, request.TouchdownPitch);
         Assert.Equal(session.State.BlockTimes.BlocksOffUtc, request.ActualBlocksOff);
         Assert.Equal(session.State.BlockTimes.WheelsOffUtc, request.ActualWheelsOff);
         Assert.Equal(session.State.BlockTimes.WheelsOnUtc, request.ActualWheelsOn);
@@ -33,14 +28,19 @@ public sealed class HttpCompletedSessionUploaderTests
         Assert.Equal(2.8667, request.BlockTimeActual);
         Assert.Equal(3.1, request.BlockTimeScheduled);
         Assert.True(request.CrashDetected);
-        Assert.Equal(3, request.OverspeedEvents);
-        Assert.Equal(1, request.StallEvents);
-        Assert.Equal(2, request.GpwsEvents);
-        Assert.Equal("B", request.Grade);
-        Assert.Equal(84.5, request.ScoreFinal);
-        Assert.Equal("1.2.3", request.TrackerVersion);
+        Assert.Equal("3.0.0", request.TrackerVersion);
         Assert.Equal("career", request.FlightMode);
         Assert.Equal("bid-123", request.BidId);
+
+        // v3: raw metrics are in scoringInput, not flat on the request
+        Assert.NotNull(request.ScoreInputV5);
+        Assert.Equal(188, request.ScoreInputV5!.Landing.TouchdownRateFpm);
+        Assert.Equal(2, request.ScoreInputV5.Landing.BounceCount);
+        Assert.Equal(1.8, request.ScoreInputV5.Landing.TouchdownBankDeg);
+        Assert.True(request.ScoreInputV5.Safety.CrashDetected);
+        Assert.Equal(3, request.ScoreInputV5.Safety.OverspeedEvents);
+        Assert.Equal(1, request.ScoreInputV5.Safety.StallEvents);
+        Assert.Equal(2, request.ScoreInputV5.Safety.GpwsEvents);
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public sealed class HttpCompletedSessionUploaderTests
                 BaseUri = new Uri("https://simcrewops.com"),
                 SimSessionsPath = "/api/sim-sessions",
                 PilotApiToken = "secret-token",
-                TrackerVersion = "2.0.0",
+                TrackerVersion = "3.0.0",
             });
 
         var result = await uploader.UploadAsync(CreatePendingSession());
@@ -81,13 +81,9 @@ public sealed class HttpCompletedSessionUploaderTests
 
         var request = JsonSerializer.Deserialize<SimSessionUploadRequest>(capturedBody!);
         Assert.NotNull(request);
-        Assert.Equal(2, request!.Bounces);
-        Assert.Equal(188, request.TouchdownVS);
-        Assert.Equal(1.8, request.TouchdownBank);
-        Assert.Equal(134, request.TouchdownIAS);
-        Assert.Equal(2.4, request.TouchdownPitch);
-        Assert.Equal(84.5, request.ScoreFinal);
-        Assert.Equal("2.0.0", request.TrackerVersion);
+        Assert.Equal("3.0.0", request!.TrackerVersion);
+        Assert.NotNull(request.ScoreInputV5);
+        Assert.Equal(188, request.ScoreInputV5!.Landing.TouchdownRateFpm);
     }
 
     [Fact]
@@ -102,7 +98,7 @@ public sealed class HttpCompletedSessionUploaderTests
             new SimCrewOpsApiUploaderOptions
             {
                 PilotApiToken = "token",
-                TrackerVersion = "2.0.0",
+                TrackerVersion = "3.0.0",
             });
 
         var permanentUploader = new HttpCompletedSessionUploader(
@@ -114,7 +110,7 @@ public sealed class HttpCompletedSessionUploaderTests
             new SimCrewOpsApiUploaderOptions
             {
                 PilotApiToken = "token",
-                TrackerVersion = "2.0.0",
+                TrackerVersion = "3.0.0",
             });
 
         var retryable = await retryableUploader.UploadAsync(CreatePendingSession());
@@ -137,7 +133,7 @@ public sealed class HttpCompletedSessionUploaderTests
             new SimCrewOpsApiUploaderOptions
             {
                 PilotApiToken = "token",
-                TrackerVersion = "2.0.0",
+                TrackerVersion = "3.0.0",
             });
 
         var result = await uploader.UploadAsync(CreatePendingSession());

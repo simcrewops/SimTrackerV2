@@ -9,14 +9,15 @@ namespace SimCrewOps.Sync.Models;
 /// Sent as <c>scoringInput</c> in the POST /api/sim-sessions body so the webapp
 /// can compute or re-compute scores without needing to know the tracker's
 /// scoring algorithm.  Version suffix "V5" denotes the API contract version.
+/// This is the v3 shape: raw telemetry metrics only, no grades/findings.
 /// </summary>
 public sealed record FlightScoreInputV5Upload
 {
-    [JsonPropertyName("preflight")]
-    public ScoreInputPreflightV5 Preflight { get; init; } = new();
-
     [JsonPropertyName("taxiOut")]
     public ScoreInputTaxiV5 TaxiOut { get; init; } = new();
+
+    [JsonPropertyName("taxiIn")]
+    public ScoreInputTaxiInV5 TaxiIn { get; init; } = new();
 
     [JsonPropertyName("takeoff")]
     public ScoreInputTakeoffV5 Takeoff { get; init; } = new();
@@ -33,14 +34,14 @@ public sealed record FlightScoreInputV5Upload
     [JsonPropertyName("approach")]
     public ScoreInputApproachV5 Approach { get; init; } = new();
 
+    [JsonPropertyName("stabilizedApproach")]
+    public ScoreInputStabilizedApproachV5 StabilizedApproach { get; init; } = new();
+
     [JsonPropertyName("landing")]
     public ScoreInputLandingV5 Landing { get; init; } = new();
 
-    [JsonPropertyName("taxiIn")]
-    public ScoreInputTaxiV5 TaxiIn { get; init; } = new();
-
-    [JsonPropertyName("arrival")]
-    public ScoreInputArrivalV5 Arrival { get; init; } = new();
+    [JsonPropertyName("lightsSystems")]
+    public ScoreInputLightsSystemsV5 LightsSystems { get; init; } = new();
 
     [JsonPropertyName("safety")]
     public ScoreInputSafetyV5 Safety { get; init; } = new();
@@ -48,70 +49,106 @@ public sealed record FlightScoreInputV5Upload
 
 // ── Phase sub-records ──────────────────────────────────────────────────────────
 
-public sealed record ScoreInputPreflightV5
-{
-    [JsonPropertyName("beaconOnBeforeTaxi")]
-    public bool BeaconOnBeforeTaxi { get; init; }
-}
-
 public sealed record ScoreInputTaxiV5
 {
     [JsonPropertyName("maxGroundSpeedKts")]
     public double MaxGroundSpeedKts { get; init; }
 
-    [JsonPropertyName("excessiveTurnSpeedEvents")]
-    public int ExcessiveTurnSpeedEvents { get; init; }
+    [JsonPropertyName("maxTurnSpeedKts")]
+    public double MaxTurnSpeedKts { get; init; }
 
-    [JsonPropertyName("taxiLightsOn")]
-    public bool TaxiLightsOn { get; init; }
+    [JsonPropertyName("navLightsOn")]
+    public bool NavLightsOn { get; init; }
+
+    [JsonPropertyName("strobeLightOnDuringTaxi")]
+    public bool StrobeLightOnDuringTaxi { get; init; }
+}
+
+public sealed record ScoreInputTaxiInV5
+{
+    [JsonPropertyName("maxGroundSpeedKts")]
+    public double MaxGroundSpeedKts { get; init; }
+
+    [JsonPropertyName("maxTurnSpeedKts")]
+    public double MaxTurnSpeedKts { get; init; }
+
+    [JsonPropertyName("navLightsOn")]
+    public bool NavLightsOn { get; init; }
+
+    [JsonPropertyName("strobeLightOnDuringTaxi")]
+    public bool StrobeLightOnDuringTaxi { get; init; }
+
+    [JsonPropertyName("smoothDeceleration")]
+    public bool SmoothDeceleration { get; init; }
+
+    [JsonPropertyName("strobeLightsOffAfterRunway")]
+    public bool StrobeLightsOffAfterRunway { get; init; }
+
+    [JsonPropertyName("landingLightsOffAfterRunway")]
+    public bool LandingLightsOffAfterRunway { get; init; }
 }
 
 public sealed record ScoreInputTakeoffV5
 {
-    [JsonPropertyName("bounces")]
-    public int Bounces { get; init; }
+    [JsonPropertyName("bounceOnRotation")]
+    public bool BounceOnRotation { get; init; }
 
-    [JsonPropertyName("tailStrike")]
-    public bool TailStrike { get; init; }
+    [JsonPropertyName("positiveRateBeforeGearUp")]
+    public bool PositiveRateBeforeGearUp { get; init; }
 
-    [JsonPropertyName("maxBankDeg")]
-    public double MaxBankDeg { get; init; }
+    [JsonPropertyName("maxBankBelow1000AglDeg")]
+    public double MaxBankBelow1000AglDeg { get; init; }
 
-    [JsonPropertyName("maxPitchDeg")]
-    public double MaxPitchDeg { get; init; }
+    [JsonPropertyName("maxPitchWhileWowDeg")]
+    public double MaxPitchWhileWowDeg { get; init; }
 
-    [JsonPropertyName("maxGForce")]
-    public double MaxGForce { get; init; }
+    [JsonPropertyName("strobeLightsOn")]
+    public bool StrobeLightsOn { get; init; }
 
-    [JsonPropertyName("landingLightsOnBeforeTakeoff")]
-    public bool LandingLightsOnBeforeTakeoff { get; init; }
-
-    [JsonPropertyName("landingLightsOffByFl180")]
-    public bool LandingLightsOffByFl180 { get; init; }
-
-    [JsonPropertyName("strobesOn")]
-    public bool StrobesOn { get; init; }
+    [JsonPropertyName("landingLightsOn")]
+    public bool LandingLightsOn { get; init; }
 }
 
 public sealed record ScoreInputClimbV5
 {
+    [JsonPropertyName("isHeavy")]
+    public bool IsHeavy { get; init; }
+
     [JsonPropertyName("maxIasBelowFl100Kts")]
     public double MaxIasBelowFl100Kts { get; init; }
 
     [JsonPropertyName("maxBankDeg")]
     public double MaxBankDeg { get; init; }
 
+    [JsonPropertyName("minGForce")]
+    public double MinGForce { get; init; }
+
     [JsonPropertyName("maxGForce")]
     public double MaxGForce { get; init; }
+
+    [JsonPropertyName("landingLightsOffAboveFL180")]
+    public bool LandingLightsOffAboveFL180 { get; init; }
 }
 
 public sealed record ScoreInputCruiseV5
 {
+    [JsonPropertyName("cruiseAltitudeFt")]
+    public double? CruiseAltitudeFt { get; init; }
+
     [JsonPropertyName("maxAltitudeDeviationFt")]
     public double MaxAltitudeDeviationFt { get; init; }
 
-    [JsonPropertyName("newFlightLevelCaptureSeconds")]
-    public double? NewFlightLevelCaptureSeconds { get; init; }
+    [JsonPropertyName("machTarget")]
+    public double? MachTarget { get; init; }
+
+    [JsonPropertyName("maxMachDeviation")]
+    public double MaxMachDeviation { get; init; }
+
+    [JsonPropertyName("iasTarget")]
+    public double? IasTarget { get; init; }
+
+    [JsonPropertyName("maxIasDeviationKts")]
+    public double MaxIasDeviationKts { get; init; }
 
     [JsonPropertyName("speedInstabilityEvents")]
     public int SpeedInstabilityEvents { get; init; }
@@ -119,49 +156,57 @@ public sealed record ScoreInputCruiseV5
     [JsonPropertyName("maxBankDeg")]
     public double MaxBankDeg { get; init; }
 
+    [JsonPropertyName("maxTurnBankDeg")]
+    public double MaxTurnBankDeg { get; init; }
+
+    [JsonPropertyName("minGForce")]
+    public double MinGForce { get; init; }
+
     [JsonPropertyName("maxGForce")]
     public double MaxGForce { get; init; }
 }
 
 public sealed record ScoreInputDescentV5
 {
+    [JsonPropertyName("isHeavy")]
+    public bool IsHeavy { get; init; }
+
     [JsonPropertyName("maxIasBelowFl100Kts")]
     public double MaxIasBelowFl100Kts { get; init; }
 
     [JsonPropertyName("maxBankDeg")]
     public double MaxBankDeg { get; init; }
 
-    [JsonPropertyName("maxPitchDeg")]
-    public double MaxPitchDeg { get; init; }
+    [JsonPropertyName("minGForce")]
+    public double MinGForce { get; init; }
 
     [JsonPropertyName("maxGForce")]
     public double MaxGForce { get; init; }
 
-    [JsonPropertyName("landingLightsOnBy9900")]
-    public bool LandingLightsOnBy9900 { get; init; }
+    [JsonPropertyName("maxDescentRateFpm")]
+    public double MaxDescentRateFpm { get; init; }
+
+    [JsonPropertyName("landingLightsOnBeforeFL180")]
+    public bool LandingLightsOnBeforeFL180 { get; init; }
 }
 
 public sealed record ScoreInputApproachV5
 {
-    [JsonPropertyName("gearDownBy1000Agl")]
-    public bool GearDownBy1000Agl { get; init; }
+    [JsonPropertyName("approachSpeedKts")]
+    public double ApproachSpeedKts { get; init; }
 
-    [JsonPropertyName("flapsIndexAt500Agl")]
-    public int FlapsIndexAt500Agl { get; init; }
+    [JsonPropertyName("maxIasDeviationKts")]
+    public double MaxIasDeviationKts { get; init; }
 
-    [JsonPropertyName("vsAt500AglFpm")]
-    public double VsAt500AglFpm { get; init; }
+    [JsonPropertyName("gearDownAglFt")]
+    public double? GearDownAglFt { get; init; }
 
-    [JsonPropertyName("bankAt500AglDeg")]
-    public double BankAt500AglDeg { get; init; }
+    [JsonPropertyName("flapsConfiguredBy1000Agl")]
+    public bool FlapsConfiguredBy1000Agl { get; init; }
 
-    [JsonPropertyName("pitchAt500AglDeg")]
-    public double PitchAt500AglDeg { get; init; }
+    [JsonPropertyName("maxBankDeg")]
+    public double MaxBankDeg { get; init; }
 
-    [JsonPropertyName("gearDownAt500Agl")]
-    public bool GearDownAt500Agl { get; init; }
-
-    // ILS approach quality
     [JsonPropertyName("ilsDetected")]
     public bool IlsDetected { get; init; }
 
@@ -178,77 +223,64 @@ public sealed record ScoreInputApproachV5
     public double IlsAvgLocalizerDevDots { get; init; }
 }
 
+public sealed record ScoreInputStabilizedApproachV5
+{
+    [JsonPropertyName("approachSpeedKts")]
+    public double ApproachSpeedKts { get; init; }
+
+    [JsonPropertyName("maxIasDeviationKts")]
+    public double MaxIasDeviationKts { get; init; }
+
+    [JsonPropertyName("maxDescentRateFpm")]
+    public double MaxDescentRateFpm { get; init; }
+
+    [JsonPropertyName("configChanged")]
+    public bool ConfigChanged { get; init; }
+
+    [JsonPropertyName("maxHeadingDeviationDeg")]
+    public double MaxHeadingDeviationDeg { get; init; }
+
+    [JsonPropertyName("ilsAvailable")]
+    public bool IlsAvailable { get; init; }
+
+    [JsonPropertyName("maxGlideslopeDevDots")]
+    public double MaxGlideslopeDevDots { get; init; }
+}
+
 public sealed record ScoreInputLandingV5
 {
-    [JsonPropertyName("bounces")]
-    public int Bounces { get; init; }
-
-    [JsonPropertyName("tdzExcessFt")]
-    public double TdzExcessFt { get; init; }
-
-    [JsonPropertyName("touchdownVsFpm")]
-    public double TouchdownVsFpm { get; init; }
-
-    [JsonPropertyName("touchdownBankDeg")]
-    public double TouchdownBankDeg { get; init; }
-
-    [JsonPropertyName("touchdownIasKts")]
-    public double TouchdownIasKts { get; init; }
-
-    [JsonPropertyName("touchdownPitchDeg")]
-    public double TouchdownPitchDeg { get; init; }
+    [JsonPropertyName("touchdownRateFpm")]
+    public double TouchdownRateFpm { get; init; }
 
     [JsonPropertyName("touchdownGForce")]
     public double TouchdownGForce { get; init; }
 
-    [JsonPropertyName("centerlineDeviationFt")]
-    public double CenterlineDeviationFt { get; init; }
+    [JsonPropertyName("bounceCount")]
+    public int BounceCount { get; init; }
 
-    [JsonPropertyName("crabAngleDeg")]
-    public double CrabAngleDeg { get; init; }
+    [JsonPropertyName("touchdownBankDeg")]
+    public double TouchdownBankDeg { get; init; }
 
-    [JsonPropertyName("touchdownLat")]
-    public double TouchdownLat { get; init; }
+    [JsonPropertyName("gearUpAtTouchdown")]
+    public bool GearUpAtTouchdown { get; init; }
 
-    [JsonPropertyName("touchdownLon")]
-    public double TouchdownLon { get; init; }
-
-    [JsonPropertyName("autopilotEngaged")]
-    public bool AutopilotEngaged { get; init; }
-
-    [JsonPropertyName("spoilersDeployed")]
-    public bool SpoilersDeployed { get; init; }
-
-    [JsonPropertyName("reverseThrustUsed")]
-    public bool ReverseThrustUsed { get; init; }
-
-    [JsonPropertyName("windSpeedKts")]
-    public double WindSpeedKts { get; init; }
-
-    [JsonPropertyName("windDirectionDeg")]
-    public double WindDirectionDeg { get; init; }
-
-    [JsonPropertyName("headwindKts")]
-    public double HeadwindKts { get; init; }
-
-    [JsonPropertyName("crosswindKts")]
-    public double CrosswindKts { get; init; }
-
-    [JsonPropertyName("oatCelsius")]
-    public double OatCelsius { get; init; }
-
+    [JsonPropertyName("maxPitchWhileWowDeg")]
+    public double MaxPitchWhileWowDeg { get; init; }
 }
 
-public sealed record ScoreInputArrivalV5
+public sealed record ScoreInputLightsSystemsV5
 {
-    [JsonPropertyName("taxiLightsOffBeforeParkingBrakeSet")]
-    public bool TaxiLightsOffBeforeParkingBrakeSet { get; init; }
+    [JsonPropertyName("beaconOnThroughoutFlight")]
+    public bool BeaconOnThroughoutFlight { get; init; }
 
-    [JsonPropertyName("allEnginesOffBeforeParkingBrakeSet")]
-    public bool AllEnginesOffBeforeParkingBrakeSet { get; init; }
+    [JsonPropertyName("navLightsOnThroughoutFlight")]
+    public bool NavLightsOnThroughoutFlight { get; init; }
 
-    [JsonPropertyName("allEnginesOffByEndOfSession")]
-    public bool AllEnginesOffByEndOfSession { get; init; }
+    [JsonPropertyName("strobesCorrect")]
+    public bool StrobesCorrect { get; init; }
+
+    [JsonPropertyName("landingLightsCompliance")]
+    public double LandingLightsCompliance { get; init; }
 }
 
 public sealed record ScoreInputSafetyV5
