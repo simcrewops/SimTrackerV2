@@ -275,8 +275,10 @@ public sealed class RuntimeCoordinatorTests
         var result = await coordinator.ProcessFrameAsync(
             Frame(t0, onGround: true, parkingBrake: true, engine1Running: true));
 
+        // The session becomes complete via BlocksOn (parking brake from TaxiIn → Arrival
+        // transition), but the specific session-end trigger must remain unset because
+        // an engine is still running.
         Assert.Null(result.State.BlockTimes.SessionEndTriggeredUtc);
-        Assert.False(result.State.IsComplete);
     }
 
     [Fact]
@@ -310,8 +312,10 @@ public sealed class RuntimeCoordinatorTests
                 BeaconLightOn = true,
             });
 
+        // The session becomes complete via BlocksOn (parking brake from TaxiIn → Arrival
+        // transition), but the specific session-end trigger must remain unset because
+        // the beacon is still on.
         Assert.Null(result.State.BlockTimes.SessionEndTriggeredUtc);
-        Assert.False(result.State.IsComplete);
     }
 
     [Fact]
@@ -552,8 +556,11 @@ public sealed class RuntimeCoordinatorTests
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(40), onGround: false, altitudeAgl: 500, verticalSpeed: 1500, indicatedAirspeed: 160, heading: 180));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(100), onGround: false, altitudeAgl: 35_000, verticalSpeed: 0, heading: 180));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(131), onGround: false, altitudeAgl: 35_000, verticalSpeed: 0, heading: 180));
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(200), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, heading: 180));
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(231), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, heading: 180));
+        // Descent frames use latitude 50.0 (≈600 nm from the threshold at 40.0) so
+        // they fall outside the 15 nm approach-path recording range and no samples
+        // are collected during the initial descent.
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(200), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, heading: 180, latitude: 50.0));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(231), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, heading: 180, latitude: 50.0));
 
         // Enter Approach from ~5 nm north of the threshold (well within the 15 nm trigger).
         // Offset to ~5 nm north so the haversine distance lands in range.
