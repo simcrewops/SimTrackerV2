@@ -42,6 +42,9 @@ public sealed class RuntimeCoordinator
     private bool _approachAirportRefResolved;
     // Time guard: only record a sample when at least 2 s have elapsed since the last one.
     private DateTimeOffset? _approachPathLastSampleAt;
+    // ── Flight path recording ─────────────────────────────────────────────────────────────────
+    // Time guard: only record a point every 60 s (blocks-off → blocks-on window).
+    private DateTimeOffset? _flightPathLastSampleAt;
 
     /// <summary>
     /// UTC timestamp of the most recent live-position upload that the server accepted (HTTP 200).
@@ -137,6 +140,10 @@ public sealed class RuntimeCoordinator
         _approachAirportRefLon = null;
         _approachAirportRefResolved = false;
         _approachPathLastSampleAt = null;
+        // Flight path recording: reset time guard on reconnect. The restored _flightPath
+        // list is recovered in the tracker's Restore(); the last timestamp is derived from it
+        // so the next live point is spaced correctly.
+        _flightPathLastSampleAt = null;
 
         _phaseEngine.Restore(
             state.CurrentPhase,
@@ -290,6 +297,29 @@ public sealed class RuntimeCoordinator
                         telemetryFrame.VerticalSpeedFpm);
                     _approachPathLastSampleAt = telemetryFrame.TimestampUtc;
                 }
+            }
+        }
+        // ----------------------------------------------------------------
+
+        // ── Flight path recording ────────────────────────────────────────────────────────────
+        // Record one point every 60 s while blocks-off is set and blocks-on has not yet fired.
+        // The very first point is recorded immediately when blocks-off fires on this frame
+        // (detected via phaseFrame.BlockEvent) or on the first frame after a restored blocks-off.
+        // Note: CaptureBlockEvent runs after this block, so _blockTimes.BlocksOffUtc is still null
+        // on the exact frame when blocks-off first fires — use phaseFrame.BlockEvent to detect it.
+        bool blocksOffThisFrame = phaseFrame.BlockEvent?.Type == BlockEventType.BlocksOff;
+        bool blocksOffActive = blocksOffThisFrame || (_blockTimes.BlocksOffUtc is not null && _blockTimes.BlocksOnUtc is null);
+
+        if (blocksOffActive)
+        {
+            bool firstPoint = _flightPathLastSampleAt is null;
+            bool intervalElapsed = !firstPoint &&
+                (telemetryFrame.TimestampUtc - _flightPathLastSampleAt!.Value).TotalSeconds >= 60.0;
+
+            if (firstPoint || intervalElapsed)
+            {
+                _scoringTracker.RecordFlightPathPoint(telemetryFrame);
+                _flightPathLastSampleAt = telemetryFrame.TimestampUtc;
             }
         }
         // ----------------------------------------------------------------

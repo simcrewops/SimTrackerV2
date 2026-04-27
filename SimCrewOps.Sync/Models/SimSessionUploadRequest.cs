@@ -126,6 +126,15 @@ public sealed record SimSessionUploadRequest
     /// </summary>
     [JsonPropertyName("landingAnalysis")]
     public LandingAnalysisUpload? LandingAnalysis { get; init; }
+
+    // ── Flight path ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Full-flight path sampled every 60 seconds from blocks-off to blocks-on.
+    /// Null when no flight path data was recorded (e.g. blocks-off was never set).
+    /// </summary>
+    [JsonPropertyName("flightPath")]
+    public IReadOnlyList<FlightPathPointUpload>? FlightPath { get; init; }
 }
 
 /// <summary>A single point in the GPS flight-path track.</summary>

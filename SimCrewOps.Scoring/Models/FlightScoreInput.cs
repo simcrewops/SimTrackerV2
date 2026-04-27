@@ -31,6 +31,13 @@ public sealed record FlightScoreInput
     /// chart and derive threshold-crossing metrics server-side.
     /// </summary>
     public IReadOnlyList<ApproachSamplePoint> ApproachPath { get; init; } = [];
+
+    /// <summary>
+    /// Flight path sampled every 60 seconds from blocks-off to blocks-on.
+    /// Used to draw the full-flight route on the webapp map.
+    /// Empty when no data was recorded (e.g. blocks-off was never set).
+    /// </summary>
+    public IReadOnlyList<FlightPathPoint> FlightPath { get; init; } = [];
 }
 
 public sealed record SessionMetrics
@@ -69,6 +76,18 @@ public sealed record GpsTrackPoint
     public double AltitudeFeet { get; init; }
     public double GroundSpeedKnots { get; init; }
     public FlightPhase Phase { get; init; }
+}
+
+/// <summary>
+/// A single point in the flight path sampled every 60 seconds from blocks-off to blocks-on.
+/// </summary>
+public sealed record FlightPathPoint
+{
+    public DateTimeOffset TimestampUtc { get; init; }
+    public double Latitude { get; init; }
+    public double Longitude { get; init; }
+    /// <summary>Pressure altitude in feet (not AGL).</summary>
+    public double AltitudeFeet { get; init; }
 }
 
 /// <summary>

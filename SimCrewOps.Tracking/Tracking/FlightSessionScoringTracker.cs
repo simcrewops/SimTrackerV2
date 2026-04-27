@@ -145,6 +145,9 @@ public sealed class FlightSessionScoringTracker
     private const int ApproachPathMaxSamples = 300;
     private readonly Queue<ApproachSamplePoint> _approachPathBuffer = new();
 
+    // ── Flight path (one point every 60 s, blocks-off → blocks-on) ───────────
+    private readonly List<FlightPathPoint> _flightPath = [];
+
     private DateTimeOffset? _lastTouchdownAt;
     private DateTimeOffset? _airborneAfterTouchdownAt;
 
@@ -364,6 +367,10 @@ public sealed class FlightSessionScoringTracker
         _lastGpsTrackPointAt = _gpsTrack.Count > 0
             ? _gpsTrack[^1].TimestampUtc
             : DateTimeOffset.MinValue;
+
+        // Restore flight path from saved state.
+        _flightPath.Clear();
+        _flightPath.AddRange(input.FlightPath);
 
         // ── ILS approach quality ──────────────────────────────────────────────
         _approachIlsDetected   = input.Approach.IlsApproachDetected;
@@ -612,6 +619,9 @@ public sealed class FlightSessionScoringTracker
             ApproachPath = _approachPathBuffer.Count > 0
                 ? _approachPathBuffer.ToList()
                 : [],
+            FlightPath = _flightPath.Count > 0
+                ? _flightPath.ToList()
+                : [],
         };
     }
 
@@ -647,6 +657,22 @@ public sealed class FlightSessionScoringTracker
     /// is detected or the flight is cancelled so no partial data is uploaded.
     /// </summary>
     public void DiscardApproachPath() => _approachPathBuffer.Clear();
+
+    /// <summary>
+    /// Appends one flight-path point sampled at 60-second intervals during blocks-off → blocks-on.
+    /// Called by RuntimeCoordinator. No capacity cap — at 60 s intervals a 12-hour flight
+    /// produces at most ~720 points.
+    /// </summary>
+    public void RecordFlightPathPoint(TelemetryFrame frame)
+    {
+        _flightPath.Add(new FlightPathPoint
+        {
+            TimestampUtc  = frame.TimestampUtc,
+            Latitude      = frame.Latitude,
+            Longitude     = frame.Longitude,
+            AltitudeFeet  = frame.AltitudeFeet,
+        });
+    }
 
     private void UpdatePreflight(TelemetryFrame frame)
     {
