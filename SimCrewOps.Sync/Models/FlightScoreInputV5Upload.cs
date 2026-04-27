@@ -354,6 +354,24 @@ public sealed record LandingAnalysisUpload
     public double? TouchdownHeadingDeg { get; init; }
 }
 
+/// <summary>A single point in the flight path sampled every 60 seconds (blocks-off → blocks-on).</summary>
+public sealed record FlightPathPointUpload
+{
+    [JsonPropertyName("lat")]
+    public double Lat { get; init; }
+
+    [JsonPropertyName("lon")]
+    public double Lon { get; init; }
+
+    /// <summary>Pressure altitude in feet, rounded to the nearest integer.</summary>
+    [JsonPropertyName("altFt")]
+    public int AltFt { get; init; }
+
+    /// <summary>Minutes since blocks-off, rounded to one decimal place.</summary>
+    [JsonPropertyName("tMin")]
+    public double TMin { get; init; }
+}
+
 /// <summary>A single approach telemetry sample.</summary>
 public sealed record ApproachSampleUpload
 {

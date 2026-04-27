@@ -145,6 +145,9 @@ public sealed class FlightSessionScoringTracker
     private const int ApproachPathMaxSamples = 300;
     private readonly Queue<ApproachSamplePoint> _approachPathBuffer = new();
 
+    // ── Flight path (one point every 60 s, blocks-off → blocks-on) ───────────
+    private readonly List<FlightPathPoint> _flightPath = [];
+
     private DateTimeOffset? _lastTouchdownAt;
     private DateTimeOffset? _airborneAfterTouchdownAt;
 
@@ -364,6 +367,10 @@ public sealed class FlightSessionScoringTracker
         _lastGpsTrackPointAt = _gpsTrack.Count > 0
             ? _gpsTrack[^1].TimestampUtc
             : DateTimeOffset.MinValue;
+
+        // Restore flight path from saved state.
+        _flightPath.Clear();
+        _flightPath.AddRange(input.FlightPath);
 
         // ── ILS approach quality ──────────────────────────────────────────────
         _approachIlsDetected   = input.Approach.IlsApproachDetected;
@@ -612,6 +619,9 @@ public sealed class FlightSessionScoringTracker
             ApproachPath = _approachPathBuffer.Count > 0
                 ? _approachPathBuffer.ToList()
                 : [],
+            FlightPath = _flightPath.Count > 0
+                ? _flightPath.ToList()
+                : [],
         };
     }
 
@@ -647,6 +657,22 @@ public sealed class FlightSessionScoringTracker
     /// is detected or the flight is cancelled so no partial data is uploaded.
     /// </summary>
     public void DiscardApproachPath() => _approachPathBuffer.Clear();
+
+    /// <summary>
+    /// Appends one flight-path point sampled at 60-second intervals during blocks-off → blocks-on.
+    /// Called by RuntimeCoordinator. No capacity cap — at 60 s intervals a 12-hour flight
+    /// produces at most ~720 points.
+    /// </summary>
+    public void RecordFlightPathPoint(TelemetryFrame frame)
+    {
+        _flightPath.Add(new FlightPathPoint
+        {
+            TimestampUtc  = frame.TimestampUtc,
+            Latitude      = frame.Latitude,
+            Longitude     = frame.Longitude,
+            AltitudeFeet  = frame.AltitudeFeet,
+        });
+    }
 
     private void UpdatePreflight(TelemetryFrame frame)
     {
@@ -1427,37 +1453,33 @@ public sealed class FlightSessionScoringTracker
 
     private double CalculateTouchdownVerticalSpeed(TelemetryFrame touchdownFrame)
     {
-        // Primary: VELOCITY WORLD Y at the moment of wheel contact.
+        // Primary: VERTICAL SPEED (barometric) at the exact touchdown frame.
         //
-        // This SimVar is driven by the physics engine and has no barometric lag —
-        // it reads the true instantaneous sink rate at the exact frame OnGround flips.
-        // The VERTICAL SPEED SimVar (barometric) lags real aircraft motion by 1–2 s,
-        // so during a flare where the pilot arrests from 350 → 195 fpm the baro VS
-        // still reads the pre-flare rate at touchdown. VELOCITY WORLD Y does not have
-        // this problem and matches what Volanta and other pro trackers report.
-        if (touchdownFrame.VelocityWorldYFps < 0)
-            return Math.Abs(touchdownFrame.VelocityWorldYFps) * 60.0;
+        // Volanta and most major trackers read the barometric VERTICAL SPEED SimVar at the
+        // moment SIM ON GROUND transitions to true.  Barometric VS is what pilots see on the
+        // VSI and what scoring thresholds are calibrated against.
+        if (touchdownFrame.VerticalSpeedFpm < 0)
+            return Math.Abs(touchdownFrame.VerticalSpeedFpm);
 
-        // Fallback A: VelocityWorldY on the last airborne frame (slightly earlier reading).
-        // Catches the case where the sim briefly reports 0 or positive on the touchdown frame.
-        if (_previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VelocityWorldYFps < 0)
-            return Math.Abs(_previousFrame.VelocityWorldYFps) * 60.0;
-
-        // Fallback B: barometric VS on the last airborne frame (sampled just before contact).
-        // The frame immediately before OnGround is free of gear-compression artefacts.
+        // Fallback A: barometric VS on the last airborne frame.
+        // Used when the touchdown frame itself reads zero or positive (e.g. a very soft
+        // landing where the sim briefly reports 0 fpm at the WOW transition).
         if (_previousFrame is not null
             && !_previousFrame.OnGround
-            && _previousFrame.AltitudeAglFeet <= 50
             && _previousFrame.VerticalSpeedFpm < 0)
         {
             return Math.Abs(_previousFrame.VerticalSpeedFpm);
         }
 
-        // Fallback C: barometric VS on the touchdown frame itself.
-        if (touchdownFrame.VerticalSpeedFpm < 0)
-            return Math.Abs(touchdownFrame.VerticalSpeedFpm);
+        // Fallback B: VELOCITY WORLD Y on the touchdown frame (physics-engine VS, no baro lag).
+        if (touchdownFrame.VelocityWorldYFps < 0)
+            return Math.Abs(touchdownFrame.VelocityWorldYFps) * 60.0;
 
-        // Fallback B: AGL rate-of-change across the full flare window in the 2-second rolling
+        // Fallback C: VELOCITY WORLD Y on the last airborne frame.
+        if (_previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VelocityWorldYFps < 0)
+            return Math.Abs(_previousFrame.VelocityWorldYFps) * 60.0;
+
+        // Fallback D: AGL rate-of-change across the full flare window in the 2-second rolling
         // buffer.  Using a wider time span (first → last sample in 0.5–30 ft range) smooths
         // out per-frame noise and gives a stable average sink rate.
         var flareFrames = _recentSamples

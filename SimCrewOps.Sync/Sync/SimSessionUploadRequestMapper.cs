@@ -63,6 +63,10 @@ public sealed class SimSessionUploadRequestMapper
             LandingAnalysis = state.ScoreInput.ApproachPath.Count > 0
                 ? MapLandingAnalysis(state.ScoreInput.ApproachPath, state.ScoreInput.Landing)
                 : null,
+            // Flight path — null when blocks-off was never set or no points were recorded
+            FlightPath = state.BlockTimes.BlocksOffUtc is not null && state.ScoreInput.FlightPath.Count > 0
+                ? MapFlightPath(state.ScoreInput.FlightPath, state.BlockTimes.BlocksOffUtc.Value)
+                : null,
         };
     }
 
@@ -213,4 +217,17 @@ public sealed class SimSessionUploadRequestMapper
             TouchdownLon       = landing.TouchdownLongitude != 0 ? landing.TouchdownLongitude : null,
             TouchdownHeadingDeg = landing.TouchdownHeadingDegrees != 0 ? landing.TouchdownHeadingDegrees : null,
         };
+
+    private static IReadOnlyList<FlightPathPointUpload> MapFlightPath(
+        IReadOnlyList<SimCrewOps.Scoring.Models.FlightPathPoint> flightPath,
+        DateTimeOffset blocksOff) =>
+        flightPath
+            .Select(p => new FlightPathPointUpload
+            {
+                Lat   = p.Latitude,
+                Lon   = p.Longitude,
+                AltFt = (int)Math.Round(p.AltitudeFeet),
+                TMin  = Math.Round((p.TimestampUtc - blocksOff).TotalMinutes, 1),
+            })
+            .ToList();
 }
