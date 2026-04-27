@@ -35,8 +35,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Logo badge embedded into the assembly — loaded by AppIcon at runtime. -->
-    <EmbeddedResource Include="Resources\logo-badge.png" />
+    <!-- Logo badge as a WPF Resource — loaded via pack:// URI by AppIcon at runtime. -->
+    <Resource Include="Resources\logo-badge.png" />
   </ItemGroup>
 
   <ItemGroup>
