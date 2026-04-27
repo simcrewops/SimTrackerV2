@@ -93,6 +93,19 @@ public sealed class PersistentRuntimeCoordinator
         return _flightSessionStore.ClearCurrentSessionAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Clears the persisted session and resets the coordinator to a clean
+    /// Preflight state, preserving the current flight context.  Called when
+    /// a completed session is detected at the start of a new SimConnect
+    /// connection so the new flight is not stuck in the previous Arrival phase.
+    /// </summary>
+    public async Task ResetForNewSessionAsync(CancellationToken cancellationToken = default)
+    {
+        _completedSessionQueued = false;
+        await _flightSessionStore.ClearCurrentSessionAsync(cancellationToken).ConfigureAwait(false);
+        _runtimeCoordinator.ResetForNewSession();
+    }
+
     private async Task<SessionPersistenceResult> PersistRuntimeStateAsync(
         FlightSessionRuntimeState state,
         CancellationToken cancellationToken)

@@ -118,6 +118,26 @@ public sealed class RuntimeCoordinator
         };
     }
 
+    /// <summary>
+    /// Resets all flight-tracking state to a clean Preflight baseline while
+    /// preserving the current context (departure/arrival/bid) and live-position
+    /// uploader.  Called when a completed session is detected at the start of a
+    /// new SimConnect connection so the new flight gets a fresh tracker rather
+    /// than being stuck in the Arrival phase of the previous one.
+    /// </summary>
+    public void ResetForNewSession()
+    {
+        var blank = new FlightSessionRuntimeState
+        {
+            Context      = _context,
+            CurrentPhase = FlightPhase.Preflight,
+            BlockTimes   = new FlightSessionBlockTimes(),
+            ScoreInput   = new FlightScoreInput(),
+            ScoreResult  = new ScoreResult(0, 0, "-", false, [], []),
+        };
+        Restore(blank);
+    }
+
     public void Restore(FlightSessionRuntimeState state)
     {
         ArgumentNullException.ThrowIfNull(state);
