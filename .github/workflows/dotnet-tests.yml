@@ -111,7 +111,7 @@ jobs:
     runs-on: windows-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      PACKAGE_VERSION: 2.1.0-beta.${{ github.run_number }}
+      PACKAGE_VERSION: 3.0.0.${{ github.run_number }}
 
     steps:
       - name: Check out repository
