@@ -1,6 +1,5 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -29,7 +28,7 @@ internal static class AppIcon
     {
         try
         {
-            var info = Application.GetResourceStream(PackUri)
+            var info = System.Windows.Application.GetResourceStream(PackUri)
                 ?? throw new InvalidOperationException("Logo resource not found.");
 
             using var src = new Bitmap(info.Stream);
