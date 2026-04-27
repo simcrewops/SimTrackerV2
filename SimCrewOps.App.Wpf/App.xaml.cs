@@ -30,10 +30,11 @@ public partial class App : WpfApplication
             _shellHost = bootstrap.ShellHost;
 
             _mainWindowViewModel = new MainWindowViewModel(bootstrap);
+            var wpfIcon = AppIcon.CreateWpfIcon();
             _mainWindow = new MainWindow
             {
                 DataContext = _mainWindowViewModel,
-                Icon = AppIcon.CreateWpfIcon(),
+                Icon = wpfIcon,   // null is fine — WPF uses the default window icon
             };
 
             _trayIconService = new TrayIconService();

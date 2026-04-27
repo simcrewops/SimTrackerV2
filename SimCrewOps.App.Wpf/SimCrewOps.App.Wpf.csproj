@@ -35,6 +35,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Logo badge embedded into the assembly — loaded by AppIcon at runtime. -->
+    <EmbeddedResource Include="Resources\logo-badge.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\SimCrewOps.Hosting\SimCrewOps.Hosting.csproj" />
     <ProjectReference Include="..\SimCrewOps.Persistence\SimCrewOps.Persistence.csproj" />
     <ProjectReference Include="..\SimCrewOps.Runways\SimCrewOps.Runways.csproj" />
