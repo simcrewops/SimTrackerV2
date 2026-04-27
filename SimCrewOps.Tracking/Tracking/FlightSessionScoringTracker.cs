@@ -38,7 +38,6 @@ public sealed class FlightSessionScoringTracker
     private DateTimeOffset? _lastTakeoffLiftoffAt;
     // v3 new takeoff metrics
     private bool _takeoffPositiveRateBeforeGearUp = true;
-    private bool _takeoffGearWasDown;
 
     private double _climbMaxIasBelowFl100;
     private double _climbMaxBank;
@@ -714,9 +713,6 @@ public sealed class FlightSessionScoringTracker
                 _takeoffTailStrikeDetected = true;
             }
 
-            // v3: track gear state during takeoff roll
-            if (frame.GearDown)
-                _takeoffGearWasDown = true;
         }
 
         if (frame.Phase is FlightPhase.Takeoff or FlightPhase.Climb or FlightPhase.Cruise or FlightPhase.Descent or FlightPhase.Approach or FlightPhase.Landing)

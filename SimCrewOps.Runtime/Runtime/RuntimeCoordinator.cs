@@ -42,8 +42,6 @@ public sealed class RuntimeCoordinator
     private bool _approachAirportRefResolved;
     // Time guard: only record a sample when at least 2 s have elapsed since the last one.
     private DateTimeOffset? _approachPathLastSampleAt;
-    // True once the aircraft enters recording range (dist ≤ 15 nm in Descent/Approach).
-    private bool _approachPathRecording;
 
     /// <summary>
     /// UTC timestamp of the most recent live-position upload that the server accepted (HTTP 200).
@@ -139,7 +137,6 @@ public sealed class RuntimeCoordinator
         _approachAirportRefLon = null;
         _approachAirportRefResolved = false;
         _approachPathLastSampleAt = null;
-        _approachPathRecording = false;
 
         _phaseEngine.Restore(
             state.CurrentPhase,
@@ -286,7 +283,6 @@ public sealed class RuntimeCoordinator
 
                 if (withinRange && timeOk)
                 {
-                    _approachPathRecording = true;
                     _scoringTracker.RecordApproachSample(
                         distNm,
                         telemetryFrame.AltitudeAglFeet,
