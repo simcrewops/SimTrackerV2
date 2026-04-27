@@ -33,6 +33,7 @@ public sealed class FlightSessionScoringTracker
     private double _takeoffMaxBank;
     private double _takeoffMaxPitch;
     private double _takeoffMaxG;
+    private double _takeoffGForceAtRotation;
     private int _takeoffBounceCount;
     private bool _takeoffTailStrikeDetected;
     private DateTimeOffset? _lastTakeoffLiftoffAt;
@@ -77,6 +78,7 @@ public sealed class FlightSessionScoringTracker
     // v3 new descent metrics
     private double _descentMinG = double.MaxValue;
     private double _descentMaxDescentRateFpm;
+    private double _descentMaxNoseDownPitch;
     private bool _descentLandingLightsOnBeforeFL180 = true;
 
     private bool _capturedApproach1000Agl;
@@ -111,6 +113,7 @@ public sealed class FlightSessionScoringTracker
     private double _stabilizedMaxHeadingDev;
     private bool _stabilizedIlsAvailable;
     private double _stabilizedMaxGlideslope;
+    private double _stabilizedPitchAtGate;
     private int _stabilizedFlapsAt500Agl;
     private bool _stabilizedGearAt500Agl;
 
@@ -125,6 +128,7 @@ public sealed class FlightSessionScoringTracker
     private double _landingTouchdownCrabAngleDegrees;
     private double _landingTouchdownLatitude;
     private double _landingTouchdownLongitude;
+    private double _landingTouchdownHeadingDegrees;
     // Extended touchdown context
     private bool _landingAutopilotAtTouchdown;
     private bool _landingSpoilersAtTouchdown;
@@ -167,6 +171,9 @@ public sealed class FlightSessionScoringTracker
     private bool _arrivalTaxiLightsOffBeforeParkingBrakeSet;
     private bool _arrivalAllEnginesOffBeforeParkingBrakeSet = true;
     private bool _arrivalAllEnginesOffByEndOfSession;
+    private bool _arrivalEnginesOffAfterParkingBrake;
+    private bool _arrivalAllEnginesOffSeen;
+    private bool _arrivalBeaconOffAfterEngines;
 
     // ── Session-level metrics ──────────────────────────────────────────────
     private DateTimeOffset? _sessionEnginesStartedAt;
@@ -252,6 +259,7 @@ public sealed class FlightSessionScoringTracker
         _takeoffMaxBank = input.Takeoff.MaxBankAngleDegrees;
         _takeoffMaxPitch = input.Takeoff.MaxPitchAngleDegrees;
         _takeoffMaxG = input.Takeoff.MaxGForce;
+        _takeoffGForceAtRotation = input.Takeoff.GForceAtRotation;
         _takeoffBounceCount = input.Takeoff.BounceCount;
         _takeoffTailStrikeDetected = input.Takeoff.TailStrikeDetected;
         _lastTakeoffLiftoffAt = wheelsOffUtc;
@@ -289,6 +297,7 @@ public sealed class FlightSessionScoringTracker
         _descentSeen = HasReachedPhase(currentPhase, FlightPhase.Descent);
         _descentMaxIasBelowFl100 = input.Descent.MaxIasBelowFl100Knots;
         _descentMaxBank = input.Descent.MaxBankAngleDegrees;
+        _descentMaxNoseDownPitch = input.Descent.MaxNoseDownPitchDegrees;
         _descentMaxPitch = input.Descent.MaxPitchAngleDegrees;
         _descentMaxG = input.Descent.MaxGForce;
         _descentLandingLightsOnBy9900 = !_descentSeen || input.Descent.LandingLightsOnBy9900;
@@ -313,6 +322,7 @@ public sealed class FlightSessionScoringTracker
         _landingTouchdownCrabAngleDegrees = input.Landing.TouchdownCrabAngleDegrees;
         _landingTouchdownLatitude = input.Landing.TouchdownLatitude;
         _landingTouchdownLongitude = input.Landing.TouchdownLongitude;
+        _landingTouchdownHeadingDegrees = input.Landing.TouchdownHeadingDegrees;
         _lastTouchdownAt = wheelsOnUtc;
         _airborneAfterTouchdownAt = null;
 
@@ -334,6 +344,9 @@ public sealed class FlightSessionScoringTracker
         _arrivalAllEnginesOffBeforeParkingBrakeSet =
             !_arrivalSeen || input.Arrival.AllEnginesOffBeforeParkingBrakeSet;
         _arrivalAllEnginesOffByEndOfSession = input.Arrival.AllEnginesOffByEndOfSession;
+        _arrivalEnginesOffAfterParkingBrake = input.Arrival.EnginesOffAfterParkingBrake;
+        _arrivalAllEnginesOffSeen = _arrivalSeen && input.Arrival.EnginesOffAfterParkingBrake;
+        _arrivalBeaconOffAfterEngines = input.Arrival.BeaconOffAfterEngines;
 
         // ── Session-level fields ──────────────────────────────────────────────
         _sessionEnginesStartedAt = input.Session.EnginesStartedAtUtc;
@@ -447,6 +460,7 @@ public sealed class FlightSessionScoringTracker
                 LandingLightsOffByFl180 = !_takeoffSeen || _takeoffLandingLightsOffByFl180,
                 StrobesOnFromTakeoffToLanding = !_takeoffSeen || _takeoffStrobesOnFromTakeoffToLanding,
                 PositiveRateBeforeGearUp = _takeoffPositiveRateBeforeGearUp,
+                GForceAtRotation = _takeoffGForceAtRotation,
             },
             Climb = new ClimbMetrics
             {
@@ -483,6 +497,7 @@ public sealed class FlightSessionScoringTracker
                 MinGForce = _descentMinG == double.MaxValue ? 0 : _descentMinG,
                 MaxDescentRateFpm = _descentMaxDescentRateFpm,
                 LandingLightsOnBeforeFL180 = !_descentSeen || _descentLandingLightsOnBeforeFL180,
+                MaxNoseDownPitchDegrees = _descentMaxNoseDownPitch,
             },
             Approach = new ApproachMetrics
             {
@@ -518,6 +533,7 @@ public sealed class FlightSessionScoringTracker
                 MaxHeadingDeviationDegrees = _stabilizedMaxHeadingDev,
                 IlsAvailable = _stabilizedIlsAvailable,
                 MaxGlideslopeDeviationDots = _stabilizedMaxGlideslope,
+                PitchAtGateDegrees = _stabilizedPitchAtGate,
             },
             Landing = new LandingMetrics
             {
@@ -532,6 +548,7 @@ public sealed class FlightSessionScoringTracker
                 TouchdownCrabAngleDegrees = _landingTouchdownCrabAngleDegrees,
                 TouchdownLatitude = _landingTouchdownLatitude,
                 TouchdownLongitude = _landingTouchdownLongitude,
+                TouchdownHeadingDegrees = _landingTouchdownHeadingDegrees,
                 AutopilotEngagedAtTouchdown = _landingAutopilotAtTouchdown,
                 SpoilersDeployedAtTouchdown = _landingSpoilersAtTouchdown,
                 ReverseThrustUsed = _landingReverseThrustUsed,
@@ -561,6 +578,8 @@ public sealed class FlightSessionScoringTracker
                 TaxiLightsOffBeforeParkingBrakeSet = !_arrivalSeen || (_arrivalParkingBrakeObserved && _arrivalTaxiLightsOffBeforeParkingBrakeSet),
                 AllEnginesOffBeforeParkingBrakeSet = !_arrivalSeen || (_arrivalParkingBrakeObserved && _arrivalAllEnginesOffBeforeParkingBrakeSet),
                 AllEnginesOffByEndOfSession = !_arrivalSeen || _arrivalAllEnginesOffByEndOfSession,
+                EnginesOffAfterParkingBrake = !_arrivalSeen || (_arrivalParkingBrakeObserved && _arrivalEnginesOffAfterParkingBrake),
+                BeaconOffAfterEngines       = !_arrivalSeen || _arrivalBeaconOffAfterEngines,
             },
             Safety = new SafetyMetrics
             {
@@ -736,6 +755,7 @@ public sealed class FlightSessionScoringTracker
         if (_previousFrame.Phase == FlightPhase.Takeoff && _previousFrame.OnGround && !frame.OnGround)
         {
             _lastTakeoffLiftoffAt = frame.TimestampUtc;
+            _takeoffGForceAtRotation = frame.GForce;
         }
 
         if (_previousFrame.Phase == FlightPhase.Takeoff &&
@@ -944,6 +964,8 @@ public sealed class FlightSessionScoringTracker
         // v3 new metrics
         _descentMinG = Math.Min(_descentMinG, frame.GForce);
         _descentMaxDescentRateFpm = Math.Max(_descentMaxDescentRateFpm, Math.Abs(frame.VerticalSpeedFpm));
+        if (frame.PitchAngleDegrees < 0)
+            _descentMaxNoseDownPitch = Math.Max(_descentMaxNoseDownPitch, Math.Abs(frame.PitchAngleDegrees));
         if (_postRestoreGraceFrames <= 0 && frame.IndicatedAltitudeFeet <= 18000 && !frame.LandingLightsOn)
             _descentLandingLightsOnBeforeFL180 = false;
     }
@@ -1007,6 +1029,7 @@ public sealed class FlightSessionScoringTracker
                 _stabilizedFlapsAt500Agl = frame.FlapsHandleIndex;
                 _stabilizedGearAt500Agl = frame.GearDown;
                 _stabilizedApproachActive = true;
+                _stabilizedPitchAtGate = frame.PitchAngleDegrees;
             }
         }
 
@@ -1082,6 +1105,7 @@ public sealed class FlightSessionScoringTracker
                 _landingTouchdownPitchAngleDegrees = frame.PitchAngleDegrees;
                 _landingTouchdownLatitude = frame.Latitude;
                 _landingTouchdownLongitude = frame.Longitude;
+                _landingTouchdownHeadingDegrees = frame.HeadingTrueDegrees;
                 _landingAutopilotAtTouchdown = frame.AutopilotEngaged;
                 _landingSpoilersAtTouchdown = frame.SpoilersArmed || frame.SpoilerHandlePosition > 0.1;
                 _landingWindSpeedAtTouchdown = frame.WindSpeedKnots;
@@ -1271,6 +1295,18 @@ public sealed class FlightSessionScoringTracker
         }
 
         _arrivalAllEnginesOffByEndOfSession = !AnyEngineRunning(frame);
+
+        // EnginesOffAfterParkingBrake: all engines went off after parking brake was set.
+        if (_arrivalParkingBrakeObserved && !AnyEngineRunning(frame))
+            _arrivalEnginesOffAfterParkingBrake = true;
+
+        // BeaconOffAfterEngines: beacon turned off after all engines shut down.
+        // _sessionEnginesStartedAt is set by UpdateSession in a previous frame so it
+        // correctly reflects whether engines had been running earlier in the session.
+        if (_sessionEnginesStartedAt is not null && !AnyEngineRunning(frame))
+            _arrivalAllEnginesOffSeen = true;
+        if (_arrivalAllEnginesOffSeen && !frame.BeaconLightOn)
+            _arrivalBeaconOffAfterEngines = true;
     }
 
     private void UpdateSession(TelemetryFrame frame)

@@ -61,7 +61,7 @@ public sealed class SimSessionUploadRequestMapper
             ScoreInputV5 = MapScoreInputV5(state.ScoreInput),
             // Landing analysis — omit entirely when no approach path was recorded
             LandingAnalysis = state.ScoreInput.ApproachPath.Count > 0
-                ? MapLandingAnalysis(state.ScoreInput.ApproachPath)
+                ? MapLandingAnalysis(state.ScoreInput.ApproachPath, state.ScoreInput.Landing)
                 : null,
         };
     }
@@ -93,8 +93,6 @@ public sealed class SimSessionUploadRequestMapper
                 NavLightsOn            = s.TaxiIn.TaxiLightsOn,
                 StrobeLightOnDuringTaxi = s.TaxiIn.StrobeLightOnDuringTaxi,
                 SmoothDeceleration     = s.TaxiIn.SmoothDeceleration,
-                StrobeLightsOffAfterRunway  = s.TaxiIn.StrobesOff,
-                LandingLightsOffAfterRunway = s.TaxiIn.LandingLightsOff,
             },
             Takeoff = new ScoreInputTakeoffV5
             {
@@ -104,6 +102,7 @@ public sealed class SimSessionUploadRequestMapper
                 MaxPitchWhileWowDeg        = s.Takeoff.MaxPitchAngleDegrees,
                 StrobeLightsOn             = s.Takeoff.StrobesOnFromTakeoffToLanding,
                 LandingLightsOn            = s.Takeoff.LandingLightsOnBeforeTakeoff,
+                GForceAtRotation           = s.Takeoff.GForceAtRotation,
             },
             Climb = new ScoreInputClimbV5
             {
@@ -137,6 +136,7 @@ public sealed class SimSessionUploadRequestMapper
                 MaxGForce                  = s.Descent.MaxGForce,
                 MaxDescentRateFpm          = s.Descent.MaxDescentRateFpm,
                 LandingLightsOnBeforeFL180 = s.Descent.LandingLightsOnBeforeFL180,
+                MaxNoseDownPitchDeg        = s.Descent.MaxNoseDownPitchDegrees,
             },
             Approach = new ScoreInputApproachV5
             {
@@ -160,6 +160,7 @@ public sealed class SimSessionUploadRequestMapper
                 MaxHeadingDeviationDeg = s.StabilizedApproach.MaxHeadingDeviationDegrees,
                 IlsAvailable           = s.StabilizedApproach.IlsAvailable,
                 MaxGlideslopeDevDots   = s.StabilizedApproach.MaxGlideslopeDeviationDots,
+                PitchAtGateDeg             = s.StabilizedApproach.PitchAtGateDegrees,
             },
             Landing = new ScoreInputLandingV5
             {
@@ -180,16 +181,23 @@ public sealed class SimSessionUploadRequestMapper
             Safety = new ScoreInputSafetyV5
             {
                 CrashDetected            = s.Safety.CrashDetected,
-                OverspeedEvents          = s.Safety.OverspeedEvents,
+                OverspeedWarningCount    = s.Safety.OverspeedEvents,
                 SustainedOverspeedEvents = s.Safety.SustainedOverspeedEvents,
-                StallEvents              = s.Safety.StallEvents,
-                GpwsEvents               = s.Safety.GpwsEvents,
+                StallWarningCount        = s.Safety.StallEvents,
+                GpwsAlertCount           = s.Safety.GpwsEvents,
                 EngineShutdownsInFlight  = s.Safety.EngineShutdownsInFlight,
+                EngineShutdownInFlight   = s.Safety.EngineShutdownsInFlight > 0,
+            },
+            Arrival = new ScoreInputArrivalV5
+            {
+                EnginesOffAfterParkingBrake = s.Arrival.EnginesOffAfterParkingBrake,
+                BeaconOffAfterEngines       = s.Arrival.BeaconOffAfterEngines,
             },
         };
 
     private static LandingAnalysisUpload MapLandingAnalysis(
-        IReadOnlyList<SimCrewOps.Scoring.Models.ApproachSamplePoint> approachPath) =>
+        IReadOnlyList<SimCrewOps.Scoring.Models.ApproachSamplePoint> approachPath,
+        SimCrewOps.Scoring.Models.LandingMetrics landing) =>
         new()
         {
             ApproachPath = approachPath
@@ -201,5 +209,8 @@ public sealed class SimSessionUploadRequestMapper
                     VsFpm                 = s.VerticalSpeedFpm,
                 })
                 .ToList(),
+            TouchdownLat       = landing.TouchdownLatitude != 0 ? landing.TouchdownLatitude : null,
+            TouchdownLon       = landing.TouchdownLongitude != 0 ? landing.TouchdownLongitude : null,
+            TouchdownHeadingDeg = landing.TouchdownHeadingDegrees != 0 ? landing.TouchdownHeadingDegrees : null,
         };
 }

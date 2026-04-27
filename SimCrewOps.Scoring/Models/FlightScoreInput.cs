@@ -111,6 +111,8 @@ public sealed record TakeoffMetrics
     public double MaxBankAngleDegrees { get; init; }
     public double MaxPitchAngleDegrees { get; init; }
     public double MaxGForce { get; init; }
+    /// <summary>G-force recorded at the WOW → airborne transition (rotation).</summary>
+    public double GForceAtRotation { get; init; }
     public bool LandingLightsOnBeforeTakeoff { get; init; }
     public bool LandingLightsOffByFl180 { get; init; }
     public bool StrobesOnFromTakeoffToLanding { get; init; }
@@ -156,6 +158,8 @@ public sealed record DescentMetrics
     public bool LandingLightsOnBy9900 { get; init; }
     public double MinGForce { get; init; }
     public double MaxDescentRateFpm { get; init; }
+    /// <summary>Maximum absolute nose-down pitch angle during descent (degrees, positive value).</summary>
+    public double MaxNoseDownPitchDegrees { get; init; }
     public bool LandingLightsOnBeforeFL180 { get; init; } = true;
 }
 
@@ -215,6 +219,8 @@ public sealed record LandingMetrics
     /// Zero when no touchdown was recorded (e.g. session ended in the air).
     /// </summary>
     public double TouchdownLongitude { get; init; }
+    /// <summary>True heading of the aircraft at initial wheel contact (degrees 0–360).</summary>
+    public double TouchdownHeadingDegrees { get; init; }
 
     // ── Extended touchdown context ─────────────────────────────────────────
     /// <summary>True when the autopilot master was engaged at the moment of touchdown.</summary>
@@ -269,6 +275,10 @@ public sealed record ArrivalMetrics
     /// </summary>
     public bool AllEnginesOffBeforeParkingBrakeSet { get; init; }
     public bool AllEnginesOffByEndOfSession { get; init; }
+    /// <summary>True when all engines were shut down after the parking brake was set.</summary>
+    public bool EnginesOffAfterParkingBrake { get; init; }
+    /// <summary>True when the beacon was turned off after all engines were shut down.</summary>
+    public bool BeaconOffAfterEngines { get; init; }
 }
 
 public sealed record SafetyMetrics
@@ -290,6 +300,8 @@ public sealed record StabilizedApproachMetrics
     public double MaxHeadingDeviationDegrees { get; init; }
     public bool IlsAvailable { get; init; }
     public double MaxGlideslopeDeviationDots { get; init; }
+    /// <summary>Aircraft pitch angle at the 500 ft AGL gate (degrees, signed: positive = nose up).</summary>
+    public double PitchAtGateDegrees { get; init; }
 }
 
 public sealed record LightsSystemsMetrics

@@ -267,8 +267,8 @@ public sealed class SimSessionUploadRequestMapperTests
         Assert.True(v5.TaxiIn.SmoothDeceleration);
 
         // Safety
-        Assert.Equal(2, v5.Safety.OverspeedEvents);
-        Assert.Equal(1, v5.Safety.StallEvents);
+        Assert.Equal(2, v5.Safety.OverspeedWarningCount);
+        Assert.Equal(1, v5.Safety.StallWarningCount);
 
         // LightsSystems
         Assert.True(v5.LightsSystems.BeaconOnThroughoutFlight);

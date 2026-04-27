@@ -45,6 +45,9 @@ public sealed record FlightScoreInputV5Upload
 
     [JsonPropertyName("safety")]
     public ScoreInputSafetyV5 Safety { get; init; } = new();
+
+    [JsonPropertyName("arrival")]
+    public ScoreInputArrivalV5? Arrival { get; init; }
 }
 
 // ── Phase sub-records ──────────────────────────────────────────────────────────
@@ -80,12 +83,6 @@ public sealed record ScoreInputTaxiInV5
 
     [JsonPropertyName("smoothDeceleration")]
     public bool SmoothDeceleration { get; init; }
-
-    [JsonPropertyName("strobeLightsOffAfterRunway")]
-    public bool StrobeLightsOffAfterRunway { get; init; }
-
-    [JsonPropertyName("landingLightsOffAfterRunway")]
-    public bool LandingLightsOffAfterRunway { get; init; }
 }
 
 public sealed record ScoreInputTakeoffV5
@@ -107,6 +104,9 @@ public sealed record ScoreInputTakeoffV5
 
     [JsonPropertyName("landingLightsOn")]
     public bool LandingLightsOn { get; init; }
+
+    [JsonPropertyName("gForceAtRotation")]
+    public double GForceAtRotation { get; init; }
 }
 
 public sealed record ScoreInputClimbV5
@@ -188,6 +188,9 @@ public sealed record ScoreInputDescentV5
 
     [JsonPropertyName("landingLightsOnBeforeFL180")]
     public bool LandingLightsOnBeforeFL180 { get; init; }
+
+    [JsonPropertyName("maxNoseDownPitchDeg")]
+    public double MaxNoseDownPitchDeg { get; init; }
 }
 
 public sealed record ScoreInputApproachV5
@@ -245,6 +248,9 @@ public sealed record ScoreInputStabilizedApproachV5
 
     [JsonPropertyName("maxGlideslopeDevDots")]
     public double MaxGlideslopeDevDots { get; init; }
+
+    [JsonPropertyName("pitchAtGateDeg")]
+    public double PitchAtGateDeg { get; init; }
 }
 
 public sealed record ScoreInputLandingV5
@@ -283,25 +289,37 @@ public sealed record ScoreInputLightsSystemsV5
     public double LandingLightsCompliance { get; init; }
 }
 
+public sealed record ScoreInputArrivalV5
+{
+    [JsonPropertyName("enginesOffAfterParkingBrake")]
+    public bool EnginesOffAfterParkingBrake { get; init; }
+
+    [JsonPropertyName("beaconOffAfterEngines")]
+    public bool BeaconOffAfterEngines { get; init; }
+}
+
 public sealed record ScoreInputSafetyV5
 {
     [JsonPropertyName("crashDetected")]
     public bool CrashDetected { get; init; }
 
-    [JsonPropertyName("overspeedEvents")]
-    public int OverspeedEvents { get; init; }
+    [JsonPropertyName("overspeedWarningCount")]
+    public int OverspeedWarningCount { get; init; }
 
     [JsonPropertyName("sustainedOverspeedEvents")]
     public int SustainedOverspeedEvents { get; init; }
 
-    [JsonPropertyName("stallEvents")]
-    public int StallEvents { get; init; }
+    [JsonPropertyName("stallWarningCount")]
+    public int StallWarningCount { get; init; }
 
-    [JsonPropertyName("gpwsEvents")]
-    public int GpwsEvents { get; init; }
+    [JsonPropertyName("gpwsAlertCount")]
+    public int GpwsAlertCount { get; init; }
 
     [JsonPropertyName("engineShutdownsInFlight")]
     public int EngineShutdownsInFlight { get; init; }
+
+    [JsonPropertyName("engineShutdownInFlight")]
+    public bool EngineShutdownInFlight { get; init; }
 }
 
 // ── Landing analysis ───────────────────────────────────────────────────────────
@@ -322,6 +340,18 @@ public sealed record LandingAnalysisUpload
     /// </summary>
     [JsonPropertyName("approachPath")]
     public IReadOnlyList<ApproachSampleUpload>? ApproachPath { get; init; }
+
+    /// <summary>WGS-84 latitude of touchdown. Null when no touchdown was recorded.</summary>
+    [JsonPropertyName("touchdownLat")]
+    public double? TouchdownLat { get; init; }
+
+    /// <summary>WGS-84 longitude of touchdown. Null when no touchdown was recorded.</summary>
+    [JsonPropertyName("touchdownLon")]
+    public double? TouchdownLon { get; init; }
+
+    /// <summary>True heading at touchdown (degrees 0–360). Null when no touchdown was recorded.</summary>
+    [JsonPropertyName("touchdownHeadingDeg")]
+    public double? TouchdownHeadingDeg { get; init; }
 }
 
 /// <summary>A single approach telemetry sample.</summary>
