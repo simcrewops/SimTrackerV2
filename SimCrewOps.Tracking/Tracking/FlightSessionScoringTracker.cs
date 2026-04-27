@@ -1453,12 +1453,17 @@ public sealed class FlightSessionScoringTracker
 
     private double CalculateTouchdownVerticalSpeed(TelemetryFrame touchdownFrame)
     {
-        // Primary: VERTICAL SPEED (barometric) on the last airborne frame.
+        // Primary: VERTICAL SPEED (barometric) at the exact touchdown frame.
         //
-        // This matches the industry convention used by Volanta and most major trackers.
-        // Barometric VS is what pilots see on the VSI and what scoring thresholds are
-        // calibrated against. We sample it on the frame immediately before OnGround to
-        // avoid gear-compression artefacts on the touchdown frame itself.
+        // Volanta and most major trackers read the barometric VERTICAL SPEED SimVar at the
+        // moment SIM ON GROUND transitions to true.  Barometric VS is what pilots see on the
+        // VSI and what scoring thresholds are calibrated against.
+        if (touchdownFrame.VerticalSpeedFpm < 0)
+            return Math.Abs(touchdownFrame.VerticalSpeedFpm);
+
+        // Fallback A: barometric VS on the last airborne frame.
+        // Used when the touchdown frame itself reads zero or positive (e.g. a very soft
+        // landing where the sim briefly reports 0 fpm at the WOW transition).
         if (_previousFrame is not null
             && !_previousFrame.OnGround
             && _previousFrame.VerticalSpeedFpm < 0)
@@ -1466,12 +1471,7 @@ public sealed class FlightSessionScoringTracker
             return Math.Abs(_previousFrame.VerticalSpeedFpm);
         }
 
-        // Fallback A: barometric VS on the touchdown frame itself.
-        if (touchdownFrame.VerticalSpeedFpm < 0)
-            return Math.Abs(touchdownFrame.VerticalSpeedFpm);
-
         // Fallback B: VELOCITY WORLD Y on the touchdown frame (physics-engine VS, no baro lag).
-        // Used only when barometric VS is unavailable or reads zero/positive.
         if (touchdownFrame.VelocityWorldYFps < 0)
             return Math.Abs(touchdownFrame.VelocityWorldYFps) * 60.0;
 
