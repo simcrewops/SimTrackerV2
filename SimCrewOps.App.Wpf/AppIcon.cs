@@ -1,6 +1,5 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
 using System.Reflection;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -75,7 +74,7 @@ internal static class AppIcon
         // Resize to the requested pixel size with high-quality resampling so
         // the globe+plane detail holds up at 32×32 (tray) and looks sharp at
         // 256×256 (modern taskbar / high-DPI).
-        var dst = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+        var dst = new Bitmap(size, size, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using var g = Graphics.FromImage(dst);
         g.InterpolationMode  = InterpolationMode.HighQualityBicubic;
         g.CompositingMode    = CompositingMode.SourceCopy;
