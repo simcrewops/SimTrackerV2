@@ -179,6 +179,12 @@ public sealed class FlightSessionScoringTrackerTests
         var tracker = new FlightSessionScoringTracker();
         var t0 = new DateTimeOffset(2026, 4, 13, 2, 30, 0, TimeSpan.Zero);
 
+        // The tracker starts with a 10-frame startup grace period (stale SimVar protection).
+        // Pre-warm with 10 Preflight frames so the grace period expires before the taxi-in
+        // scenario begins — otherwise the lights check is suppressed for all 3 test frames.
+        for (var i = 0; i < 10; i++)
+            tracker.Ingest(Frame(t0.AddSeconds(i - 10), FlightPhase.Preflight, onGround: true));
+
         tracker.Ingest(Frame(t0.AddSeconds(0),  FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 20, heading: 180));
         // 60 s gate opens here; the debounce clock starts now (t=64).
         tracker.Ingest(Frame(t0.AddSeconds(64), FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 12, heading: 180));
