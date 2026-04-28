@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using SimCrewOps.SimConnect.Models;
 using SimCrewOps.SimConnect.Services.Aircraft;
@@ -201,10 +200,30 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private const uint GpsDestinationDefinitionId = 14;   // separate string SimVar definition
     private const uint UserObjectId = 0;
 
+    // ── Phase-aware throttle constants ──────────────────────────────────────────
+    // Switch to throttled polling when clearly in cruise; restore full rate when
+    // approaching the ground.  A 1 000 ft dead-band prevents rapid toggling on
+    // the climb-out / initial descent around the threshold altitude.
+    private const uint CruiseThrottleInterval = 4;          // ~7-15 Hz depending on sim fps
+    private const double ThrottleOnAglFeet    = 3_500.0;    // start throttling above this
+    private const double ThrottleOffAglFeet   = 2_500.0;    // restore full rate below this
+
     private readonly nint _nativeLibraryHandle;
     private readonly SimConnectHostOptions _options;
     private readonly NativeSimConnectExports _exports;
-    private readonly ConcurrentQueue<SimConnectRawTelemetryFrame> _frames = new();
+
+    // Latest frame produced after each drain pass — replaces the old ConcurrentQueue.
+    // All access is single-threaded (DispatcherTimer → ReadNextFrameAsync → Drain).
+    private SimConnectRawTelemetryFrame? _latestFrame;
+
+    // Set to true in UpdateFlightCritical each drain pass; checked in ReadNextFrameAsync
+    // so EnqueueFrame() is only called when new SimConnect data actually arrived.
+    // Preserves the original null-return semantics when MSFS sends nothing (e.g. paused sim).
+    private bool _flightCriticalReceivedThisDrain;
+
+    // Tracks the currently active server-side throttle interval so we only re-send
+    // RequestDataOnSimObject when the desired interval actually changes.
+    private uint _flightCriticalInterval = 0;
 
     private nint _simConnectHandle;
     private LatestSimConnectState _latestState = new();
@@ -240,23 +259,28 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Drain ALL available SimConnect messages in one pass.
-            // SIMCONNECT_PERIOD_SIM_FRAME queues 30–60 messages per second; if we only
-            // dequeue one message per poll the queue grows without bound and the data
-            // shown becomes increasingly stale (effectively "frozen" after ~30 seconds).
+            // Drain ALL available SimConnect messages in one pass, updating _latestState
+            // with each. SIMCONNECT_PERIOD_SIM_FRAME queues 30–60 messages per second;
+            // draining all at once keeps the snapshot current and avoids unbounded growth.
+            _flightCriticalReceivedThisDrain = false;
             DrainAllAvailableMessages();
 
-            // Discard intermediate frames — keep only the most recent snapshot so the
-            // UI always reflects the current sim state, not data from seconds ago.
-            SimConnectRawTelemetryFrame? latest = null;
-            while (_frames.TryDequeue(out var f))
+            // One snapshot per drain pass — only when new data actually arrived.
+            // Preserves null-return semantics when MSFS sends nothing (e.g. paused sim).
+            if (_flightCriticalReceivedThisDrain)
             {
-                latest = f;
+                EnqueueFrame();
             }
 
-            if (latest is not null)
+            // Adjust server-side delivery rate based on altitude so MSFS sends fewer
+            // messages during cruise while preserving full fidelity near the ground.
+            UpdateFlightCriticalThrottle();
+
+            if (_latestFrame is not null)
             {
-                return latest;
+                var frame = _latestFrame;
+                _latestFrame = null;
+                return frame;
             }
 
             await Task.Delay(15, cancellationToken).ConfigureAwait(false);
@@ -589,28 +613,26 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         //   • Cruise / climb: AGL is thousands of feet              → false
         var onGroundSimVar = snapshot.OnGround >= 0.5;
         var onGroundHeuristic = snapshot.AltitudeAglFeet < 30.0 && snapshot.VerticalSpeedFpm > -500.0;
-        var onGround = onGroundSimVar || onGroundHeuristic ? 1 : 0;
 
-        _latestState = _latestState with
-        {
-            HasFlightCritical = true,
-            Latitude = snapshot.Latitude,
-            Longitude = snapshot.Longitude,
-            AltitudeAglFeet = snapshot.AltitudeAglFeet,
-            AltitudeFeet = snapshot.AltitudeFeet,
-            IndicatedAltitudeFeet = snapshot.IndicatedAltitudeFeet,
-            IndicatedAirspeedKnots = snapshot.IndicatedAirspeedKnots,
-            GroundSpeedKnots = snapshot.GroundSpeedKnots,
-            VerticalSpeedFpm = snapshot.VerticalSpeedFpm,
-            BankAngleDegrees = snapshot.BankAngleDegrees,
-            PitchAngleDegrees = snapshot.PitchAngleDegrees,
-            ParkingBrakePosition = snapshot.ParkingBrakePosition,
-            OnGround = onGround,
-            CrashFlag = snapshot.CrashFlag,
-            VelocityWorldYFps = snapshot.VelocityWorldYFps,
-        };
-
-        EnqueueFrame();
+        // Mutate in-place — avoids allocating a new record instance on every
+        // SimFrame callback (30-60 allocations/s eliminated).
+        _flightCriticalReceivedThisDrain = true;
+        _latestState.HasFlightCritical  = true;
+        _latestState.Latitude           = snapshot.Latitude;
+        _latestState.Longitude          = snapshot.Longitude;
+        _latestState.AltitudeAglFeet    = snapshot.AltitudeAglFeet;
+        _latestState.AltitudeFeet       = snapshot.AltitudeFeet;
+        _latestState.IndicatedAltitudeFeet   = snapshot.IndicatedAltitudeFeet;
+        _latestState.IndicatedAirspeedKnots  = snapshot.IndicatedAirspeedKnots;
+        _latestState.GroundSpeedKnots   = snapshot.GroundSpeedKnots;
+        _latestState.VerticalSpeedFpm   = snapshot.VerticalSpeedFpm;
+        _latestState.BankAngleDegrees   = snapshot.BankAngleDegrees;
+        _latestState.PitchAngleDegrees  = snapshot.PitchAngleDegrees;
+        _latestState.ParkingBrakePosition = snapshot.ParkingBrakePosition;
+        _latestState.OnGround           = onGroundSimVar || onGroundHeuristic ? 1 : 0;
+        _latestState.CrashFlag          = snapshot.CrashFlag;
+        _latestState.VelocityWorldYFps  = snapshot.VelocityWorldYFps;
+        // EnqueueFrame() is called once per drain pass in ReadNextFrameAsync instead of here.
     }
 
     private void UpdateOperational(OperationalSnapshot snapshot)
@@ -655,52 +677,47 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             strobe  = ResolveLvar(_activeProfile.StrobeLight,  strobe);
         }
 
-        var usedIndividual = true;
-
-        _latestState = _latestState with
-        {
-            HasOperational = true,
-            HeadingMagneticDegrees = snapshot.HeadingMagneticDegrees,
-            HeadingTrueDegrees = snapshot.HeadingTrueDegrees,
-            TrueAirspeedKnots = snapshot.TrueAirspeedKnots,
-            Mach = snapshot.Mach,
-            GForce = snapshot.GForce,
-            FlapsHandleIndex = snapshot.FlapsHandleIndex,
-            GearPosition = snapshot.GearPosition,
-            Engine1Running = snapshot.Engine1Running,
-            Engine2Running = snapshot.Engine2Running,
-            Engine3Running = snapshot.Engine3Running,
-            Engine4Running = snapshot.Engine4Running,
-            BeaconLightOn  = beacon,
-            TaxiLightsOn   = taxi,
-            LandingLightsOn = landing,
-            StrobesOn      = strobe,
-            LightStatesRaw = bitmaskInt,
-            LightBeaconRaw = (int)rawBeacon,
-            LightTaxiRaw   = (int)rawTaxi,
-            LightLandingRaw = (int)rawLanding,
-            LightStrobeRaw = (int)rawStrobe,
-            LightSourceIsIndividual = usedIndividual,
-            StallWarning = snapshot.StallWarning,
-            GpwsAlert = snapshot.GpwsAlert,
-            OverspeedWarning = snapshot.OverspeedWarning,
-            Nav1GlideslopeErrorDegrees = snapshot.Nav1GlideslopeErrorDegrees,
-            Nav1RadialErrorDegrees = snapshot.Nav1RadialErrorDegrees,
-            AutopilotMaster = snapshot.AutopilotMaster,
-            FuelTotalLbs = snapshot.FuelTotalLbs,
-            AmbientWindSpeed = snapshot.AmbientWindSpeed,
-            AmbientWindDirection = snapshot.AmbientWindDirection,
-            AmbientTemperature = snapshot.AmbientTemperature,
-            SpoilerHandlePos = snapshot.SpoilerHandlePos,
-            SpoilersArmed = snapshot.SpoilersArmed,
-            Engine1N1Pct = snapshot.Engine1N1Pct,
-            Engine2N1Pct = snapshot.Engine2N1Pct,
-            Engine3N1Pct = snapshot.Engine3N1Pct,
-            Engine4N1Pct = snapshot.Engine4N1Pct,
-            Nav1IlsValid = snapshot.Nav1IlsValid,
-        };
-
-        EnqueueFrame();
+        // Mutate in-place — avoids a heap allocation on every Operational callback.
+        _latestState.HasOperational             = true;
+        _latestState.HeadingMagneticDegrees     = snapshot.HeadingMagneticDegrees;
+        _latestState.HeadingTrueDegrees         = snapshot.HeadingTrueDegrees;
+        _latestState.TrueAirspeedKnots          = snapshot.TrueAirspeedKnots;
+        _latestState.Mach                       = snapshot.Mach;
+        _latestState.GForce                     = snapshot.GForce;
+        _latestState.FlapsHandleIndex           = snapshot.FlapsHandleIndex;
+        _latestState.GearPosition               = snapshot.GearPosition;
+        _latestState.Engine1Running             = snapshot.Engine1Running;
+        _latestState.Engine2Running             = snapshot.Engine2Running;
+        _latestState.Engine3Running             = snapshot.Engine3Running;
+        _latestState.Engine4Running             = snapshot.Engine4Running;
+        _latestState.BeaconLightOn              = beacon;
+        _latestState.TaxiLightsOn               = taxi;
+        _latestState.LandingLightsOn            = landing;
+        _latestState.StrobesOn                  = strobe;
+        _latestState.LightStatesRaw             = bitmaskInt;
+        _latestState.LightBeaconRaw             = (int)rawBeacon;
+        _latestState.LightTaxiRaw               = (int)rawTaxi;
+        _latestState.LightLandingRaw            = (int)rawLanding;
+        _latestState.LightStrobeRaw             = (int)rawStrobe;
+        _latestState.LightSourceIsIndividual    = true;
+        _latestState.StallWarning               = snapshot.StallWarning;
+        _latestState.GpwsAlert                  = snapshot.GpwsAlert;
+        _latestState.OverspeedWarning           = snapshot.OverspeedWarning;
+        _latestState.Nav1GlideslopeErrorDegrees = snapshot.Nav1GlideslopeErrorDegrees;
+        _latestState.Nav1RadialErrorDegrees     = snapshot.Nav1RadialErrorDegrees;
+        _latestState.AutopilotMaster            = snapshot.AutopilotMaster;
+        _latestState.FuelTotalLbs               = snapshot.FuelTotalLbs;
+        _latestState.AmbientWindSpeed           = snapshot.AmbientWindSpeed;
+        _latestState.AmbientWindDirection       = snapshot.AmbientWindDirection;
+        _latestState.AmbientTemperature         = snapshot.AmbientTemperature;
+        _latestState.SpoilerHandlePos           = snapshot.SpoilerHandlePos;
+        _latestState.SpoilersArmed              = snapshot.SpoilersArmed;
+        _latestState.Engine1N1Pct               = snapshot.Engine1N1Pct;
+        _latestState.Engine2N1Pct               = snapshot.Engine2N1Pct;
+        _latestState.Engine3N1Pct               = snapshot.Engine3N1Pct;
+        _latestState.Engine4N1Pct               = snapshot.Engine4N1Pct;
+        _latestState.Nav1IlsValid               = snapshot.Nav1IlsValid;
+        // EnqueueFrame() is called once per drain pass in ReadNextFrameAsync instead of here.
     }
 
     /// <summary>
@@ -1043,6 +1060,11 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         return null;
     }
 
+    /// <summary>
+    /// Captures the current <see cref="_latestState"/> into <see cref="_latestFrame"/>.
+    /// Called once per drain pass (not once per SimConnect message) so only one
+    /// <see cref="SimConnectRawTelemetryFrame"/> is allocated per polling cycle.
+    /// </summary>
     private void EnqueueFrame()
     {
         if (!_latestState.HasFlightCritical)
@@ -1050,7 +1072,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             return;
         }
 
-        _frames.Enqueue(new SimConnectRawTelemetryFrame
+        _latestFrame = new SimConnectRawTelemetryFrame
         {
             TimestampUtc = DateTimeOffset.UtcNow,
             HasFlightCriticalData = _latestState.HasFlightCritical,
@@ -1115,7 +1137,57 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             Engine3N1Pct               = _latestState.Engine3N1Pct,
             Engine4N1Pct               = _latestState.Engine4N1Pct,
             Nav1IlsSignalValid         = _latestState.Nav1IlsValid,
-        });
+        };
+    }
+
+    /// <summary>
+    /// Adjusts the server-side FlightCritical delivery interval based on current altitude.
+    /// Below <see cref="ThrottleOffAglFeet"/> the interval is 0 (every SimFrame — full rate).
+    /// Above <see cref="ThrottleOnAglFeet"/> the interval is <see cref="CruiseThrottleInterval"/>
+    /// (~7-15 Hz), reducing MSFS dispatch pressure during cruise without affecting scoring
+    /// or landing detection (the outer polling loop already samples at 1 Hz).
+    /// A 1 000 ft dead-band between the two thresholds prevents rapid toggling.
+    /// </summary>
+    private void UpdateFlightCriticalThrottle()
+    {
+        if (!_latestState.HasFlightCritical)
+        {
+            return;
+        }
+
+        var agl = _latestState.AltitudeAglFeet;
+        uint desired;
+
+        if (_flightCriticalInterval == 0 && agl > ThrottleOnAglFeet)
+        {
+            desired = CruiseThrottleInterval;   // switch to throttled (cruise)
+        }
+        else if (_flightCriticalInterval != 0 && agl < ThrottleOffAglFeet)
+        {
+            desired = 0;                        // restore full rate (approach / ground)
+        }
+        else
+        {
+            return; // no change needed
+        }
+
+        var result = _exports.RequestDataOnSimObject(
+            _simConnectHandle,
+            FlightCriticalRequestId,
+            FlightCriticalDefinitionId,
+            UserObjectId,
+            SimConnectPeriod.SimFrame,
+            0,        // flags
+            0,        // origin
+            desired,
+            0);       // limit
+
+        if (result >= 0)
+        {
+            _flightCriticalInterval = desired;
+            System.Diagnostics.Debug.WriteLine(
+                $"[SimConnect] FlightCritical interval → {desired} (AGL={agl:F0} ft)");
+        }
     }
 
     /// <summary>
@@ -1294,63 +1366,74 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly uint DefineCount;
     }
 
-    private sealed record LatestSimConnectState
+    /// <summary>
+    /// Mutable accumulator for the latest state from all SimConnect data groups.
+    /// Written by <see cref="UpdateFlightCritical"/> and <see cref="UpdateOperational"/>
+    /// on every incoming SimConnect message; read once per drain pass by
+    /// <see cref="EnqueueFrame"/> to produce a single <see cref="SimConnectRawTelemetryFrame"/>.
+    ///
+    /// Deliberately a mutable class rather than an immutable record so that each
+    /// SimConnect callback can update individual fields in-place instead of allocating
+    /// a new record instance via <c>with</c> (which would produce 30-60 heap objects/s).
+    /// All access is single-threaded (DispatcherTimer → ReadNextFrameAsync → DrainAllAvailableMessages).
+    /// </summary>
+    private sealed class LatestSimConnectState
     {
-        public bool HasFlightCritical { get; init; }
-        public bool HasOperational { get; init; }
-        public double Latitude { get; init; }
-        public double Longitude { get; init; }
-        public double AltitudeAglFeet { get; init; }
-        public double AltitudeFeet { get; init; }
-        public double IndicatedAltitudeFeet { get; init; }
-        public double IndicatedAirspeedKnots { get; init; }
-        public double TrueAirspeedKnots { get; init; }
-        public double Mach { get; init; }
-        public double GroundSpeedKnots { get; init; }
-        public double VerticalSpeedFpm { get; init; }
-        public double BankAngleDegrees { get; init; }
-        public double PitchAngleDegrees { get; init; }
-        public double HeadingMagneticDegrees { get; init; }
-        public double HeadingTrueDegrees { get; init; }
-        public double GForce { get; init; }
-        public double ParkingBrakePosition { get; init; }
-        public double OnGround { get; init; }
-        public double CrashFlag { get; init; }
-        public double FlapsHandleIndex { get; init; }
-        public double GearPosition { get; init; }
-        public double BeaconLightOn { get; init; }
-        public double TaxiLightsOn { get; init; }
-        public double LandingLightsOn { get; init; }
-        public double StrobesOn { get; init; }
-        public int LightStatesRaw { get; init; }
-        public int LightBeaconRaw { get; init; }
-        public int LightTaxiRaw { get; init; }
-        public int LightLandingRaw { get; init; }
-        public int LightStrobeRaw { get; init; }
-        public bool LightSourceIsIndividual { get; init; }
-        public double StallWarning { get; init; }
-        public double GpwsAlert { get; init; }
-        public double OverspeedWarning { get; init; }
-        public double Engine1Running { get; init; }
-        public double Engine2Running { get; init; }
-        public double Engine3Running { get; init; }
-        public double Engine4Running { get; init; }
-        public double VelocityWorldYFps { get; init; }
-        public double Nav1GlideslopeErrorDegrees { get; init; }
-        public double Nav1RadialErrorDegrees { get; init; }
+        public bool HasFlightCritical { get; set; }
+        public bool HasOperational { get; set; }
+        public double Latitude { get; set; }
+        public double Longitude { get; set; }
+        public double AltitudeAglFeet { get; set; }
+        public double AltitudeFeet { get; set; }
+        public double IndicatedAltitudeFeet { get; set; }
+        public double IndicatedAirspeedKnots { get; set; }
+        public double TrueAirspeedKnots { get; set; }
+        public double Mach { get; set; }
+        public double GroundSpeedKnots { get; set; }
+        public double VerticalSpeedFpm { get; set; }
+        public double BankAngleDegrees { get; set; }
+        public double PitchAngleDegrees { get; set; }
+        public double HeadingMagneticDegrees { get; set; }
+        public double HeadingTrueDegrees { get; set; }
+        public double GForce { get; set; }
+        public double ParkingBrakePosition { get; set; }
+        public double OnGround { get; set; }
+        public double CrashFlag { get; set; }
+        public double FlapsHandleIndex { get; set; }
+        public double GearPosition { get; set; }
+        public double BeaconLightOn { get; set; }
+        public double TaxiLightsOn { get; set; }
+        public double LandingLightsOn { get; set; }
+        public double StrobesOn { get; set; }
+        public int LightStatesRaw { get; set; }
+        public int LightBeaconRaw { get; set; }
+        public int LightTaxiRaw { get; set; }
+        public int LightLandingRaw { get; set; }
+        public int LightStrobeRaw { get; set; }
+        public bool LightSourceIsIndividual { get; set; }
+        public double StallWarning { get; set; }
+        public double GpwsAlert { get; set; }
+        public double OverspeedWarning { get; set; }
+        public double Engine1Running { get; set; }
+        public double Engine2Running { get; set; }
+        public double Engine3Running { get; set; }
+        public double Engine4Running { get; set; }
+        public double VelocityWorldYFps { get; set; }
+        public double Nav1GlideslopeErrorDegrees { get; set; }
+        public double Nav1RadialErrorDegrees { get; set; }
         // Extended context
-        public double AutopilotMaster { get; init; }
-        public double FuelTotalLbs { get; init; }
-        public double AmbientWindSpeed { get; init; }
-        public double AmbientWindDirection { get; init; }
-        public double AmbientTemperature { get; init; }
-        public double SpoilerHandlePos { get; init; }
-        public double SpoilersArmed { get; init; }
-        public double Engine1N1Pct { get; init; }
-        public double Engine2N1Pct { get; init; }
-        public double Engine3N1Pct { get; init; }
-        public double Engine4N1Pct { get; init; }
-        public double Nav1IlsValid { get; init; }
+        public double AutopilotMaster { get; set; }
+        public double FuelTotalLbs { get; set; }
+        public double AmbientWindSpeed { get; set; }
+        public double AmbientWindDirection { get; set; }
+        public double AmbientTemperature { get; set; }
+        public double SpoilerHandlePos { get; set; }
+        public double SpoilersArmed { get; set; }
+        public double Engine1N1Pct { get; set; }
+        public double Engine2N1Pct { get; set; }
+        public double Engine3N1Pct { get; set; }
+        public double Engine4N1Pct { get; set; }
+        public double Nav1IlsValid { get; set; }
     }
 }
 
