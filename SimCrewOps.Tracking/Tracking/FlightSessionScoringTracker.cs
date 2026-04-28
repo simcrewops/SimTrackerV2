@@ -32,6 +32,7 @@ public sealed class FlightSessionScoringTracker
     private bool _takeoffStrobesOnFromTakeoffToLanding = true;
     private double _takeoffMaxBank;
     private double _takeoffMaxPitch;
+    private double _takeoffMaxPitchAglFt;
     private double _takeoffMaxG;
     private double _takeoffGForceAtRotation;
     private int _takeoffBounceCount;
@@ -129,6 +130,7 @@ public sealed class FlightSessionScoringTracker
     private double _landingTouchdownLatitude;
     private double _landingTouchdownLongitude;
     private double _landingTouchdownHeadingDegrees;
+    private double _landingTouchdownAltitudeFeet;
     // Extended touchdown context
     private bool _landingAutopilotAtTouchdown;
     private bool _landingSpoilersAtTouchdown;
@@ -141,6 +143,8 @@ public sealed class FlightSessionScoringTracker
     // v3 new landing metrics
     private bool _landingGearUpAtTouchdown;
     private double _landingMaxPitchDuringRollout;
+    private readonly List<FlightEvent> _flightEvents = [];
+
     // ── Approach path (circular buffer, max 300 samples) ─────────────────────
     private const int ApproachPathMaxSamples = 300;
     private readonly Queue<ApproachSamplePoint> _approachPathBuffer = new();
@@ -261,6 +265,7 @@ public sealed class FlightSessionScoringTracker
         _takeoffStrobesOnFromTakeoffToLanding = !_takeoffSeen || input.Takeoff.StrobesOnFromTakeoffToLanding;
         _takeoffMaxBank = input.Takeoff.MaxBankAngleDegrees;
         _takeoffMaxPitch = input.Takeoff.MaxPitchAngleDegrees;
+        _takeoffMaxPitchAglFt = input.Takeoff.MaxPitchAglFeet;
         _takeoffMaxG = input.Takeoff.MaxGForce;
         _takeoffGForceAtRotation = input.Takeoff.GForceAtRotation;
         _takeoffBounceCount = input.Takeoff.BounceCount;
@@ -326,6 +331,7 @@ public sealed class FlightSessionScoringTracker
         _landingTouchdownLatitude = input.Landing.TouchdownLatitude;
         _landingTouchdownLongitude = input.Landing.TouchdownLongitude;
         _landingTouchdownHeadingDegrees = input.Landing.TouchdownHeadingDegrees;
+        _landingTouchdownAltitudeFeet = input.Landing.TouchdownAltitudeFeet;
         _lastTouchdownAt = wheelsOnUtc;
         _airborneAfterTouchdownAt = null;
 
@@ -396,6 +402,7 @@ public sealed class FlightSessionScoringTracker
         // The buffer starts empty and will accumulate fresh samples if the aircraft
         // re-enters approach range after a mid-flight reconnect.
         _approachPathBuffer.Clear();
+        _flightEvents.Clear();
 
         // Give the first several frames after reconnect a chance to reflect the real
         // aircraft state before any "lights off" watchdog checks can trigger.
@@ -433,6 +440,7 @@ public sealed class FlightSessionScoringTracker
         UpdateSafety(frame);
         UpdateSession(frame);
         UpdateLightsSystems(frame);
+        RecordFlightEvents(frame);
 
         _previousFrame = frame;
     }
@@ -461,6 +469,7 @@ public sealed class FlightSessionScoringTracker
                 TailStrikeDetected = _takeoffTailStrikeDetected,
                 MaxBankAngleDegrees = _takeoffMaxBank,
                 MaxPitchAngleDegrees = _takeoffMaxPitch,
+                MaxPitchAglFeet = _takeoffMaxPitchAglFt,
                 MaxGForce = _takeoffMaxG,
                 // Pass if the phase hasn't been seen yet — only penalise once we enter it.
                 LandingLightsOnBeforeTakeoff = !_takeoffSeen || _takeoffLandingLightsOnBeforeTakeoff,
@@ -566,6 +575,7 @@ public sealed class FlightSessionScoringTracker
                 OatCelsiusAtTouchdown = _landingOatAtTouchdown,
                 GearUpAtTouchdown = _landingGearUpAtTouchdown,
                 MaxPitchDuringRolloutDegrees = _landingMaxPitchDuringRollout,
+                TouchdownAltitudeFeet = _landingTouchdownAltitudeFeet,
             },
             TaxiIn = new TaxiInMetrics
             {
@@ -622,6 +632,7 @@ public sealed class FlightSessionScoringTracker
             FlightPath = _flightPath.Count > 0
                 ? _flightPath.ToList()
                 : [],
+            FlightEvents = _flightEvents.Count > 0 ? _flightEvents.ToList() : [],
         };
     }
 
@@ -638,17 +649,21 @@ public sealed class FlightSessionScoringTracker
     /// aircraft is within 15 nm of the arrival airport, and once at touchdown.
     /// </summary>
     public void RecordApproachSample(double distanceToThresholdNm, double altitudeFeet,
-                                     double indicatedAirspeedKnots, double verticalSpeedFpm)
+                                     double indicatedAirspeedKnots, double verticalSpeedFpm,
+                                     double latitude, double longitude, DateTimeOffset timestampUtc)
     {
         if (_approachPathBuffer.Count >= ApproachPathMaxSamples)
             _approachPathBuffer.Dequeue();
 
         _approachPathBuffer.Enqueue(new ApproachSamplePoint
         {
-            DistanceToThresholdNm    = distanceToThresholdNm,
-            AltitudeFeet             = altitudeFeet,
-            IndicatedAirspeedKnots   = indicatedAirspeedKnots,
-            VerticalSpeedFpm         = verticalSpeedFpm,
+            DistanceToThresholdNm  = distanceToThresholdNm,
+            AltitudeFeet           = altitudeFeet,
+            IndicatedAirspeedKnots = indicatedAirspeedKnots,
+            VerticalSpeedFpm       = verticalSpeedFpm,
+            Latitude               = latitude,
+            Longitude              = longitude,
+            TimestampUtc           = timestampUtc,
         });
     }
 
@@ -745,7 +760,18 @@ public sealed class FlightSessionScoringTracker
         {
             _takeoffSeen = true;
             _takeoffMaxBank = Math.Max(_takeoffMaxBank, Math.Abs(frame.BankAngleDegrees));
-            _takeoffMaxPitch = Math.Max(_takeoffMaxPitch, Math.Abs(frame.PitchAngleDegrees));
+            // Only sample max pitch while WOW is true AND AGL < 20 ft.
+            // Avoids false tail-strike flags on steep normal climb-outs where the WOW
+            // SimVar lags a few frames after liftoff.
+            if (frame.OnGround && frame.AltitudeAglFeet < 20.0)
+            {
+                var absPitch = Math.Abs(frame.PitchAngleDegrees);
+                if (absPitch > _takeoffMaxPitch)
+                {
+                    _takeoffMaxPitch    = absPitch;
+                    _takeoffMaxPitchAglFt = frame.AltitudeAglFeet;
+                }
+            }
             _takeoffMaxG = Math.Max(_takeoffMaxG, frame.GForce);
 
             if (_postRestoreGraceFrames <= 0 && !frame.LandingLightsOn)
@@ -1135,6 +1161,7 @@ public sealed class FlightSessionScoringTracker
                 _landingTouchdownLatitude = frame.Latitude;
                 _landingTouchdownLongitude = frame.Longitude;
                 _landingTouchdownHeadingDegrees = frame.HeadingTrueDegrees;
+                _landingTouchdownAltitudeFeet = frame.AltitudeFeet;
                 _landingAutopilotAtTouchdown = frame.AutopilotEngaged;
                 _landingSpoilersAtTouchdown = frame.SpoilersArmed || frame.SpoilerHandlePosition > 0.1;
                 _landingWindSpeedAtTouchdown = frame.WindSpeedKnots;
@@ -1441,9 +1468,62 @@ public sealed class FlightSessionScoringTracker
         frame.Engine3Running ||
         frame.Engine4Running;
 
+    private void RecordFlightEvents(TelemetryFrame frame)
+    {
+        if (_previousFrame is null) return;
+
+        void Emit(string type, int? engineIndex = null) =>
+            _flightEvents.Add(new FlightEvent
+            {
+                Type         = type,
+                EngineIndex  = engineIndex,
+                Latitude     = frame.Latitude,
+                Longitude    = frame.Longitude,
+                AltitudeFeet = frame.AltitudeFeet,
+                TimestampUtc = frame.TimestampUtc,
+            });
+
+        // Engines (4-engine support — index is 1-based)
+        if (!_previousFrame.Engine1Running && frame.Engine1Running)  Emit("engine_on",  1);
+        if ( _previousFrame.Engine1Running && !frame.Engine1Running) Emit("engine_off", 1);
+        if (!_previousFrame.Engine2Running && frame.Engine2Running)  Emit("engine_on",  2);
+        if ( _previousFrame.Engine2Running && !frame.Engine2Running) Emit("engine_off", 2);
+        if (!_previousFrame.Engine3Running && frame.Engine3Running)  Emit("engine_on",  3);
+        if ( _previousFrame.Engine3Running && !frame.Engine3Running) Emit("engine_off", 3);
+        if (!_previousFrame.Engine4Running && frame.Engine4Running)  Emit("engine_on",  4);
+        if ( _previousFrame.Engine4Running && !frame.Engine4Running) Emit("engine_off", 4);
+
+        // Parking brake
+        var prevBrake = _previousFrame.ParkingBrakeSet;
+        var curBrake  = frame.ParkingBrakeSet;
+        if (!prevBrake && curBrake)  Emit("parking_brake_set");
+        if ( prevBrake && !curBrake) Emit("parking_brake_released");
+
+        // Lights
+        var prevLanding = _previousFrame.LandingLightsOn;
+        var curLanding  = frame.LandingLightsOn;
+        if (!prevLanding && curLanding)  Emit("landing_lights_on");
+        if ( prevLanding && !curLanding) Emit("landing_lights_off");
+
+        var prevStrobes = _previousFrame.StrobesOn;
+        var curStrobes  = frame.StrobesOn;
+        if (!prevStrobes && curStrobes)  Emit("strobes_on");
+        if ( prevStrobes && !curStrobes) Emit("strobes_off");
+
+        var prevTaxi = _previousFrame.TaxiLightsOn;
+        var curTaxi  = frame.TaxiLightsOn;
+        if (!prevTaxi && curTaxi)  Emit("taxi_lights_on");
+        if ( prevTaxi && !curTaxi) Emit("taxi_lights_off");
+
+        var prevBeacon = _previousFrame.BeaconLightOn;
+        var curBeacon  = frame.BeaconLightOn;
+        if (!prevBeacon && curBeacon)  Emit("beacon_on");
+        if ( prevBeacon && !curBeacon) Emit("beacon_off");
+    }
+
     private void AddRecentSample(TelemetryFrame frame)
     {
-        _recentSamples.Enqueue(new RecentSample(frame.TimestampUtc, frame.VerticalSpeedFpm, frame.GForce, frame.AltitudeAglFeet));
+        _recentSamples.Enqueue(new RecentSample(frame.TimestampUtc, frame.VerticalSpeedFpm, frame.VelocityWorldYFps, frame.GForce, frame.AltitudeAglFeet));
 
         while (_recentSamples.Count > 0 && frame.TimestampUtc - _recentSamples.Peek().TimestampUtc > TimeSpan.FromSeconds(2))
         {
@@ -1453,35 +1533,37 @@ public sealed class FlightSessionScoringTracker
 
     private double CalculateTouchdownVerticalSpeed(TelemetryFrame touchdownFrame)
     {
-        // Primary: VERTICAL SPEED (barometric) at the exact touchdown frame.
-        //
-        // Volanta and most major trackers read the barometric VERTICAL SPEED SimVar at the
-        // moment SIM ON GROUND transitions to true.  Barometric VS is what pilots see on the
-        // VSI and what scoring thresholds are calibrated against.
+        // Primary: VELOCITY WORLD Y (physics-engine vertical velocity, no barometric lag,
+        // continues updating through WOW transition).  Multiply fps → fpm.
+        // Use the minimum absolute value across the touchdown frame, the last airborne frame,
+        // and any recent sub-30-ft samples — the minimum avoids capturing the single-frame
+        // impact spike that can read 2-3× higher than the true sink rate.
+        var velocityWorldCandidates = new List<double>();
+
+        if (touchdownFrame.VelocityWorldYFps < 0)
+            velocityWorldCandidates.Add(Math.Abs(touchdownFrame.VelocityWorldYFps) * 60.0);
+
+        if (_previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VelocityWorldYFps < 0)
+            velocityWorldCandidates.Add(Math.Abs(_previousFrame.VelocityWorldYFps) * 60.0);
+
+        foreach (var s in _recentSamples)
+        {
+            if (s.VelocityWorldYFps < 0 && s.AltitudeAglFeet <= 30)
+                velocityWorldCandidates.Add(Math.Abs(s.VelocityWorldYFps) * 60.0);
+        }
+
+        if (velocityWorldCandidates.Count > 0)
+            return velocityWorldCandidates.Min();
+
+        // Fallback: barometric VERTICAL SPEED (legacy — used only when VelocityWorldY
+        // is unavailable, e.g. older aircraft profiles that don't expose the SimVar).
         if (touchdownFrame.VerticalSpeedFpm < 0)
             return Math.Abs(touchdownFrame.VerticalSpeedFpm);
 
-        // Fallback A: barometric VS on the last airborne frame.
-        // Used when the touchdown frame itself reads zero or positive (e.g. a very soft
-        // landing where the sim briefly reports 0 fpm at the WOW transition).
-        if (_previousFrame is not null
-            && !_previousFrame.OnGround
-            && _previousFrame.VerticalSpeedFpm < 0)
-        {
+        if (_previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VerticalSpeedFpm < 0)
             return Math.Abs(_previousFrame.VerticalSpeedFpm);
-        }
 
-        // Fallback B: VELOCITY WORLD Y on the touchdown frame (physics-engine VS, no baro lag).
-        if (touchdownFrame.VelocityWorldYFps < 0)
-            return Math.Abs(touchdownFrame.VelocityWorldYFps) * 60.0;
-
-        // Fallback C: VELOCITY WORLD Y on the last airborne frame.
-        if (_previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VelocityWorldYFps < 0)
-            return Math.Abs(_previousFrame.VelocityWorldYFps) * 60.0;
-
-        // Fallback D: AGL rate-of-change across the full flare window in the 2-second rolling
-        // buffer.  Using a wider time span (first → last sample in 0.5–30 ft range) smooths
-        // out per-frame noise and gives a stable average sink rate.
+        // Fallback: AGL rate-of-change across the flare window (stable average sink rate).
         var flareFrames = _recentSamples
             .Where(static s => s.AltitudeAglFeet >= 0.5 && s.AltitudeAglFeet <= 30)
             .OrderBy(static s => s.TimestampUtc)
@@ -1499,7 +1581,6 @@ public sealed class FlightSessionScoringTracker
             }
         }
 
-        // Last resort: lowest barometric VS from sub-100-ft samples.
         var subHundredSamples = _recentSamples
             .Where(static s => s.AltitudeAglFeet is > 0 and <= 100)
             .ToList();
@@ -1613,5 +1694,5 @@ public sealed class FlightSessionScoringTracker
         }
     }
 
-    private sealed record RecentSample(DateTimeOffset TimestampUtc, double VerticalSpeedFpm, double GForce, double AltitudeAglFeet);
+    private sealed record RecentSample(DateTimeOffset TimestampUtc, double VerticalSpeedFpm, double VelocityWorldYFps, double GForce, double AltitudeAglFeet);
 }

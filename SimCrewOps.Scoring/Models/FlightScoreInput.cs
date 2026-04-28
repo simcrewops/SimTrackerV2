@@ -38,6 +38,13 @@ public sealed record FlightScoreInput
     /// Empty when no data was recorded (e.g. blocks-off was never set).
     /// </summary>
     public IReadOnlyList<FlightPathPoint> FlightPath { get; init; } = [];
+
+    /// <summary>
+    /// Timestamped log of engine, parking-brake, and lights events with GPS coordinates.
+    /// Each entry captures where and when a state change occurred.
+    /// Empty when no events were recorded.
+    /// </summary>
+    public IReadOnlyList<FlightEvent> FlightEvents { get; init; } = [];
 }
 
 public sealed record SessionMetrics
@@ -107,6 +114,15 @@ public sealed record ApproachSamplePoint
 
     /// <summary>Vertical speed (feet per minute; negative = descending).</summary>
     public double VerticalSpeedFpm { get; init; }
+
+    /// <summary>WGS-84 latitude at this sample point.</summary>
+    public double Latitude { get; init; }
+
+    /// <summary>WGS-84 longitude at this sample point.</summary>
+    public double Longitude { get; init; }
+
+    /// <summary>UTC timestamp of this sample. Used to compute tMin server-side.</summary>
+    public DateTimeOffset TimestampUtc { get; init; }
 }
 
 public sealed record PreflightMetrics
@@ -129,6 +145,12 @@ public sealed record TakeoffMetrics
     public bool TailStrikeDetected { get; init; }
     public double MaxBankAngleDegrees { get; init; }
     public double MaxPitchAngleDegrees { get; init; }
+    /// <summary>
+    /// Altitude AGL (feet) at the tick where MaxPitchAngleDegrees was recorded.
+    /// The server skips the tail-strike penalty if this exceeds 20 ft (WOW SimVar lag
+    /// can produce false positives during steep normal climb-outs).
+    /// </summary>
+    public double MaxPitchAglFeet { get; init; }
     public double MaxGForce { get; init; }
     /// <summary>G-force recorded at the WOW → airborne transition (rotation).</summary>
     public double GForceAtRotation { get; init; }
@@ -282,6 +304,14 @@ public sealed record LandingMetrics
     // ── v3 new fields ──────────────────────────────────────────────────────
     public bool GearUpAtTouchdown { get; init; }
     public double MaxPitchDuringRolloutDegrees { get; init; }
+
+    /// <summary>
+    /// Pressure altitude (MSL, feet) at the exact WOW-on tick.
+    /// Used by the server to compute threshold crossing height AGL
+    /// by subtracting from approach-path sample altitudes.
+    /// Zero when no touchdown was recorded.
+    /// </summary>
+    public double TouchdownAltitudeFeet { get; init; }
 }
 
 public sealed record TaxiInMetrics : TaxiMetrics
@@ -335,4 +365,30 @@ public sealed record LightsSystemsMetrics
     public bool NavLightsOnThroughoutFlight { get; init; } = true;
     public bool StrobesCorrect { get; init; } = true;
     public double LandingLightsCompliance { get; init; } = 1.0;
+}
+
+/// <summary>
+/// A single timestamped event from the flight (engine start/stop, parking brake,
+/// or lights state change) with the GPS position where it occurred.
+/// </summary>
+public sealed record FlightEvent
+{
+    /// <summary>
+    /// Event type token. Valid values:
+    /// engine_on, engine_off, parking_brake_set, parking_brake_released,
+    /// landing_lights_on, landing_lights_off, strobes_on, strobes_off,
+    /// taxi_lights_on, taxi_lights_off, beacon_on, beacon_off.
+    /// </summary>
+    public string Type { get; init; } = "";
+
+    /// <summary>1-based engine index. Only set for engine_on / engine_off events.</summary>
+    public int? EngineIndex { get; init; }
+
+    public double Latitude { get; init; }
+    public double Longitude { get; init; }
+
+    /// <summary>Pressure altitude (MSL) in feet at the time of the event.</summary>
+    public double AltitudeFeet { get; init; }
+
+    public DateTimeOffset TimestampUtc { get; init; }
 }
