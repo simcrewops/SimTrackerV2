@@ -1141,7 +1141,9 @@
                                   Margin="0,16,0,0" />
                         <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
                             <Button Content="Save Settings" Command="{Binding SaveSettingsCommand}" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,10,0" />
-                            <Button Content="Refresh Flight" Command="{Binding RefreshFlightCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0"
+                            <Button Content="Refresh Flight" Command="{Binding RefreshFlightCommand}"
+                                    IsEnabled="{Binding IsFlightRefreshEnabled}"
+                                    Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0"
                                     ToolTip="Re-fetch your next assigned flight from SimCrewOps (no need to save settings)" />
                             <Button Content="Retry Sync" Command="{Binding RetrySyncCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" />
                             <Button Content="My Flights" Command="{Binding OpenLogbookCommand}" Style="{StaticResource SecondaryButtonStyle}" />
