@@ -136,6 +136,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _diagnosticsTelemetryCounters = "Poll, null-frame, and mapping counters will appear here.";
     private string _diagnosticsRawTelemetry = "Raw SimConnect values will appear here when telemetry diagnostics are enabled.";
     private string _settingsSaveStatus = "Changes are saved for the next launch.";
+    private bool _isFlightRefreshEnabled = true;
 
     // Persistent instruments
     private string _liveIas = "---";
@@ -657,6 +658,13 @@ public sealed class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _settingsSaveStatus, value);
     }
 
+    /// <summary>False while a Refresh Flight fetch is in progress, preventing double-clicks.</summary>
+    public bool IsFlightRefreshEnabled
+    {
+        get => _isFlightRefreshEnabled;
+        private set => SetProperty(ref _isFlightRefreshEnabled, value);
+    }
+
     public string DepartureIcao
     {
         get => _departureIcao;
@@ -945,6 +953,9 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private async Task RefreshFlightAsync()
     {
+        IsFlightRefreshEnabled = false;
+        SettingsSaveStatus = "Refreshing flight assignment…";
+
         try
         {
             await _shellHost.ForceRefreshActiveFlightAsync();
@@ -952,10 +963,16 @@ public sealed class MainWindowViewModel : ObservableObject
             {
                 ApplySnapshot(await _shellHost.PollAsync());
             }
+
+            SettingsSaveStatus = "Flight refreshed — departure and arrival updated.";
         }
         catch
         {
-            // Swallow — refresh is best-effort, UI will show whatever is available.
+            SettingsSaveStatus = "Could not reach SimCrewOps — check your connection and API token.";
+        }
+        finally
+        {
+            IsFlightRefreshEnabled = true;
         }
     }
 
