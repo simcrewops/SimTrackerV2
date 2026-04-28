@@ -99,6 +99,13 @@ public sealed record ScoreInputTakeoffV5
     [JsonPropertyName("maxPitchWhileWowDeg")]
     public double MaxPitchWhileWowDeg { get; init; }
 
+    /// <summary>
+    /// Altitude AGL (feet) at the tick where MaxPitchWhileWowDeg was recorded.
+    /// The server skips the tail-strike penalty when this exceeds 20 ft.
+    /// </summary>
+    [JsonPropertyName("maxPitchAglFt")]
+    public double MaxPitchAglFt { get; init; }
+
     [JsonPropertyName("strobeLightsOn")]
     public bool StrobeLightsOn { get; init; }
 
@@ -352,6 +359,14 @@ public sealed record LandingAnalysisUpload
     /// <summary>True heading at touchdown (degrees 0–360). Null when no touchdown was recorded.</summary>
     [JsonPropertyName("touchdownHeadingDeg")]
     public double? TouchdownHeadingDeg { get; init; }
+
+    /// <summary>
+    /// Pressure altitude (MSL, feet) at touchdown.
+    /// Used to compute threshold crossing height AGL by subtracting from approach
+    /// path sample altitudes. Null when no touchdown was recorded.
+    /// </summary>
+    [JsonPropertyName("touchdownAltFt")]
+    public double? TouchdownAltFt { get; init; }
 }
 
 /// <summary>A single point in the flight path sampled every 60 seconds (blocks-off → blocks-on).</summary>
@@ -390,4 +405,16 @@ public sealed record ApproachSampleUpload
     /// <summary>Vertical speed (feet per minute; negative = descending).</summary>
     [JsonPropertyName("vsFpm")]
     public double VsFpm { get; init; }
+
+    /// <summary>WGS-84 latitude at this sample.</summary>
+    [JsonPropertyName("lat")]
+    public double Lat { get; init; }
+
+    /// <summary>WGS-84 longitude at this sample.</summary>
+    [JsonPropertyName("lon")]
+    public double Lon { get; init; }
+
+    /// <summary>Minutes since blocks-off at this sample.</summary>
+    [JsonPropertyName("tMin")]
+    public double TMin { get; init; }
 }

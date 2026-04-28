@@ -61,11 +61,27 @@ public sealed class SimSessionUploadRequestMapper
             ScoreInputV5 = MapScoreInputV5(state.ScoreInput),
             // Landing analysis — omit entirely when no approach path was recorded
             LandingAnalysis = state.ScoreInput.ApproachPath.Count > 0
-                ? MapLandingAnalysis(state.ScoreInput.ApproachPath, state.ScoreInput.Landing)
+                ? MapLandingAnalysis(state.ScoreInput.ApproachPath, state.ScoreInput.Landing, state.BlockTimes.BlocksOffUtc)
                 : null,
             // Flight path — null when blocks-off was never set or no points were recorded
             FlightPath = state.BlockTimes.BlocksOffUtc is not null && state.ScoreInput.FlightPath.Count > 0
                 ? MapFlightPath(state.ScoreInput.FlightPath, state.BlockTimes.BlocksOffUtc.Value)
+                : null,
+            // Flight events — null when empty
+            FlightEvents = state.ScoreInput.FlightEvents.Count > 0
+                ? state.ScoreInput.FlightEvents
+                    .Select(e => new FlightEventUpload
+                    {
+                        Type        = e.Type,
+                        EngineIndex = e.EngineIndex,
+                        Lat         = e.Latitude,
+                        Lon         = e.Longitude,
+                        AltFt       = e.AltitudeFeet,
+                        TMin        = state.BlockTimes.BlocksOffUtc is not null
+                            ? Math.Round((e.TimestampUtc - state.BlockTimes.BlocksOffUtc.Value).TotalMinutes, 1)
+                            : 0,
+                    })
+                    .ToList()
                 : null,
         };
     }
@@ -104,6 +120,7 @@ public sealed class SimSessionUploadRequestMapper
                 PositiveRateBeforeGearUp   = s.Takeoff.PositiveRateBeforeGearUp,
                 MaxBankBelow1000AglDeg     = s.Takeoff.MaxBankAngleDegrees,
                 MaxPitchWhileWowDeg        = s.Takeoff.MaxPitchAngleDegrees,
+                MaxPitchAglFt              = s.Takeoff.MaxPitchAglFeet,
                 StrobeLightsOn             = s.Takeoff.StrobesOnFromTakeoffToLanding,
                 LandingLightsOn            = s.Takeoff.LandingLightsOnBeforeTakeoff,
                 GForceAtRotation           = s.Takeoff.GForceAtRotation,
@@ -201,7 +218,8 @@ public sealed class SimSessionUploadRequestMapper
 
     private static LandingAnalysisUpload MapLandingAnalysis(
         IReadOnlyList<SimCrewOps.Scoring.Models.ApproachSamplePoint> approachPath,
-        SimCrewOps.Scoring.Models.LandingMetrics landing) =>
+        SimCrewOps.Scoring.Models.LandingMetrics landing,
+        DateTimeOffset? blocksOff) =>
         new()
         {
             ApproachPath = approachPath
@@ -211,11 +229,17 @@ public sealed class SimSessionUploadRequestMapper
                     AltitudeFt            = s.AltitudeFeet,
                     IasKts                = s.IndicatedAirspeedKnots,
                     VsFpm                 = s.VerticalSpeedFpm,
+                    Lat                   = s.Latitude,
+                    Lon                   = s.Longitude,
+                    TMin                  = blocksOff is not null
+                        ? Math.Round((s.TimestampUtc - blocksOff.Value).TotalMinutes, 1)
+                        : 0,
                 })
                 .ToList(),
-            TouchdownLat       = landing.TouchdownLatitude != 0 ? landing.TouchdownLatitude : null,
-            TouchdownLon       = landing.TouchdownLongitude != 0 ? landing.TouchdownLongitude : null,
+            TouchdownLat        = landing.TouchdownLatitude != 0 ? landing.TouchdownLatitude : null,
+            TouchdownLon        = landing.TouchdownLongitude != 0 ? landing.TouchdownLongitude : null,
             TouchdownHeadingDeg = landing.TouchdownHeadingDegrees != 0 ? landing.TouchdownHeadingDegrees : null,
+            TouchdownAltFt      = landing.TouchdownAltitudeFeet != 0 ? landing.TouchdownAltitudeFeet : null,
         };
 
     private static IReadOnlyList<FlightPathPointUpload> MapFlightPath(

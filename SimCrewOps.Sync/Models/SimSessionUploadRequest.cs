@@ -135,6 +135,37 @@ public sealed record SimSessionUploadRequest
     /// </summary>
     [JsonPropertyName("flightPath")]
     public IReadOnlyList<FlightPathPointUpload>? FlightPath { get; init; }
+
+    /// <summary>
+    /// Timestamped engine, parking-brake, and lights events with GPS coordinates.
+    /// Null when no events were recorded.
+    /// </summary>
+    [JsonPropertyName("flightEvents")]
+    public IReadOnlyList<FlightEventUpload>? FlightEvents { get; init; }
+}
+
+/// <summary>A single flight event (engine, brake, or lights state change).</summary>
+public sealed record FlightEventUpload
+{
+    [JsonPropertyName("type")]
+    public string Type { get; init; } = "";
+
+    /// <summary>1-based engine index. Only present for engine_on / engine_off events.</summary>
+    [JsonPropertyName("engineIndex")]
+    public int? EngineIndex { get; init; }
+
+    [JsonPropertyName("lat")]
+    public double Lat { get; init; }
+
+    [JsonPropertyName("lon")]
+    public double Lon { get; init; }
+
+    [JsonPropertyName("altFt")]
+    public double AltFt { get; init; }
+
+    /// <summary>Minutes since blocks-off.</summary>
+    [JsonPropertyName("tMin")]
+    public double TMin { get; init; }
 }
 
 /// <summary>A single point in the GPS flight-path track.</summary>

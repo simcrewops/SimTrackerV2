@@ -310,11 +310,18 @@ public sealed class RuntimeCoordinator
 
                 if (withinRange && timeOk)
                 {
+                    var approachVsFpm = telemetryFrame.VelocityWorldYFps != 0
+                        ? telemetryFrame.VelocityWorldYFps * 60.0
+                        : telemetryFrame.VerticalSpeedFpm;
+
                     _scoringTracker.RecordApproachSample(
                         distNm,
                         telemetryFrame.AltitudeAglFeet,
                         telemetryFrame.IndicatedAirspeedKnots,
-                        telemetryFrame.VerticalSpeedFpm);
+                        approachVsFpm,
+                        telemetryFrame.Latitude,
+                        telemetryFrame.Longitude,
+                        telemetryFrame.TimestampUtc);
                     _approachPathLastSampleAt = telemetryFrame.TimestampUtc;
                 }
             }
