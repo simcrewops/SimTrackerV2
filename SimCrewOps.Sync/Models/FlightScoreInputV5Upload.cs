@@ -279,6 +279,15 @@ public sealed record ScoreInputLandingV5
 
     [JsonPropertyName("maxPitchWhileWowDeg")]
     public double MaxPitchWhileWowDeg { get; init; }
+
+    /// <summary>
+    /// Pitch angle (degrees, positive = nose-up) at the exact first tick where
+    /// SIM_ON_GROUND transitions from false → true.  The webapp prefers this over
+    /// <see cref="MaxPitchWhileWowDeg"/> for tail-strike detection as it captures
+    /// the nose attitude at the precise touchdown moment.
+    /// </summary>
+    [JsonPropertyName("touchdownPitchDeg")]
+    public double TouchdownPitchDeg { get; init; }
 }
 
 public sealed record ScoreInputLightsSystemsV5

@@ -185,12 +185,13 @@ public sealed class SimSessionUploadRequestMapper
             },
             Landing = new ScoreInputLandingV5
             {
-                TouchdownRateFpm   = s.Landing.TouchdownVerticalSpeedFpm,
-                TouchdownGForce    = s.Landing.TouchdownGForce,
-                BounceCount        = s.Landing.BounceCount,
-                TouchdownBankDeg   = s.Landing.TouchdownBankAngleDegrees,
-                GearUpAtTouchdown  = s.Landing.GearUpAtTouchdown,
+                TouchdownRateFpm    = s.Landing.TouchdownVerticalSpeedFpm,
+                TouchdownGForce     = s.Landing.TouchdownGForce,
+                BounceCount         = s.Landing.BounceCount,
+                TouchdownBankDeg    = s.Landing.TouchdownBankAngleDegrees,
+                GearUpAtTouchdown   = s.Landing.GearUpAtTouchdown,
                 MaxPitchWhileWowDeg = s.Landing.MaxPitchDuringRolloutDegrees,
+                TouchdownPitchDeg   = s.Landing.TouchdownPitchAngleDegrees,
             },
             LightsSystems = new ScoreInputLightsSystemsV5
             {
