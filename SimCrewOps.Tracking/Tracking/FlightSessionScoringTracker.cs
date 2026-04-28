@@ -1153,7 +1153,7 @@ public sealed class FlightSessionScoringTracker
         if (!_previousFrame.OnGround && frame.OnGround)
         {
             _lastTouchdownAt = frame.TimestampUtc;
-            _landingTouchdownVerticalSpeedFpm = Math.Max(_landingTouchdownVerticalSpeedFpm, CalculateTouchdownVerticalSpeed(frame));
+            _landingTouchdownVerticalSpeedFpm = Math.Min(_landingTouchdownVerticalSpeedFpm, CalculateTouchdownVerticalSpeed(frame));
             _landingTouchdownGForce = Math.Max(_landingTouchdownGForce, CalculateTouchdownGForce());
             if (_landingTouchdownIndicatedAirspeedKnots == 0)
             {
@@ -1540,34 +1540,36 @@ public sealed class FlightSessionScoringTracker
     private double CalculateTouchdownVerticalSpeed(TelemetryFrame touchdownFrame)
     {
         // Primary: VELOCITY WORLD Y (physics-engine vertical velocity, no barometric lag,
-        // continues updating through WOW transition).  Multiply fps → fpm.
-        // Use the minimum absolute value across the touchdown frame, the last airborne frame,
-        // and any recent sub-30-ft samples — the minimum avoids capturing the single-frame
-        // impact spike that can read 2-3× higher than the true sink rate.
+        // continues updating through WOW transition).  Multiply fps → fpm, preserve sign
+        // (negative = descending, matching aviation convention and Volanta/smartCARS).
+        // Collect all negative candidates across the touchdown frame, the last airborne
+        // frame, and recent sub-30-ft samples; return the Max (least-negative = minimum
+        // absolute value) to avoid the single-frame impact spike that can read 2-3× the
+        // true sink rate.  Caller stores as-is — webapp takes abs for display.
         var velocityWorldCandidates = new List<double>();
 
         if (touchdownFrame.VelocityWorldYFps < 0)
-            velocityWorldCandidates.Add(Math.Abs(touchdownFrame.VelocityWorldYFps) * 60.0);
+            velocityWorldCandidates.Add(touchdownFrame.VelocityWorldYFps * 60.0);
 
         if (_previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VelocityWorldYFps < 0)
-            velocityWorldCandidates.Add(Math.Abs(_previousFrame.VelocityWorldYFps) * 60.0);
+            velocityWorldCandidates.Add(_previousFrame.VelocityWorldYFps * 60.0);
 
         foreach (var s in _recentSamples)
         {
             if (s.VelocityWorldYFps < 0 && s.AltitudeAglFeet <= 30)
-                velocityWorldCandidates.Add(Math.Abs(s.VelocityWorldYFps) * 60.0);
+                velocityWorldCandidates.Add(s.VelocityWorldYFps * 60.0);
         }
 
         if (velocityWorldCandidates.Count > 0)
-            return velocityWorldCandidates.Min();
+            return velocityWorldCandidates.Max(); // Max of negatives = least-negative = min abs
 
         // Fallback: barometric VERTICAL SPEED (legacy — used only when VelocityWorldY
         // is unavailable, e.g. older aircraft profiles that don't expose the SimVar).
         if (touchdownFrame.VerticalSpeedFpm < 0)
-            return Math.Abs(touchdownFrame.VerticalSpeedFpm);
+            return touchdownFrame.VerticalSpeedFpm;
 
         if (_previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VerticalSpeedFpm < 0)
-            return Math.Abs(_previousFrame.VerticalSpeedFpm);
+            return _previousFrame.VerticalSpeedFpm;
 
         // Fallback: AGL rate-of-change across the flare window (stable average sink rate).
         var flareFrames = _recentSamples
@@ -1582,8 +1584,9 @@ public sealed class FlightSessionScoringTracker
             var dtSeconds = (last.TimestampUtc - first.TimestampUtc).TotalSeconds;
             if (dtSeconds >= 0.1)
             {
+                // AGL decreasing → (first - last) is positive; negate for sign convention.
                 var aglSinkFpm = (first.AltitudeAglFeet - last.AltitudeAglFeet) / dtSeconds * 60.0;
-                if (aglSinkFpm > 0) return aglSinkFpm;
+                if (aglSinkFpm > 0) return -aglSinkFpm;
             }
         }
 
@@ -1591,8 +1594,9 @@ public sealed class FlightSessionScoringTracker
             .Where(static s => s.AltitudeAglFeet is > 0 and <= 100)
             .ToList();
 
+        // Max of negative baro VS values = least-negative = min abs value.
         return subHundredSamples.Count > 0
-            ? Math.Abs(subHundredSamples.Min(static s => s.VerticalSpeedFpm))
+            ? subHundredSamples.Max(static s => s.VerticalSpeedFpm)
             : 0;
     }
 
