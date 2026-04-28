@@ -201,12 +201,19 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private const uint UserObjectId = 0;
 
     // ── Phase-aware throttle constants ──────────────────────────────────────────
-    // Switch to throttled polling when clearly in cruise; restore full rate when
-    // approaching the ground.  A 1 000 ft dead-band prevents rapid toggling on
-    // the climb-out / initial descent around the threshold altitude.
-    private const uint CruiseThrottleInterval = 4;          // ~7-15 Hz depending on sim fps
-    private const double ThrottleOnAglFeet    = 3_500.0;    // start throttling above this
-    private const double ThrottleOffAglFeet   = 2_500.0;    // restore full rate below this
+    // Three tiers:
+    //   Ground   — on ground with IAS < TakeoffRollIasKnots (taxi / parked):
+    //              interval=GroundThrottleInterval (~2-4 Hz) — GPS barely moves.
+    //   Full     — takeoff roll (on ground, IAS ≥ 40 kts), approach, and any
+    //              airborne phase below ThrottleOnAglFeet: interval=0 (every SimFrame).
+    //   Cruise   — airborne above ThrottleOnAglFeet: interval=CruiseThrottleInterval
+    //              (~7-15 Hz).  A 1 000 ft dead-band between ThrottleOnAglFeet and
+    //              ThrottleOffAglFeet prevents rapid toggling on climb/descent.
+    private const uint   GroundThrottleInterval = 16;         // ~2-4 Hz while taxiing / parked
+    private const uint   CruiseThrottleInterval = 4;          // ~7-15 Hz in cruise
+    private const double TakeoffRollIasKnots    = 40.0;       // above this on ground → full rate
+    private const double ThrottleOnAglFeet      = 3_500.0;    // start cruise throttle above this
+    private const double ThrottleOffAglFeet     = 2_500.0;    // restore full rate below this
 
     private readonly nint _nativeLibraryHandle;
     private readonly SimConnectHostOptions _options;
@@ -1141,12 +1148,20 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     }
 
     /// <summary>
-    /// Adjusts the server-side FlightCritical delivery interval based on current altitude.
-    /// Below <see cref="ThrottleOffAglFeet"/> the interval is 0 (every SimFrame — full rate).
-    /// Above <see cref="ThrottleOnAglFeet"/> the interval is <see cref="CruiseThrottleInterval"/>
-    /// (~7-15 Hz), reducing MSFS dispatch pressure during cruise without affecting scoring
-    /// or landing detection (the outer polling loop already samples at 1 Hz).
-    /// A 1 000 ft dead-band between the two thresholds prevents rapid toggling.
+    /// Adjusts the server-side FlightCritical delivery interval based on flight phase.
+    ///
+    /// Three tiers (priority order):
+    /// <list type="bullet">
+    ///   <item><b>Ground</b> — on ground with IAS &lt; <see cref="TakeoffRollIasKnots"/>:
+    ///         interval = <see cref="GroundThrottleInterval"/> (~2-4 Hz).
+    ///         GPS coordinates barely change while taxiing or parked.</item>
+    ///   <item><b>Full rate</b> — takeoff roll (on ground, IAS ≥ 40 kts), approach, or any
+    ///         airborne phase below <see cref="ThrottleOnAglFeet"/>: interval = 0 (every SimFrame).
+    ///         Preserves scoring accuracy through the critical takeoff and landing phases.</item>
+    ///   <item><b>Cruise</b> — airborne above <see cref="ThrottleOnAglFeet"/>:
+    ///         interval = <see cref="CruiseThrottleInterval"/> (~7-15 Hz).
+    ///         A 1 000 ft dead-band between the two AGL thresholds prevents oscillation.</item>
+    /// </list>
     /// </summary>
     private void UpdateFlightCriticalThrottle()
     {
@@ -1155,20 +1170,35 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             return;
         }
 
-        var agl = _latestState.AltitudeAglFeet;
+        var agl      = _latestState.AltitudeAglFeet;
+        var onGround = _latestState.OnGround >= 0.5;
+        var ias      = _latestState.IndicatedAirspeedKnots;
+
         uint desired;
 
-        if (_flightCriticalInterval == 0 && agl > ThrottleOnAglFeet)
+        if (onGround && ias < TakeoffRollIasKnots)
         {
-            desired = CruiseThrottleInterval;   // switch to throttled (cruise)
+            // Taxiing or parked — GPS barely moves, throttle to save SimConnect overhead.
+            desired = GroundThrottleInterval;
         }
-        else if (_flightCriticalInterval != 0 && agl < ThrottleOffAglFeet)
+        else if (_flightCriticalInterval == GroundThrottleInterval)
         {
-            desired = 0;                        // restore full rate (approach / ground)
+            // Just left ground state (airborne or accelerating for takeoff) → full rate.
+            desired = 0;
+        }
+        else if (_flightCriticalInterval == 0 && agl > ThrottleOnAglFeet)
+        {
+            // Climbing into cruise — start throttling.
+            desired = CruiseThrottleInterval;
+        }
+        else if (_flightCriticalInterval == CruiseThrottleInterval && agl < ThrottleOffAglFeet)
+        {
+            // Descending out of cruise — restore full rate for approach / landing.
+            desired = 0;
         }
         else
         {
-            return; // no change needed
+            return; // no change needed (steady-state or within AGL dead-band)
         }
 
         var result = _exports.RequestDataOnSimObject(
@@ -1186,7 +1216,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         {
             _flightCriticalInterval = desired;
             System.Diagnostics.Debug.WriteLine(
-                $"[SimConnect] FlightCritical interval → {desired} (AGL={agl:F0} ft)");
+                $"[SimConnect] FlightCritical interval → {desired} (ground={onGround}, IAS={ias:F0} kt, AGL={agl:F0} ft)");
         }
     }
 
