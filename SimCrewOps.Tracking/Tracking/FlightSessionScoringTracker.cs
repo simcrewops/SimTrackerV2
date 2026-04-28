@@ -756,22 +756,25 @@ public sealed class FlightSessionScoringTracker
 
     private void UpdateTakeoff(TelemetryFrame frame)
     {
+        // Accumulate max pitch while WOW is true, from blocks-off (TaxiOut phase seen)
+        // until wheels-off (WOW goes false).  Gated to AGL < 20 ft to avoid capturing
+        // normal climb-out pitch if the WOW SimVar lags a few frames after liftoff.
+        // Runs regardless of the exact phase so the entire takeoff roll is included,
+        // not just the frames where the phase has already transitioned to Takeoff.
+        if (_taxiOutSeen && frame.OnGround && frame.AltitudeAglFeet < 20.0)
+        {
+            var absPitch = Math.Abs(frame.PitchAngleDegrees);
+            if (absPitch > _takeoffMaxPitch)
+            {
+                _takeoffMaxPitch      = absPitch;
+                _takeoffMaxPitchAglFt = frame.AltitudeAglFeet;
+            }
+        }
+
         if (frame.Phase == FlightPhase.Takeoff)
         {
             _takeoffSeen = true;
             _takeoffMaxBank = Math.Max(_takeoffMaxBank, Math.Abs(frame.BankAngleDegrees));
-            // Only sample max pitch while WOW is true AND AGL < 20 ft.
-            // Avoids false tail-strike flags on steep normal climb-outs where the WOW
-            // SimVar lags a few frames after liftoff.
-            if (frame.OnGround && frame.AltitudeAglFeet < 20.0)
-            {
-                var absPitch = Math.Abs(frame.PitchAngleDegrees);
-                if (absPitch > _takeoffMaxPitch)
-                {
-                    _takeoffMaxPitch    = absPitch;
-                    _takeoffMaxPitchAglFt = frame.AltitudeAglFeet;
-                }
-            }
             _takeoffMaxG = Math.Max(_takeoffMaxG, frame.GForce);
 
             if (_postRestoreGraceFrames <= 0 && !frame.LandingLightsOn)
@@ -1209,8 +1212,11 @@ public sealed class FlightSessionScoringTracker
                 _landingReverseThrustUsed = true;
         }
 
-        // v3: track max pitch during landing rollout (on ground after touchdown)
-        if (frame.OnGround && _lastTouchdownAt is not null)
+        // Track max pitch during the high-speed landing rollout: from WOW-on until
+        // ground speed drops below 30 kts.  Stopping at 30 kts avoids capturing the
+        // low-pitch taxi-in phase and keeps this metric comparable to the takeoff
+        // maxPitchWhileWowDeg which ends at WOW-off.
+        if (frame.OnGround && _lastTouchdownAt is not null && frame.GroundSpeedKnots >= 30.0)
             _landingMaxPitchDuringRollout = Math.Max(_landingMaxPitchDuringRollout, Math.Abs(frame.PitchAngleDegrees));
     }
 
