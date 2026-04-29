@@ -1059,51 +1059,134 @@
                     BorderBrush="{StaticResource BorderDefaultBrush}"
                     BorderThickness="1" CornerRadius="16" Padding="28"
                     Visibility="{Binding IsDiagnosticsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="20" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <!-- Left column: sim + telemetry + recovery -->
-                    <Border Style="{StaticResource InnerCardStyle}" Padding="20">
-                        <StackPanel>
-                            <TextBlock Text="SIM STATUS" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Text="{Binding DiagnosticsSimState}" Margin="0,12,0,0" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" />
-                            <TextBlock Text="LAST TELEMETRY" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Text="{Binding DiagnosticsLastTelemetry}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                            <TextBlock Text="RECOVERY" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Text="{Binding DiagnosticsRecoveryState}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                            <TextBlock Text="ACTIVE FLIGHT (from simcrewops.com)" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Text="{Binding DiagnosticsActiveFlight}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="680">
+                    <StackPanel>
+
+                        <!-- Row 1: Connection + Pilot/Preflight -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource InnerCardStyle}" Padding="16,14">
+                                <StackPanel>
+                                    <TextBlock Text="CONNECTION" Style="{StaticResource SectionLabelStyle}" />
+                                    <TextBlock Text="{Binding DiagnosticsConnection}"
+                                               Margin="0,10,0,0" FontFamily="Consolas" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="2" Style="{StaticResource InnerCardStyle}" Padding="16,14">
+                                <StackPanel>
+                                    <TextBlock Text="PILOT / PREFLIGHT" Style="{StaticResource SectionLabelStyle}" />
+                                    <TextBlock Text="{Binding DiagnosticsPreflightPilot}"
+                                               Margin="0,10,0,0" FontFamily="Consolas" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Row 2: Flight/Session + Sync/Upload -->
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource InnerCardStyle}" Padding="16,14">
+                                <StackPanel>
+                                    <TextBlock Text="FLIGHT / SESSION" Style="{StaticResource SectionLabelStyle}" />
+                                    <TextBlock Text="{Binding DiagnosticsFlightSession}"
+                                               Margin="0,10,0,0" FontFamily="Consolas" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="2" Style="{StaticResource InnerCardStyle}" Padding="16,14">
+                                <StackPanel>
+                                    <TextBlock Text="SYNC / UPLOAD" Style="{StaticResource SectionLabelStyle}" />
+                                    <TextBlock Text="{Binding DiagnosticsUploadSync}"
+                                               Margin="0,10,0,0" FontFamily="Consolas" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Row 3: Storage/Build (half-width left) -->
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource InnerCardStyle}" Padding="16,14">
+                                <StackPanel>
+                                    <TextBlock Text="STORAGE / BUILD" Style="{StaticResource SectionLabelStyle}" />
+                                    <TextBlock Text="{Binding DiagnosticsStorageBuild}"
+                                               Margin="0,10,0,0" FontFamily="Consolas" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Telemetry-gated rows (rows 4–5) -->
+                        <StackPanel Visibility="{Binding TelemetryDiagnosticsEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+
+                            <!-- Row 4: Raw Telemetry + Touchdown -->
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource InnerCardStyle}" Padding="16,14">
+                                    <StackPanel>
+                                        <TextBlock Text="TELEMETRY" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Text="{Binding DiagnosticsTelemetryClient}"
+                                                   Margin="0,10,0,0" FontFamily="Consolas" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding DiagnosticsTelemetryFlow}"
+                                                   Margin="0,6,0,0" FontFamily="Consolas" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding DiagnosticsTelemetryCounters}"
+                                                   Margin="0,6,0,0" FontFamily="Consolas" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                        <TextBlock Text="RAW SIMCONNECT" Margin="0,14,0,0" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Text="{Binding DiagnosticsRawTelemetry}"
+                                                   Margin="0,8,0,0" FontFamily="Consolas" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource InnerCardStyle}" Padding="16,14">
+                                    <StackPanel>
+                                        <TextBlock Text="TOUCHDOWN" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Text="{Binding DiagnosticsTouchdown}"
+                                                   Margin="0,10,0,0" FontFamily="Consolas" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <!-- Row 5: Beacon/Path -->
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource InnerCardStyle}" Padding="16,14">
+                                    <StackPanel>
+                                        <TextBlock Text="LIVE BEACON / PATH" Style="{StaticResource SectionLabelStyle}" />
+                                        <TextBlock Text="{Binding DiagnosticsBeaconPath}"
+                                                   Margin="0,10,0,0" FontFamily="Consolas" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
                         </StackPanel>
-                    </Border>
-
-                    <!-- Right column: sync + paths + version -->
-                    <Border Grid.Column="2" Style="{StaticResource InnerCardStyle}" Padding="20">
-                        <StackPanel>
-                            <TextBlock Text="API SYNC" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Text="{Binding DiagnosticsSyncState}"
-                                       Margin="0,10,0,0" FontSize="14" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" />
-
-                            <TextBlock Text="SETTINGS FILE" Margin="0,18,0,0" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Text="{Binding DiagnosticsSettingsPath}"
-                                       Margin="0,10,0,0" FontSize="12"
-                                       Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
-
-                            <TextBlock Text="STORAGE ROOT" Margin="0,18,0,0" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Text="{Binding DiagnosticsStoragePath}"
-                                       Margin="0,10,0,0" FontSize="12"
-                                       Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
-
-                            <TextBlock Text="BUILD" Margin="0,18,0,0" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Text="{x:Static vm:MainWindowViewModel.AppVersion}"
-                                       Margin="0,10,0,0" FontSize="12"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
-                        </StackPanel>
-                    </Border>
-                </Grid>
+                    </StackPanel>
+                </ScrollViewer>
             </Border>
 
             <!-- ── Settings ── -->

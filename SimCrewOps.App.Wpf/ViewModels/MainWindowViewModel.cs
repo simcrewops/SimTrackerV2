@@ -146,6 +146,13 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _diagnosticsTelemetryFlow = "Enable telemetry diagnostics to inspect raw SimConnect frame flow.";
     private string _diagnosticsTelemetryCounters = "Poll, null-frame, and mapping counters will appear here.";
     private string _diagnosticsRawTelemetry = "Raw SimConnect values will appear here when telemetry diagnostics are enabled.";
+    private string _diagnosticsConnection = "Waiting for simulator…";
+    private string _diagnosticsPreflightPilot = "No preflight check performed yet.";
+    private string _diagnosticsFlightSession = "No active session.";
+    private string _diagnosticsUploadSync = "Background sync not yet initialized.";
+    private string _diagnosticsStorageBuild = string.Empty;
+    private string _diagnosticsBeaconPath = "Beacon info appears when telemetry diagnostics are enabled.";
+    private string _diagnosticsTouchdown = "Touchdown diagnostics appear when telemetry diagnostics are enabled.";
     private string _settingsSaveStatus = "Changes are saved for the next launch.";
     private bool _isFlightRefreshEnabled = true;
 
@@ -724,6 +731,48 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         get => _diagnosticsRawTelemetry;
         private set => SetProperty(ref _diagnosticsRawTelemetry, value);
+    }
+
+    public string DiagnosticsConnection
+    {
+        get => _diagnosticsConnection;
+        private set => SetProperty(ref _diagnosticsConnection, value);
+    }
+
+    public string DiagnosticsPreflightPilot
+    {
+        get => _diagnosticsPreflightPilot;
+        private set => SetProperty(ref _diagnosticsPreflightPilot, value);
+    }
+
+    public string DiagnosticsFlightSession
+    {
+        get => _diagnosticsFlightSession;
+        private set => SetProperty(ref _diagnosticsFlightSession, value);
+    }
+
+    public string DiagnosticsUploadSync
+    {
+        get => _diagnosticsUploadSync;
+        private set => SetProperty(ref _diagnosticsUploadSync, value);
+    }
+
+    public string DiagnosticsStorageBuild
+    {
+        get => _diagnosticsStorageBuild;
+        private set => SetProperty(ref _diagnosticsStorageBuild, value);
+    }
+
+    public string DiagnosticsBeaconPath
+    {
+        get => _diagnosticsBeaconPath;
+        private set => SetProperty(ref _diagnosticsBeaconPath, value);
+    }
+
+    public string DiagnosticsTouchdown
+    {
+        get => _diagnosticsTouchdown;
+        private set => SetProperty(ref _diagnosticsTouchdown, value);
     }
 
     public string SettingsSaveStatus
@@ -1393,27 +1442,17 @@ public sealed class MainWindowViewModel : ObservableObject
         ReviewLandingMetrics = BuildLandingMetrics(activeState);
         ApplyLandingCard(activeState);
 
-        var simAircraft = snapshot.SimConnectStatus.DetectedAircraftTitle is { Length: > 0 } t ? $" • {t}" : string.Empty;
-        DiagnosticsSimState = $"{snapshot.SimConnectStatus.ConnectionState}{simAircraft} {(snapshot.SimConnectStatus.LastErrorMessage is { Length: > 0 } err ? $"• {err}" : string.Empty)}".Trim();
-        DiagnosticsSyncState = snapshot.BackgroundSyncStatus is null
-            ? "Background sync disabled"
-            : $"{snapshot.BackgroundSyncStatus.LastTrigger ?? "idle"} • failures {snapshot.BackgroundSyncStatus.ConsecutiveFailureCount}";
-        var pendingCount = snapshot.RecoverySnapshot.PendingCompletedSessions.Count;
-        DiagnosticsRecoveryState = activeState is not null && snapshot.RecoverySnapshot.HasRecoverableCurrentSession
-            ? $"Resumed session active • autosave {snapshot.RecoverySnapshot.CurrentSession!.SavedUtc.ToLocalTime():HH:mm:ss}{(pendingCount > 0 ? $" • {pendingCount} pending upload" : string.Empty)}"
-            : snapshot.RecoverySnapshot.HasRecoverableCurrentSession
-            ? $"Recoverable session saved {snapshot.RecoverySnapshot.CurrentSession!.SavedUtc.ToLocalTime():HH:mm:ss}{(pendingCount > 0 ? $" • {pendingCount} pending upload" : string.Empty)}"
-            : pendingCount > 0 ? $"{pendingCount} session(s) pending upload"
-            : "No recoverable session";
-        DiagnosticsSettingsPath = snapshot.SettingsFilePath;
-        DiagnosticsStoragePath = snapshot.Settings.Storage.RootDirectory;
-        DiagnosticsActiveFlight = snapshot.ActiveFlight is { } af
-            ? BuildAssignedFlightText(af)
-            : "None assigned — departure/arrival airports will not auto-populate";
+        DiagnosticsConnection       = BuildConnectionDiagnostics(snapshot.SimConnectStatus, snapshot.LastRawTelemetryFrame);
+        DiagnosticsPreflightPilot   = BuildPreflightPilotDiagnostics(snapshot.PreflightStatus);
+        DiagnosticsFlightSession    = BuildFlightSessionDiagnostics(activeState, snapshot.RecoverySnapshot, snapshot.ActiveFlight);
+        DiagnosticsUploadSync       = BuildUploadSyncDiagnostics(snapshot.BackgroundSyncStatus, snapshot.RecoverySnapshot, snapshot.LastPostFlightStatus);
+        DiagnosticsStorageBuild     = BuildStorageBuildDiagnostics(snapshot.SettingsFilePath, snapshot.Settings);
 
-        DiagnosticsLastTelemetry = telemetry is null
-            ? "No telemetry received yet"
-            : $"{telemetry.Phase} • IAS {telemetry.IndicatedAirspeedKnots:0} kts • VS {telemetry.VerticalSpeedFpm:0} fpm • AGL {telemetry.AltitudeAglFeet:0} ft • HDG {telemetry.HeadingMagneticDegrees:0}° • {telemetry.Latitude:F4},{telemetry.Longitude:F4}";
+        // Legacy fields (no longer surfaced in the primary diagnostics panel)
+        DiagnosticsSimState         = $"{snapshot.SimConnectStatus.ConnectionState}";
+        DiagnosticsSyncState        = BuildSyncDiagnosticLine(snapshot.BackgroundSyncStatus);
+        DiagnosticsSettingsPath     = snapshot.SettingsFilePath;
+        DiagnosticsStoragePath      = snapshot.Settings.Storage.RootDirectory;
 
         TelemetryDiagnosticsEnabled = snapshot.Settings.Debug.EnableTelemetryDiagnostics;
         if (TelemetryDiagnosticsEnabled)
@@ -1424,14 +1463,18 @@ public sealed class MainWindowViewModel : ObservableObject
                 $"Flight-critical: {ToYesNo(snapshot.SimConnectStatus.HasReceivedFlightCriticalData)} • Operational: {ToYesNo(snapshot.SimConnectStatus.HasReceivedOperationalData)}";
             DiagnosticsTelemetryCounters =
                 $"Polls {snapshot.SimConnectStatus.PollCount} • Null polls {snapshot.SimConnectStatus.NullPollCount} • Raw frames {snapshot.SimConnectStatus.RawFrameCount} • Mapped frames {snapshot.SimConnectStatus.TelemetryFrameCount}";
-            DiagnosticsRawTelemetry = BuildRawTelemetryDebug(snapshot.LastRawTelemetryFrame);
+            DiagnosticsRawTelemetry  = BuildRawTelemetryDebug(snapshot.LastRawTelemetryFrame);
+            DiagnosticsTouchdown     = BuildTouchdownDiagnostics(activeState);
+            DiagnosticsBeaconPath    = BuildBeaconPathDiagnostics(snapshot.LivePositionEnabled, snapshot.LivePositionLastUploadUtc, activeState);
         }
         else
         {
-            DiagnosticsTelemetryClient = "Telemetry debug disabled in Settings.";
-            DiagnosticsTelemetryFlow = "Enable telemetry diagnostics to inspect raw SimConnect frame flow.";
+            DiagnosticsTelemetryClient   = "Telemetry debug disabled in Settings.";
+            DiagnosticsTelemetryFlow     = "Enable telemetry diagnostics to inspect raw SimConnect frame flow.";
             DiagnosticsTelemetryCounters = "Poll, null-frame, and mapping counters will appear here.";
-            DiagnosticsRawTelemetry = "Raw SimConnect values will appear here when telemetry diagnostics are enabled.";
+            DiagnosticsRawTelemetry      = "Raw SimConnect values will appear here when telemetry diagnostics are enabled.";
+            DiagnosticsTouchdown         = "Touchdown diagnostics appear when telemetry diagnostics are enabled.";
+            DiagnosticsBeaconPath        = "Beacon info appears when telemetry diagnostics are enabled.";
         }
     }
 
@@ -1994,6 +2037,211 @@ public sealed class MainWindowViewModel : ObservableObject
             $"  bitmask raw => 0x{rawFrame.LightStatesRaw:X4}  (BCN=0x0002 LAND=0x0004 TAXI=0x0008 STB=0x0010)\n" +
             $"  final used  => BCN {rawFrame.BeaconLightOn:0} • TAXI {rawFrame.TaxiLightsOn:0} • LDG {rawFrame.LandingLightsOn:0} • STB {rawFrame.StrobesOn:0}\n" +
             $"IAS {rawFrame.IndicatedAirspeedKnots:0.##} • GS {rawFrame.GroundSpeedKnots:0.##} • VS {rawFrame.VerticalSpeedFpm:0.##}";
+    }
+
+    private static string BuildConnectionDiagnostics(SimConnectHostStatus status, SimConnectRawTelemetryFrame? rawFrame)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"State      : {status.ConnectionState}");
+        sb.AppendLine($"Client     : {status.ClientPath}");
+
+        if (status.SimulatorProcess is { } proc)
+            sb.AppendLine($"Process    : {proc.ProcessName} (PID {proc.ProcessId})");
+        else
+            sb.AppendLine("Process    : not detected");
+
+        if (status.ConnectedUtc is { } conn)
+            sb.AppendLine($"Connected  : {conn.ToLocalTime():HH:mm:ss}");
+
+        sb.AppendLine($"FC data    : {ToYesNo(status.HasReceivedFlightCriticalData)}  Operational: {ToYesNo(status.HasReceivedOperationalData)}");
+        sb.AppendLine($"Raw frame  : {FormatTimeAgo(status.LastRawFrameUtc)}  Mapped: {FormatTimeAgo(status.LastTelemetryUtc)}");
+
+        if (status.DetectedAircraftTitle is { Length: > 0 } aircraft)
+            sb.AppendLine($"Aircraft   : {aircraft}");
+
+        if (rawFrame is not null)
+        {
+            var lvar = rawFrame.LvarBridgeRequired
+                ? rawFrame.LvarBridgeConnected ? "connected ✓" : "NOT connected — install MobiFlight WASM"
+                : "not needed";
+            sb.Append($"LVAR bridge: {lvar}");
+        }
+
+        if (status.LastErrorMessage is { Length: > 0 } err)
+            sb.Append($"\nLast error : {err}");
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string BuildPreflightPilotDiagnostics(PreflightStatusResponse? status)
+    {
+        if (status is null)
+            return "No preflight check performed yet.\nCheck fires automatically when the API token is valid.";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Grounded   : {(status.IsGrounded ? "YES ⚠" : "no")}");
+        sb.AppendLine($"Crew rest  : {(status.InCrewRest ? $"YES — ends {status.CrewRestEndsAt?.ToLocalTime():HH:mm}" : "no")}");
+
+        if (status.IsGrounded && status.GroundingReason is { Length: > 0 } reason)
+            sb.AppendLine($"Reason     : {reason}");
+
+        if (status.IsGrounded && status.GroundingAction is { Length: > 0 } action)
+            sb.AppendLine($"Action     : {action}");
+
+        if (status.StrikeType is { Length: > 0 } strike)
+            sb.AppendLine($"Strike type: {strike}");
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string BuildFlightSessionDiagnostics(
+        FlightSessionRuntimeState? state,
+        SimCrewOps.Persistence.Models.SessionRecoverySnapshot recovery,
+        ActiveFlightResponse? activeFlight)
+    {
+        var sb = new System.Text.StringBuilder();
+
+        if (state is not null)
+        {
+            var ctx = state.Context;
+            var dep = string.IsNullOrWhiteSpace(ctx.DepartureAirportIcao) ? "----" : ctx.DepartureAirportIcao.ToUpper();
+            var arr = string.IsNullOrWhiteSpace(ctx.ArrivalAirportIcao) ? "----" : ctx.ArrivalAirportIcao.ToUpper();
+            var flt = string.IsNullOrWhiteSpace(ctx.FlightNumber) ? "—" : ctx.FlightNumber;
+            var acft = string.IsNullOrWhiteSpace(ctx.AircraftType) ? "—" : ctx.AircraftType;
+
+            sb.AppendLine($"Phase      : {state.CurrentPhase}");
+            sb.AppendLine($"Route      : {dep} → {arr}  flt {flt}  acft {acft}");
+            sb.AppendLine($"Mode       : {(string.IsNullOrWhiteSpace(ctx.FlightMode) ? "—" : ctx.FlightMode)}");
+
+            var bt = state.BlockTimes;
+            sb.AppendLine($"OUT        : {FormatTimeUtcShort(bt.BlocksOffUtc)}  OFF {FormatTimeUtcShort(bt.WheelsOffUtc)}  ON {FormatTimeUtcShort(bt.WheelsOnUtc)}  IN {FormatTimeUtcShort(bt.BlocksOnUtc)}");
+            sb.AppendLine($"Complete   : {(state.IsComplete ? "yes" : "no")}");
+        }
+        else
+        {
+            sb.AppendLine("Phase      : no active session");
+
+            if (activeFlight is not null)
+            {
+                var dep = (activeFlight.Departure ?? "----").ToUpper();
+                var arr = (activeFlight.Arrival ?? "----").ToUpper();
+                var flt = string.IsNullOrWhiteSpace(activeFlight.FlightNumber) ? "—" : activeFlight.FlightNumber;
+                sb.AppendLine($"Assigned   : {dep} → {arr}  flt {flt}");
+            }
+        }
+
+        var pending = recovery.PendingCompletedSessions.Count;
+        if (recovery.HasRecoverableCurrentSession)
+        {
+            var savedAt = recovery.CurrentSession!.SavedUtc.ToLocalTime().ToString("HH:mm:ss");
+            sb.AppendLine($"Autosave   : {savedAt}{(pending > 0 ? $"  •  {pending} pending upload" : string.Empty)}");
+        }
+        else if (pending > 0)
+        {
+            sb.Append($"Pending    : {pending} session(s) queued for upload");
+        }
+        else
+        {
+            sb.Append("Autosave   : none");
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string FormatTimeUtcShort(DateTimeOffset? utc) =>
+        utc is null ? "--:--z" : utc.Value.ToLocalTime().ToString("HH:mm") + "z";
+
+    private static string BuildUploadSyncDiagnostics(
+        SimCrewOps.Hosting.Models.BackgroundSyncStatus? sync,
+        SimCrewOps.Persistence.Models.SessionRecoverySnapshot recovery,
+        PostFlightStatus? lastPostFlight)
+    {
+        var sb = new System.Text.StringBuilder();
+
+        if (sync is null)
+        {
+            sb.AppendLine("Sync       : disabled (no API token configured)");
+        }
+        else
+        {
+            var state = sync.IsRunning ? "running" : "idle";
+            sb.AppendLine($"Sync       : {state}  •  failures {sync.ConsecutiveFailureCount}");
+
+            if (sync.LastRunCompletedUtc is { } last)
+                sb.AppendLine($"Last run   : {last.ToLocalTime():HH:mm:ss}");
+
+            if (sync.LastSummary is { SucceededCount: > 0 } s)
+                sb.AppendLine($"Uploaded   : {s.SucceededCount} session(s) this pass");
+
+            if (sync.LastErrorMessage is { Length: > 0 } err)
+                sb.AppendLine($"Error      : {err}");
+        }
+
+        sb.AppendLine($"Pending    : {recovery.PendingCompletedSessions.Count} session(s)");
+
+        if (lastPostFlight is not null)
+        {
+            sb.AppendLine($"Post-flight: grounded={lastPostFlight.IsGrounded}  strike={lastPostFlight.StrikeType ?? "none"}");
+            if (lastPostFlight.StrikeAction is { Length: > 0 } action)
+                sb.AppendLine($"Action     : {action}");
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string BuildStorageBuildDiagnostics(string settingsFilePath, SimCrewOps.Hosting.Models.TrackerAppSettings settings)
+    {
+        var version = AppVersion;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Build      : {version}");
+        sb.AppendLine($"Settings   : {settingsFilePath}");
+        sb.Append($"Storage    : {settings.Storage.RootDirectory}");
+        return sb.ToString();
+    }
+
+    private static string BuildTouchdownDiagnostics(FlightSessionRuntimeState? state)
+    {
+        if (state is null)
+            return "No active session.";
+
+        var m = state.ScoreInput.Landing;
+        if (m.BounceCount == 0 && m.TouchdownVerticalSpeedFpm == 0 && m.TouchdownLatitude == 0)
+            return "No touchdown recorded yet this session.";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"VS (selected): {m.TouchdownVerticalSpeedFpm:0} fpm");
+        sb.AppendLine($"IAS        : {m.TouchdownIndicatedAirspeedKnots:0.#} kts");
+        sb.AppendLine($"Pitch      : {m.TouchdownPitchAngleDegrees:0.##}°  max rollout {m.MaxPitchDuringRolloutDegrees:0.##}°");
+        sb.AppendLine($"Bank       : {m.TouchdownBankAngleDegrees:0.##}°");
+        sb.AppendLine($"G-force    : {m.TouchdownGForce:0.00}");
+        sb.AppendLine($"Bounces    : {m.BounceCount}");
+        sb.AppendLine($"Gear up    : {m.GearUpAtTouchdown}");
+        sb.AppendLine($"Position   : {m.TouchdownLatitude:F5}, {m.TouchdownLongitude:F5}");
+        sb.AppendLine($"Heading    : {m.TouchdownHeadingDegrees:0.#}°");
+        sb.AppendLine($"Alt (ft)   : {m.TouchdownAltitudeFeet:0}");
+        sb.AppendLine($"Wind       : {m.WindSpeedAtTouchdownKnots:0.#} kts / {m.WindDirectionAtTouchdownDegrees:0}°");
+        sb.AppendLine($"HW comp    : {m.HeadwindComponentKnots:0.#} kts  XW {m.CrosswindComponentKnots:0.#} kts");
+        sb.Append(    $"OAT        : {m.OatCelsiusAtTouchdown:0.#}°C");
+        return sb.ToString();
+    }
+
+    private static string BuildBeaconPathDiagnostics(bool beaconEnabled, DateTimeOffset? lastSuccessUtc, FlightSessionRuntimeState? state)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Beacon     : {(beaconEnabled ? "active" : "inactive (no API token)")}");
+        sb.AppendLine($"Last ping  : {FormatTimeAgo(lastSuccessUtc)}");
+
+        if (state is not null)
+        {
+            sb.AppendLine($"FlightPath : {state.ScoreInput.FlightPath.Count} points");
+            sb.Append(    $"ApproachPath: {state.ScoreInput.ApproachPath.Count} points");
+        }
+        else
+        {
+            sb.Append("No active session — path counts unavailable.");
+        }
+
+        return sb.ToString();
     }
 
     private void UpdatePersistentInstruments(TelemetryFrame? telemetry)
