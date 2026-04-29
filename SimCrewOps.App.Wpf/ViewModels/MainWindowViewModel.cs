@@ -13,6 +13,7 @@ using SimCrewOps.Scoring.Models;
 using SimCrewOps.SimConnect.Models;
 using SimCrewOps.Sync.Models;
 using SimCrewOps.Tracking.Models;
+using Application = System.Windows.Application;
 using Brush = System.Windows.Media.Brush;
 using MediaColor = System.Windows.Media.Color;
 
