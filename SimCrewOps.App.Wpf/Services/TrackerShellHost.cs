@@ -110,6 +110,15 @@ public sealed class TrackerShellHost : IAsyncDisposable
         if (simConnectPoll.HasTelemetry)
         {
             _lastRawTelemetryFrame = simConnectPoll.RawFrame;
+
+            // Grounded pilots must not accumulate a trackable session. Raw telemetry is
+            // still received (SimConnect stays live for display) but we do not feed frames
+            // into scoring or persistence while the grounded block is active.
+            if (_preflightStatus?.IsGrounded == true)
+            {
+                return BuildSnapshot(simConnectPoll.Status, autoResetUtc);
+            }
+
             var runtimeFrame = await _persistentRuntimeCoordinator
                 .ProcessFrameAsync(simConnectPoll.TelemetryFrame!, cancellationToken)
                 .ConfigureAwait(false);
@@ -249,6 +258,10 @@ public sealed class TrackerShellHost : IAsyncDisposable
         // Immediately fetch the pilot's flight so a newly-pasted API token shows data right away.
         _activeFlightFetchedUtc = DateTimeOffset.MinValue;
         await RefreshActiveFlightAsync(cancellationToken).ConfigureAwait(false);
+
+        // Re-run preflight so a newly-entered token immediately populates identity and
+        // grounded state without requiring an app restart.
+        await CheckPreflightAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DiscardRecoveryAsync(CancellationToken cancellationToken = default)

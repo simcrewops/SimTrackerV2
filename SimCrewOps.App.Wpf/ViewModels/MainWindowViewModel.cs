@@ -1170,7 +1170,13 @@ public sealed class MainWindowViewModel : ObservableObject
                 : $"Estimated — phase subtotal {activeState.ScoreResult.PhaseSubtotal:0.#} with global deductions {activeState.ScoreResult.GlobalDeductions:0.#}.";
         }
 
-        // Post-flight grounded banner (shown immediately after upload confirms a new strike).
+        // Keep grounded/identity state live from the latest preflight result.
+        if (snapshot.PreflightStatus is { } pf)
+        {
+            ApplyPreflightStatus(pf);
+        }
+
+        // Post-flight grounded banner overrides preflight banner if a new strike just landed.
         if (snapshot.PostFlightStatus?.IsGrounded == true)
         {
             GroundedBannerVisible = true;

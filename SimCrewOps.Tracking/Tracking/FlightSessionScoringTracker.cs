@@ -786,7 +786,7 @@ public sealed class FlightSessionScoringTracker
             ? Math.Abs(frame.AltitudeFeet - _lastFlightPathAltFt.Value)
             : double.MaxValue;
 
-        if (timeSinceLast >= TimeSpan.FromSeconds(60) || altDelta >= 500)
+        if (timeSinceLast >= TimeSpan.FromSeconds(15) || altDelta >= 500)
         {
             _flightPath.Add(new FlightPathPoint { Lat = frame.Latitude, Lon = frame.Longitude, AltFt = frame.AltitudeFeet, TMin = tMin });
             _lastFlightPathSampleAt = frame.TimestampUtc;
