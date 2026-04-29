@@ -238,10 +238,10 @@ public sealed class RuntimeCoordinatorTests
             ScoreResult = new ScoreResult(100, 92, "A", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
         });
 
-        // Send the post-shutdown frame: engines off + beacon off (default) + parking brake set.
+        // Send the post-shutdown frame: engines off + beacon off + parking brake set.
         var sessionEndTime = t0.AddSeconds(30);
         var result = await coordinator.ProcessFrameAsync(
-            Frame(sessionEndTime, onGround: true, parkingBrake: true, engine1Running: false));
+            Frame(sessionEndTime, onGround: true, parkingBrake: true, engine1Running: false, beaconLightOn: false));
 
         Assert.Equal(sessionEndTime, result.State.BlockTimes.SessionEndTriggeredUtc);
         Assert.True(result.State.IsComplete);
@@ -378,11 +378,11 @@ public sealed class RuntimeCoordinatorTests
 
         // First qualifying frame — fires the trigger.
         await coordinator.ProcessFrameAsync(
-            Frame(firstSessionEndTime, onGround: true, parkingBrake: true, engine1Running: false));
+            Frame(firstSessionEndTime, onGround: true, parkingBrake: true, engine1Running: false, beaconLightOn: false));
 
         // Second qualifying frame — trigger already fired; timestamp must remain from the first.
         var secondResult = await coordinator.ProcessFrameAsync(
-            Frame(t0.AddSeconds(20), onGround: true, parkingBrake: true, engine1Running: false));
+            Frame(t0.AddSeconds(20), onGround: true, parkingBrake: true, engine1Running: false, beaconLightOn: false));
 
         Assert.Equal(firstSessionEndTime, secondResult.State.BlockTimes.SessionEndTriggeredUtc);
     }
@@ -722,7 +722,8 @@ public sealed class RuntimeCoordinatorTests
         double groundSpeed = 0,
         double verticalSpeed = 0,
         double heading = 0,
-        bool engine1Running = true)   // default true: engine running during normal taxi/flight
+        bool engine1Running = true,   // default true: engine running during normal taxi/flight
+        bool beaconLightOn = true)    // default true: beacon on whenever engines are running
     {
         return new TelemetryFrame
         {
@@ -741,6 +742,7 @@ public sealed class RuntimeCoordinatorTests
             HeadingMagneticDegrees = heading,
             HeadingTrueDegrees = heading,
             Engine1Running = engine1Running,
+            BeaconLightOn = beaconLightOn,
         };
     }
 
