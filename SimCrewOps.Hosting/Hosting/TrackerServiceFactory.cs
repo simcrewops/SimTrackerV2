@@ -114,15 +114,21 @@ public sealed class TrackerServiceFactory
             };
         }
 
+        var uploaderOptions = new SimCrewOpsApiUploaderOptions
+        {
+            BaseUri = settings.Api.BaseUri,
+            SimSessionsPath = settings.Api.SimSessionsPath,
+            PilotApiToken = settings.Api.PilotApiToken!,
+            TrackerVersion = settings.Api.TrackerVersion,
+        };
+
         var uploader = new HttpCompletedSessionUploader(
             _httpClientFactory(),
-            new SimCrewOpsApiUploaderOptions
-            {
-                BaseUri = settings.Api.BaseUri,
-                SimSessionsPath = settings.Api.SimSessionsPath,
-                PilotApiToken = settings.Api.PilotApiToken!,
-                TrackerVersion = settings.Api.TrackerVersion,
-            });
+            uploaderOptions);
+
+        var preflightChecker = new HttpPreflightChecker(
+            _httpClientFactory(),
+            uploaderOptions);
 
         var syncService = new CompletedSessionSyncService(flightSessionStore, uploader);
         var backgroundSyncCoordinator = new BackgroundSyncCoordinator(
@@ -136,6 +142,7 @@ public sealed class TrackerServiceFactory
             FlightSessionStore = flightSessionStore,
             LivePositionUploader = livePositionUploader,
             CompletedSessionUploader = uploader,
+            PreflightChecker = preflightChecker,
             CompletedSessionSyncService = syncService,
             BackgroundSyncCoordinator = backgroundSyncCoordinator,
             ActiveFlightFetcher = activeFlightFetcher,

@@ -367,6 +367,8 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             StallWarning = snapshot.StallWarning,
             GpwsAlert = snapshot.GpwsAlert,
             OverspeedWarning = snapshot.OverspeedWarning,
+            WindSpeedKnots = snapshot.WindSpeedKnots,
+            WindDirectionDegrees = snapshot.WindDirectionDegrees,
         };
 
         EnqueueFrame();
@@ -415,6 +417,8 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             Engine2Running = _latestState.Engine2Running,
             Engine3Running = _latestState.Engine3Running,
             Engine4Running = _latestState.Engine4Running,
+            WindSpeedKnots = _latestState.WindSpeedKnots,
+            WindDirectionDegrees = _latestState.WindDirectionDegrees,
         });
     }
 
@@ -552,6 +556,8 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         public readonly int StallWarning;
         public readonly int GpwsAlert;
         public readonly int OverspeedWarning;
+        public readonly double WindSpeedKnots;
+        public readonly double WindDirectionDegrees;
     }
 
     private sealed record LatestSimConnectState
@@ -589,5 +595,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         public double Engine2Running { get; init; }
         public double Engine3Running { get; init; }
         public double Engine4Running { get; init; }
+        public double WindSpeedKnots { get; init; }
+        public double WindDirectionDegrees { get; init; }
     }
 }

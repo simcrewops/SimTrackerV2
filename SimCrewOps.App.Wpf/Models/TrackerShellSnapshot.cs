@@ -32,4 +32,30 @@ public sealed record TrackerShellSnapshot
     /// Null when no token is configured, the fetch failed, or no flight is queued.
     /// </summary>
     public ActiveFlightResponse? ActiveFlight { get; init; }
+
+    /// <summary>
+    /// Set when a sim reposition (teleport / "Set on Ground") was detected during the
+    /// last poll and the session was automatically reset. The UI should show a brief
+    /// notification so the pilot knows the tracker started fresh.
+    /// Null means no auto-reset this poll.
+    /// </summary>
+    public DateTimeOffset? AutoResetOccurredUtc { get; init; }
+
+    /// <summary>
+    /// Last preflight check result. Null until CheckPreflightAsync is called.
+    /// IsGrounded == true means session start is blocked.
+    /// </summary>
+    public PreflightStatusResponse? PreflightStatus { get; init; }
+
+    /// <summary>
+    /// Server-authoritative career result returned by the 201 upload response.
+    /// Null until a session completes and uploads successfully.
+    /// </summary>
+    public CareerResultDto? ServerCareerResult { get; init; }
+
+    /// <summary>
+    /// Post-flight status returned alongside career result. Non-null when an
+    /// upload succeeds. IsGrounded == true means a new strike was applied.
+    /// </summary>
+    public PostFlightStatusDto? PostFlightStatus { get; init; }
 }

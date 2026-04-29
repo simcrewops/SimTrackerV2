@@ -16,6 +16,11 @@ public sealed record SimConnectRawTelemetryFrame
     public double Mach { get; init; }
     public double GroundSpeedKnots { get; init; }
     public double VerticalSpeedFpm { get; init; }
+    /// <summary>
+    /// Physics-engine vertical velocity in ft/s (negative = descending, no barometric lag).
+    /// Sourced from VELOCITY WORLD Y.
+    /// </summary>
+    public double VelocityWorldYFps { get; init; }
     public double BankAngleDegrees { get; init; }
     public double PitchAngleDegrees { get; init; }
     public double HeadingMagneticDegrees { get; init; }
@@ -42,6 +47,9 @@ public sealed record SimConnectRawTelemetryFrame
     public int LightStrobeRaw { get; init; }          // LIGHT STROBE individual SimVar
     public bool LightSourceIsIndividual { get; init; } // true = used individual vars, false = used bitmask
 
+    public double WindSpeedKnots { get; init; }
+    public double WindDirectionDegrees { get; init; }
+
     public double StallWarning { get; init; }
     public double GpwsAlert { get; init; }
     public double OverspeedWarning { get; init; }
@@ -57,4 +65,10 @@ public sealed record SimConnectRawTelemetryFrame
     public bool LvarBridgeRequired  { get; init; }
     /// <summary>True when the MobiFlight WASM bridge is connected and serving LVAR values.</summary>
     public bool LvarBridgeConnected { get; init; }
+
+    /// <summary>
+    /// Friendly aircraft title parsed from the MSFS AircraftLoaded path.
+    /// e.g. "Community\fenix-a319\..." → "fenix-a319". Null until first AircraftLoaded event.
+    /// </summary>
+    public string? AircraftTitle { get; init; }
 }

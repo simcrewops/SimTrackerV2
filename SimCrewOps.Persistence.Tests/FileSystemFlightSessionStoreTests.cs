@@ -1,6 +1,5 @@
 using SimCrewOps.Persistence.Models;
 using SimCrewOps.Persistence.Persistence;
-using SimCrewOps.Runways.Models;
 using SimCrewOps.Runtime.Models;
 using SimCrewOps.Scoring.Models;
 using SimCrewOps.Tracking.Models;
@@ -31,7 +30,6 @@ public sealed class FileSystemFlightSessionStoreTests : IDisposable
         Assert.Equal(FlightPhase.Approach, loaded.State.CurrentPhase);
         Assert.Equal(120, loaded.State.ScoreInput.Landing.TouchdownZoneExcessDistanceFeet);
         Assert.Equal("A", loaded.State.ScoreResult.Grade);
-        Assert.NotNull(loaded.State.LandingRunwayResolution);
     }
 
     [Fact]
@@ -118,28 +116,6 @@ public sealed class FileSystemFlightSessionStoreTests : IDisposable
                 Longitude = -80.2906,
                 HeadingTrueDegrees = 90,
                 TouchdownZoneExcessDistanceFeet = touchdownZoneExcessDistanceFeet,
-            },
-            LandingRunwayResolution = new RunwayResolutionResult
-            {
-                AirportIcao = "KMIA",
-                HeadingDifferenceDegrees = 2,
-                Runway = new RunwayEnd
-                {
-                    AirportIcao = "KMIA",
-                    RunwayIdentifier = "09",
-                    TrueHeadingDegrees = 90,
-                    LengthFeet = 13_000,
-                    ThresholdLatitude = 25.7933,
-                    ThresholdLongitude = -80.2906,
-                    DataSource = RunwayDataSource.OurAirportsFallback,
-                },
-                Projection = new TouchdownProjection
-                {
-                    AlongTrackDistanceFeet = 3_260,
-                    DistanceFromThresholdFeet = 3_260,
-                    CrossTrackDistanceFeet = 12,
-                    TouchdownZoneExcessDistanceFeet = touchdownZoneExcessDistanceFeet,
-                },
             },
             ScoreInput = new FlightScoreInput
             {

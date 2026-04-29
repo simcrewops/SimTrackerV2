@@ -1,0 +1,13 @@
+{
+  "pilotUsername": "citationx8",
+  "pilotDisplayName": "CitationX8",
+  "rank": "Captain",
+  "isGrounded": true,
+  "groundingReason": "Unresolved immediate strike: Tail Strike",
+  "groundingAction": "Pay the safety class fee at [simcrewops.com](http://simcrewops.com) before your next flight",
+  "strikeId": "cmoj6kgih01rllm66afr2id7i",
+  "strikeType": "tail_strike",
+  "inCrewRest": false,
+  "crewRestEndsAt": null,
+  "checkedAt": "2026-04-29T01:00:00.000Z"
+}

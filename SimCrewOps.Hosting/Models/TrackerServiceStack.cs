@@ -11,6 +11,7 @@ public sealed record TrackerServiceStack
     public required IFlightSessionStore FlightSessionStore { get; init; }
     public ILivePositionUploader? LivePositionUploader { get; init; }
     public ICompletedSessionUploader? CompletedSessionUploader { get; init; }
+    public IPreflightChecker? PreflightChecker { get; init; }
     public ICompletedSessionSyncService? CompletedSessionSyncService { get; init; }
     public BackgroundSyncCoordinator? BackgroundSyncCoordinator { get; init; }
     public IActiveFlightFetcher? ActiveFlightFetcher { get; init; }

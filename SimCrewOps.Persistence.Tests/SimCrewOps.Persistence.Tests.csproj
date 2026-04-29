@@ -17,7 +17,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SimCrewOps.Persistence\SimCrewOps.Persistence.csproj" />
-    <ProjectReference Include="..\SimCrewOps.Runways\SimCrewOps.Runways.csproj" />
     <ProjectReference Include="..\SimCrewOps.Runtime\SimCrewOps.Runtime.csproj" />
     <ProjectReference Include="..\SimCrewOps.Scoring\SimCrewOps.Scoring.csproj" />
     <ProjectReference Include="..\SimCrewOps.Tracking\SimCrewOps.Tracking.csproj" />

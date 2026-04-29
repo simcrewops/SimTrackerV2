@@ -1,9 +1,8 @@
 using System.Diagnostics;
 using SimCrewOps.PhaseEngine.Models;
 using SimCrewOps.PhaseEngine.PhaseEngine;
-using SimCrewOps.Runways.Models;
-using SimCrewOps.Runways.Services;
 using SimCrewOps.Runtime.Models;
+using SimCrewOps.Scoring.Models;
 using SimCrewOps.Scoring.Scoring;
 using SimCrewOps.Tracking.Models;
 using SimCrewOps.Tracking.Tracking;
@@ -12,16 +11,23 @@ namespace SimCrewOps.Runtime.Runtime;
 
 public sealed class RuntimeCoordinator
 {
+    // Threshold above which an inter-frame position jump is treated as a sim reposition
+    // rather than normal flight. 1 nm ≈ 6,076 ft — impossible in a single telemetry poll
+    // (~200 ms) even for supersonic aircraft.
+    private const double RepositionThresholdNm = 1.0;
+
     private FlightSessionContext _context;
-    private readonly FlightPhaseEngine _phaseEngine;
-    private readonly FlightSessionScoringTracker _scoringTracker;
+    private FlightPhaseEngine _phaseEngine;
+    private FlightSessionScoringTracker _scoringTracker;
     private readonly ScoringEngine _scoringEngine;
-    private readonly RunwayResolver _runwayResolver;
     private ILivePositionUploader? _livePositionUploader;
 
     private FlightSessionBlockTimes _blockTimes = new();
-    private RunwayResolutionResult? _landingRunwayResolution;
     private TelemetryFrame? _lastTelemetryFrame;
+
+    // Beacon state — cursor is only advanced inside SendLivePositionAsync after confirmed success,
+    // so a failed send does not suppress the next retry attempt.
+    private bool _beaconInitialized;
     private DateTimeOffset? _lastLivePositionSentUtc;
     private double? _lastLivePositionLatitude;
     private double? _lastLivePositionLongitude;
@@ -34,17 +40,14 @@ public sealed class RuntimeCoordinator
 
     public RuntimeCoordinator(
         FlightSessionContext context,
-        RunwayResolver runwayResolver,
         ILivePositionUploader? livePositionUploader = null,
         FlightPhaseEngine? phaseEngine = null,
         FlightSessionScoringTracker? scoringTracker = null,
         ScoringEngine? scoringEngine = null)
     {
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(runwayResolver);
 
         _context = context;
-        _runwayResolver = runwayResolver;
         _livePositionUploader = livePositionUploader;
         _phaseEngine = phaseEngine ?? new FlightPhaseEngine();
         _scoringTracker = scoringTracker ?? new FlightSessionScoringTracker(context.Profile);
@@ -77,17 +80,38 @@ public sealed class RuntimeCoordinator
         }
     }
 
+    /// <summary>
+    /// Resets the session to a clean Preflight state without losing the current flight context
+    /// (departure/arrival ICAO, flight number, etc.).  Called automatically when a sim
+    /// reposition is detected, or explicitly by the pilot via the Reset button.
+    /// </summary>
+    public void Reset()
+    {
+        _blockTimes = new FlightSessionBlockTimes();
+        _lastTelemetryFrame = null;
+        _beaconInitialized = false;
+        _lastLivePositionSentUtc = null;
+        _lastLivePositionLatitude = null;
+        _lastLivePositionLongitude = null;
+
+        // Replace rather than reset — avoids needing a Reset() on FlightSessionScoringTracker
+        // which would otherwise have to zero out dozens of fields and risk missing new ones.
+        _phaseEngine = new FlightPhaseEngine();
+        _scoringTracker = new FlightSessionScoringTracker(_context.Profile);
+    }
+
     public void Restore(FlightSessionRuntimeState state)
     {
         ArgumentNullException.ThrowIfNull(state);
 
         _context = state.Context;
         _blockTimes = state.BlockTimes;
-        _landingRunwayResolution = state.LandingRunwayResolution;
         _lastTelemetryFrame = state.LastTelemetryFrame;
         _lastLivePositionSentUtc = null;
         _lastLivePositionLatitude = state.LastTelemetryFrame?.Latitude;
         _lastLivePositionLongitude = state.LastTelemetryFrame?.Longitude;
+        // Restored sessions know their position already — beacon can fire on the next frame.
+        _beaconInitialized = state.LastTelemetryFrame is not null;
 
         _phaseEngine.Restore(
             state.CurrentPhase,
@@ -103,25 +127,36 @@ public sealed class RuntimeCoordinator
             state.BlockTimes.WheelsOnUtc);
     }
 
-    public async Task<RuntimeFrameResult> ProcessFrameAsync(
+    public Task<RuntimeFrameResult> ProcessFrameAsync(
         TelemetryFrame telemetryFrame,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(telemetryFrame);
 
-        var phaseFrame = _phaseEngine.Process(telemetryFrame);
-        var enrichedTelemetryFrame = await EnrichTelemetryFrameAsync(phaseFrame, cancellationToken).ConfigureAwait(false);
-        var enrichedPhaseFrame = new PhaseFrame
+        // ── Reposition detection ─────────────────────────────────────────────────
+        // If the aircraft's position jumps more than RepositionThresholdNm between
+        // consecutive frames (impossible at any realistic aircraft speed during a
+        // ~200 ms poll interval), treat it as a sim "Set on Ground" or world-map
+        // reposition and wipe the session so it doesn't record a phantom flight.
+        // Guard against (0, 0) frames that SimConnect can emit before GPS is ready.
+        var wasRepositionReset = false;
+        if (_lastTelemetryFrame is not null
+            && (_lastTelemetryFrame.Latitude != 0.0 || _lastTelemetryFrame.Longitude != 0.0)
+            && (telemetryFrame.Latitude != 0.0 || telemetryFrame.Longitude != 0.0)
+            && CalculateDistanceNm(
+                   _lastTelemetryFrame.Latitude, _lastTelemetryFrame.Longitude,
+                   telemetryFrame.Latitude,      telemetryFrame.Longitude) > RepositionThresholdNm)
         {
-            Raw = enrichedTelemetryFrame,
-            Phase = phaseFrame.Phase,
-            BlockEvent = phaseFrame.BlockEvent,
-        };
+            Reset();
+            wasRepositionReset = true;
+        }
 
-        var labelledFrame = enrichedTelemetryFrame with { Phase = enrichedPhaseFrame.Phase };
+        var phaseFrame = _phaseEngine.Process(telemetryFrame);
+        var labelledFrame = telemetryFrame with { Phase = phaseFrame.Phase };
+
         _scoringTracker.Ingest(labelledFrame);
         _lastTelemetryFrame = labelledFrame;
-        CaptureBlockEvent(enrichedPhaseFrame.BlockEvent);
+        CaptureBlockEvent(phaseFrame.BlockEvent);
         TryDispatchLivePosition(labelledFrame, cancellationToken);
 
         var scoreInput = _scoringTracker.BuildScoreInput();
@@ -130,45 +165,34 @@ public sealed class RuntimeCoordinator
         var state = new FlightSessionRuntimeState
         {
             Context = _context,
-            CurrentPhase = enrichedPhaseFrame.Phase,
+            CurrentPhase = phaseFrame.Phase,
             BlockTimes = _blockTimes,
             LastTelemetryFrame = _lastTelemetryFrame,
-            LandingRunwayResolution = _landingRunwayResolution,
             ScoreInput = scoreInput,
             ScoreResult = scoreResult,
         };
 
-        return new RuntimeFrameResult
+        return Task.FromResult(new RuntimeFrameResult
         {
-            PhaseFrame = enrichedPhaseFrame,
+            PhaseFrame = phaseFrame,
             EnrichedTelemetryFrame = labelledFrame,
-            RunwayResolution = _landingRunwayResolution,
             State = state,
-        };
+            WasRepositionReset = wasRepositionReset,
+        });
     }
 
-    private async Task<TelemetryFrame> EnrichTelemetryFrameAsync(PhaseFrame phaseFrame, CancellationToken cancellationToken)
+    /// <summary>
+    /// Haversine great-circle distance between two WGS-84 coordinates, in nautical miles.
+    /// </summary>
+    private static double CalculateDistanceNm(double lat1, double lon1, double lat2, double lon2)
     {
-        if (phaseFrame.BlockEvent?.Type == BlockEventType.WheelsOn &&
-            !string.IsNullOrWhiteSpace(_context.ArrivalAirportIcao))
-        {
-            _landingRunwayResolution = await _runwayResolver.ResolveAsync(
-                new RunwayResolutionRequest
-                {
-                    ArrivalAirportIcao = _context.ArrivalAirportIcao!,
-                    TouchdownLatitude = phaseFrame.Raw.Latitude,
-                    TouchdownLongitude = phaseFrame.Raw.Longitude,
-                    TouchdownHeadingTrueDegrees = phaseFrame.Raw.HeadingTrueDegrees,
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        var touchdownZoneExcess = phaseFrame.Raw.TouchdownZoneExcessDistanceFeet
-            ?? _landingRunwayResolution?.Projection.TouchdownZoneExcessDistanceFeet;
-
-        return touchdownZoneExcess == phaseFrame.Raw.TouchdownZoneExcessDistanceFeet
-            ? phaseFrame.Raw
-            : phaseFrame.Raw with { TouchdownZoneExcessDistanceFeet = touchdownZoneExcess };
+        const double EarthRadiusNm = 3440.065;
+        var dLat = (lat2 - lat1) * Math.PI / 180.0;
+        var dLon = (lon2 - lon1) * Math.PI / 180.0;
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2)
+              + Math.Cos(lat1 * Math.PI / 180.0) * Math.Cos(lat2 * Math.PI / 180.0)
+              * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        return EarthRadiusNm * 2.0 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1.0 - a));
     }
 
     private void CaptureBlockEvent(BlockEvent? blockEvent)
@@ -182,76 +206,97 @@ public sealed class RuntimeCoordinator
         {
             BlockEventType.BlocksOff => _blockTimes with { BlocksOffUtc = blockEvent.TimestampUtc },
             BlockEventType.WheelsOff => _blockTimes with { WheelsOffUtc = blockEvent.TimestampUtc },
-            BlockEventType.WheelsOn => _blockTimes with { WheelsOnUtc = blockEvent.TimestampUtc },
-            BlockEventType.BlocksOn => _blockTimes with { BlocksOnUtc = blockEvent.TimestampUtc },
+            BlockEventType.WheelsOn  => _blockTimes with { WheelsOnUtc  = blockEvent.TimestampUtc },
+            BlockEventType.BlocksOn  => _blockTimes with { BlocksOnUtc  = blockEvent.TimestampUtc },
             _ => _blockTimes,
         };
     }
 
     private void TryDispatchLivePosition(TelemetryFrame telemetryFrame, CancellationToken cancellationToken)
     {
-        // Upload whenever we have a valid uploader and GPS data — no longer gated on
-        // IsActiveFlight().  The previous gate required BlocksOffUtc to be set, which
-        // meant position never uploaded if the tracker started mid-flight (e.g. after
-        // an auto-update restart) or if blocks-off was missed.
         if (_livePositionUploader is null)
+            return;
+
+        // Ignore (0,0) frames that SimConnect emits before GPS is ready.
+        if (telemetryFrame.Latitude == 0.0 && telemetryFrame.Longitude == 0.0)
+            return;
+
+        if (!_beaconInitialized)
         {
+            // First valid GPS frame: seed the position reference so subsequent movement
+            // checks have a baseline. Do NOT send on this frame — wait for the second
+            // confirmed frame to avoid beaconing on a stale "cold start" position.
+            _lastLivePositionLatitude  = telemetryFrame.Latitude;
+            _lastLivePositionLongitude = telemetryFrame.Longitude;
+            _beaconInitialized = true;
             return;
         }
 
-        var hasMovedEnough = _lastLivePositionLatitude is null ||
-            _lastLivePositionLongitude is null ||
-            Math.Abs(telemetryFrame.Latitude - _lastLivePositionLatitude.Value) > 0.0001 ||
-            Math.Abs(telemetryFrame.Longitude - _lastLivePositionLongitude.Value) > 0.0001;
+        // Stop beaconing once the session is fully complete (BlocksOn received in Arrival phase).
+        if (telemetryFrame.Phase == FlightPhase.Arrival && _blockTimes.BlocksOnUtc is not null)
+            return;
+
+        var hasMovedEnough =
+            Math.Abs(telemetryFrame.Latitude  - (_lastLivePositionLatitude  ?? telemetryFrame.Latitude))  > 0.0001 ||
+            Math.Abs(telemetryFrame.Longitude - (_lastLivePositionLongitude ?? telemetryFrame.Longitude)) > 0.0001;
 
         var elapsed = _lastLivePositionSentUtc is null
             ? TimeSpan.MaxValue
             : telemetryFrame.TimestampUtc - _lastLivePositionSentUtc.Value;
 
         if (!hasMovedEnough && elapsed < TimeSpan.FromSeconds(4))
-        {
             return;
-        }
-
-        _lastLivePositionSentUtc = telemetryFrame.TimestampUtc;
-        _lastLivePositionLatitude = telemetryFrame.Latitude;
-        _lastLivePositionLongitude = telemetryFrame.Longitude;
 
         var payload = new LivePositionPayload
         {
-            Latitude = telemetryFrame.Latitude,
-            Longitude = telemetryFrame.Longitude,
-            HeadingMagnetic = telemetryFrame.HeadingMagneticDegrees,
-            AltitudeFt = telemetryFrame.AltitudeFeet,
-            AltitudeAglFt = telemetryFrame.AltitudeAglFeet,
+            Latitude             = telemetryFrame.Latitude,
+            Longitude            = telemetryFrame.Longitude,
+            HeadingMagnetic      = telemetryFrame.HeadingMagneticDegrees,
+            AltitudeFt           = telemetryFrame.AltitudeFeet,
+            AltitudeAglFt        = telemetryFrame.AltitudeAglFeet,
             IndicatedAirspeedKts = telemetryFrame.IndicatedAirspeedKnots,
-            GroundSpeedKts = telemetryFrame.GroundSpeedKnots,
-            VerticalSpeedFpm = telemetryFrame.VerticalSpeedFpm,
-            Phase = telemetryFrame.Phase.ToString(),
-            FlightMode = _context.FlightMode,
-            BidId = string.IsNullOrWhiteSpace(_context.BidId) ? null : _context.BidId,
-            Departure      = _context.DepartureAirportIcao,
-            Arrival        = _context.ArrivalAirportIcao,
-            FlightNumber   = _context.FlightNumber,
-            Aircraft       = _context.AircraftType,
-            AircraftCategory = _context.AircraftCategory,
+            GroundSpeedKts       = telemetryFrame.GroundSpeedKnots,
+            VerticalSpeedFpm     = telemetryFrame.VerticalSpeedFpm,
+            Phase                = telemetryFrame.Phase.ToString(),
+            FlightMode           = _context.FlightMode,
+            BidId                = string.IsNullOrWhiteSpace(_context.BidId) ? null : _context.BidId,
+            Departure            = _context.DepartureAirportIcao,
+            Arrival              = _context.ArrivalAirportIcao,
+            FlightNumber         = _context.FlightNumber,
+            Aircraft             = _context.AircraftType,
+            AircraftCategory     = _context.AircraftCategory,
         };
 
-        _ = SendLivePositionAsync(payload, cancellationToken);
+        // Cursor is NOT advanced here — SendLivePositionAsync advances it only on confirmed success.
+        // This means a failed send does not suppress the next retry.
+        _ = SendLivePositionAsync(
+            payload,
+            telemetryFrame.TimestampUtc,
+            telemetryFrame.Latitude,
+            telemetryFrame.Longitude,
+            cancellationToken);
     }
 
-    private async Task SendLivePositionAsync(LivePositionPayload payload, CancellationToken cancellationToken)
+    private async Task SendLivePositionAsync(
+        LivePositionPayload payload,
+        DateTimeOffset timestamp,
+        double lat,
+        double lon,
+        CancellationToken cancellationToken)
     {
         if (_livePositionUploader is null)
-        {
             return;
-        }
 
         try
         {
             var ok = await _livePositionUploader.SendPositionAsync(payload, cancellationToken).ConfigureAwait(false);
             if (ok)
+            {
+                _lastLivePositionSentUtc = timestamp;
+                _lastLivePositionLatitude = lat;
+                _lastLivePositionLongitude = lon;
                 LastSuccessfulUploadUtc = DateTimeOffset.UtcNow;
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -259,16 +304,13 @@ public sealed class RuntimeCoordinator
         }
     }
 
-    private bool IsActiveFlight() =>
-        _blockTimes.BlocksOffUtc is not null && _blockTimes.BlocksOnUtc is null;
-
     private static IReadOnlyList<BlockEvent> BuildRestoredBlockEvents(FlightSessionRuntimeState state)
     {
         var events = new List<BlockEvent>(capacity: 4);
         AddBlockEvent(events, BlockEventType.BlocksOff, state.BlockTimes.BlocksOffUtc, state.LastTelemetryFrame);
         AddBlockEvent(events, BlockEventType.WheelsOff, state.BlockTimes.WheelsOffUtc, state.LastTelemetryFrame);
-        AddBlockEvent(events, BlockEventType.WheelsOn, state.BlockTimes.WheelsOnUtc, state.LastTelemetryFrame);
-        AddBlockEvent(events, BlockEventType.BlocksOn, state.BlockTimes.BlocksOnUtc, state.LastTelemetryFrame);
+        AddBlockEvent(events, BlockEventType.WheelsOn,  state.BlockTimes.WheelsOnUtc,  state.LastTelemetryFrame);
+        AddBlockEvent(events, BlockEventType.BlocksOn,  state.BlockTimes.BlocksOnUtc,  state.LastTelemetryFrame);
         return events;
     }
 
@@ -279,15 +321,13 @@ public sealed class RuntimeCoordinator
         TelemetryFrame? referenceFrame)
     {
         if (timestampUtc is null)
-        {
             return;
-        }
 
         events.Add(new BlockEvent
         {
-            Type = type,
+            Type         = type,
             TimestampUtc = timestampUtc.Value,
-            LatitudeDeg = referenceFrame?.Latitude ?? 0,
+            LatitudeDeg  = referenceFrame?.Latitude  ?? 0,
             LongitudeDeg = referenceFrame?.Longitude ?? 0,
         });
     }

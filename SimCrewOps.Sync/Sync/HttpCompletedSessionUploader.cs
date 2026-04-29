@@ -49,10 +49,25 @@ public sealed class HttpCompletedSessionUploader : ICompletedSessionUploader
 
             if (response.StatusCode == HttpStatusCode.Created)
             {
+                SimSessionUploadResponse? uploadResponse = null;
+                try
+                {
+                    uploadResponse = await response.Content
+                        .ReadFromJsonAsync<SimSessionUploadResponse>(cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Ignore deserialization failures — treat as success without server result
+                }
+
                 return new CompletedSessionUploadResult
                 {
                     Status = SessionUploadStatus.Success,
                     StatusCode = (int)response.StatusCode,
+                    ServerSessionId = uploadResponse?.Id,
+                    CareerResult = uploadResponse?.Career,
+                    PostFlightStatus = uploadResponse?.PostFlight,
                 };
             }
 

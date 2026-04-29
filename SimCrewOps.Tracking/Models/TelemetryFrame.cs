@@ -17,6 +17,11 @@ public sealed record TelemetryFrame
     public double Mach { get; init; }
     public double GroundSpeedKnots { get; init; }
     public double VerticalSpeedFpm { get; init; }
+    /// <summary>
+    /// Physics-engine vertical velocity in ft/s (negative = descending, no barometric lag).
+    /// Sourced from VELOCITY WORLD Y.
+    /// </summary>
+    public double VelocityWorldYFps { get; init; }
     public double BankAngleDegrees { get; init; }
     public double PitchAngleDegrees { get; init; }
     public double HeadingMagneticDegrees { get; init; }
@@ -36,6 +41,9 @@ public sealed record TelemetryFrame
     public bool TaxiLightsOn { get; init; }
     public bool LandingLightsOn { get; init; }
     public bool StrobesOn { get; init; }
+
+    public double WindSpeedKnots { get; init; }
+    public double WindDirectionDegrees { get; init; }
 
     public bool CrashDetected { get; init; }
     public bool StallWarning { get; init; }

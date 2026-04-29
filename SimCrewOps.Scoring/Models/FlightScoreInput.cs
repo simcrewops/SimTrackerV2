@@ -13,6 +13,9 @@ public sealed record FlightScoreInput
     public TaxiInMetrics TaxiIn { get; init; } = new();
     public ArrivalMetrics Arrival { get; init; } = new();
     public SafetyMetrics Safety { get; init; } = new();
+    public LandingAnalysisData LandingAnalysis { get; init; } = new();
+    public IReadOnlyList<FlightPathPoint> FlightPath { get; init; } = [];
+    public IReadOnlyList<ApproachPathPoint> ApproachPath { get; init; } = [];
 }
 
 public sealed record PreflightMetrics
@@ -82,8 +85,10 @@ public sealed record LandingMetrics
     public double TouchdownBankAngleDegrees { get; init; }
     public double TouchdownIndicatedAirspeedKnots { get; init; }
     public double TouchdownPitchAngleDegrees { get; init; }
+    public double MaxPitchWhileWowDegrees { get; init; }
     public double TouchdownGForce { get; init; }
     public int BounceCount { get; init; }
+    public bool GearUpAtTouchdown { get; init; }
 }
 
 public sealed record TaxiInMetrics : TaxiMetrics
@@ -107,4 +112,32 @@ public sealed record SafetyMetrics
     public int StallEvents { get; init; }
     public int GpwsEvents { get; init; }
     public int EngineShutdownsInFlight { get; init; }
+}
+
+public sealed record LandingAnalysisData
+{
+    public double? TouchdownLat { get; init; }
+    public double? TouchdownLon { get; init; }
+    public double? TouchdownHeadingMagneticDeg { get; init; }
+    public double? TouchdownAltFt { get; init; }
+    public double? TouchdownIAS { get; init; }
+    public double? WindSpeedKnots { get; init; }
+    public double? WindDirectionDegrees { get; init; }
+}
+
+public sealed record FlightPathPoint
+{
+    public double Lat { get; init; }
+    public double Lon { get; init; }
+    public double AltFt { get; init; }
+    public double TMin { get; init; }
+}
+
+public sealed record ApproachPathPoint
+{
+    public double Lat { get; init; }
+    public double Lon { get; init; }
+    public double AltFt { get; init; }
+    public double IasKts { get; init; }
+    public double VsFpm { get; init; }
 }

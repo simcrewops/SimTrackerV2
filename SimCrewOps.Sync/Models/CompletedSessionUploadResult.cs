@@ -12,5 +12,7 @@ public sealed record CompletedSessionUploadResult
     public required SessionUploadStatus Status { get; init; }
     public int? StatusCode { get; init; }
     public string? ErrorMessage { get; init; }
-    public string? RemoteSessionId { get; init; }
+    public string? ServerSessionId { get; init; }
+    public CareerResultDto? CareerResult { get; init; }
+    public PostFlightStatusDto? PostFlightStatus { get; init; }
 }

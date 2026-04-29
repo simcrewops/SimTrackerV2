@@ -205,6 +205,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private nint _simConnectHandle;
     private LatestSimConnectState _latestState = new();
     private AircraftProfile _activeProfile = AircraftProfile.Default;
+    private string? _detectedAircraftTitle;
     private readonly MobiFlightBridge _mobiFlightBridge = new();
     private bool _disposed;
 
@@ -441,7 +442,14 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         var aircraftPath = state.StringValue ?? string.Empty;
         _activeProfile = AircraftProfileCatalog.MatchOrDefault(aircraftPath);
 
+        // Prefer the profile's declared ICAO type (e.g. "A319") when available —
+        // it's cleaner than anything we can parse from the raw file path or aircraft.cfg.
+        _detectedAircraftTitle = _activeProfile.IcaoType
+            ?? ReadTitleFromAircraftCfg(aircraftPath)
+            ?? ParseAircraftTitle(aircraftPath);
+
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Aircraft loaded: {aircraftPath}");
+        System.Diagnostics.Debug.WriteLine($"[SimConnect] Detected title : {_detectedAircraftTitle}");
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Active profile : {_activeProfile.Name}" +
             (_activeProfile.RequiresLvarBridge ? " (LVAR bridge required)" : string.Empty));
 
@@ -479,6 +487,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             ParkingBrakePosition = snapshot.ParkingBrakePosition,
             OnGround = onGround,
             CrashFlag = snapshot.CrashFlag,
+            VelocityWorldYFps = snapshot.VelocityWorldYFps,
         };
 
         EnqueueFrame();
@@ -555,9 +564,146 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             StallWarning = snapshot.StallWarning,
             GpwsAlert = snapshot.GpwsAlert,
             OverspeedWarning = snapshot.OverspeedWarning,
+            WindSpeedKnots = snapshot.WindSpeedKnots,
+            WindDirectionDegrees = snapshot.WindDirectionDegrees,
         };
 
         EnqueueFrame();
+    }
+
+    /// <summary>
+    /// Parses a user-friendly aircraft name from the MSFS AircraftLoaded path.
+    /// The path is a relative .air file location, e.g.:
+    /// Reads the human-readable aircraft title directly from the aircraft.cfg file
+    /// that MSFS reports in the AircraftLoaded system state.
+    ///
+    /// Looks for <c>title =</c> under the <c>[GENERAL]</c> section first, then falls
+    /// back to the first <c>[FLTSIM.x]</c> variant title. Returns null if the file
+    /// cannot be found or read (e.g. path is a .air file, not a .cfg).
+    /// </summary>
+    private static string? ReadTitleFromAircraftCfg(string aircraftPath)
+    {
+        try
+        {
+            // Build the .cfg path: use as-is if it already points to a .cfg,
+            // otherwise look for aircraft.cfg in the same directory.
+            string cfgPath;
+            if (aircraftPath.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase))
+            {
+                cfgPath = aircraftPath;
+            }
+            else
+            {
+                var dir = Path.GetDirectoryName(aircraftPath);
+                if (string.IsNullOrEmpty(dir)) return null;
+                cfgPath = Path.Combine(dir, "aircraft.cfg");
+            }
+
+            if (!File.Exists(cfgPath)) return null;
+
+            string? generalTitle = null;
+            string? firstFltsimTitle = null;
+            var inGeneral = false;
+            var inFirstFltsim = false;
+            var fltsimSeen = false;
+
+            // Read only up to 300 lines — the GENERAL section is always near the top.
+            var lineCount = 0;
+            foreach (var rawLine in File.ReadLines(cfgPath))
+            {
+                if (++lineCount > 300) break;
+
+                var line = rawLine.Trim();
+                if (line.Length == 0 || line[0] == ';') continue;
+
+                if (line[0] == '[')
+                {
+                    inGeneral     = line.Equals("[GENERAL]",  StringComparison.OrdinalIgnoreCase);
+                    inFirstFltsim = !fltsimSeen &&
+                                    line.StartsWith("[FLTSIM.", StringComparison.OrdinalIgnoreCase);
+                    if (inFirstFltsim) fltsimSeen = true;
+                    continue;
+                }
+
+                if ((inGeneral || inFirstFltsim) && line.StartsWith("title", StringComparison.OrdinalIgnoreCase))
+                {
+                    var eq = line.IndexOf('=');
+                    if (eq < 0) continue;
+
+                    var value = line[(eq + 1)..].Trim().Trim('"');
+                    if (string.IsNullOrWhiteSpace(value)) continue;
+
+                    if (inGeneral)       { generalTitle    = value; break; }
+                    if (inFirstFltsim)   { firstFltsimTitle = value; }
+                }
+
+                // Once we have both candidates stop early.
+                if (generalTitle is not null && firstFltsimTitle is not null) break;
+            }
+
+            return generalTitle ?? firstFltsimTitle;
+        }
+        catch
+        {
+            return null; // File locked, path invalid, etc. — fall through to path parsing.
+        }
+    }
+
+    /// <summary>
+    ///   "Community\fenix-a319\Aircraft\A319\fenix_a319.air"              → "fenix-a319"
+    ///   "Official\OneStore\asobo-aircraft-a320neo\...\aircraft.cfg"      → "asobo-aircraft-a320neo"
+    ///   "Official\Base\asobo-aircraft-a320neo\...\config\aircraft.cfg"   → "asobo-aircraft-a320neo"
+    ///   "SimObjects\Airplanes\Asobo_B787_10\B787_10.air"                 → "Asobo_B787_10"
+    /// </summary>
+    private static string? ParseAircraftTitle(string aircraftPath)
+    {
+        if (string.IsNullOrWhiteSpace(aircraftPath))
+            return null;
+
+        var parts = aircraftPath
+            .Replace('/', '\\')
+            .Split('\\', StringSplitOptions.RemoveEmptyEntries);
+
+        // ── Primary scan: package folder structure ─────────────────────────────
+        // MSFS path layouts:
+        //   ...\Packages\Community\<package>\...          → parts[i+1] after "Community"
+        //   ...\Packages\Official\<channel>\<package>\... → parts[i+2] after "Official"
+        //     where <channel> is OneStore | Steam | Base | Marketplace | etc.
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            if (string.Equals(parts[i], "Community", StringComparison.OrdinalIgnoreCase))
+                return parts[i + 1];
+
+            if (string.Equals(parts[i], "Official", StringComparison.OrdinalIgnoreCase)
+                && i + 2 < parts.Length)
+                return parts[i + 2];
+        }
+
+        // ── Secondary scan: SimObjects vehicle container ───────────────────────
+        // Relative paths that skip the package root (e.g. "SimObjects\Airplanes\Asobo_B787_10\...").
+        // The aircraft folder name sits immediately after the vehicle-type directory.
+        var vehicleContainers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Airplanes", "Helicopters", "Rotorcraft", "Boats", "GroundVehicles" };
+
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            if (vehicleContainers.Contains(parts[i]))
+                return parts[i + 1];
+        }
+
+        // ── Final fallback: walk from the end, skip files and generic folders ──
+        var genericFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "config", "data", "sounds", "texture", "model", "panel", "effects", "SimObjects" };
+
+        for (var i = parts.Length - 1; i >= 0; i--)
+        {
+            var seg = parts[i];
+            if (seg.Contains('.')) continue;           // skip files (.air, .cfg, …)
+            if (genericFolders.Contains(seg)) continue; // skip generic sub-folders
+            return seg;
+        }
+
+        return null;
     }
 
     private void EnqueueFrame()
@@ -609,9 +755,13 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             Engine2Running = _latestState.Engine2Running,
             Engine3Running = _latestState.Engine3Running,
             Engine4Running = _latestState.Engine4Running,
+            VelocityWorldYFps   = _latestState.VelocityWorldYFps,
+            WindSpeedKnots      = _latestState.WindSpeedKnots,
+            WindDirectionDegrees = _latestState.WindDirectionDegrees,
             ActiveProfileName   = _activeProfile.Name,
             LvarBridgeRequired  = _activeProfile.RequiresLvarBridge,
             LvarBridgeConnected = _mobiFlightBridge.IsActive,
+            AircraftTitle       = _detectedAircraftTitle,
         });
     }
 
@@ -686,6 +836,9 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly double ParkingBrakePosition;  // bool SimVar → 0.0 or 1.0
         public readonly double OnGround;              // SIM ON GROUND → 0.0 or 1.0
         public readonly double CrashFlag;             // bool SimVar → 0.0 or 1.0
+        // Physics-engine vertical velocity (ft/s, negative = descending, no barometric lag).
+        // Must stay last to match velocity_world_y appended at the end of FlightCriticalVariables.
+        public readonly double VelocityWorldYFps;
     }
 
     // All fields are double — uniform 8-byte layout, no mixed-type alignment issues.
@@ -711,6 +864,8 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly double StallWarning;
         public readonly double GpwsAlert;
         public readonly double OverspeedWarning;
+        public readonly double WindSpeedKnots;
+        public readonly double WindDirectionDegrees;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -804,6 +959,9 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public double Engine2Running { get; init; }
         public double Engine3Running { get; init; }
         public double Engine4Running { get; init; }
+        public double VelocityWorldYFps { get; init; }
+        public double WindSpeedKnots { get; init; }
+        public double WindDirectionDegrees { get; init; }
     }
 }
 

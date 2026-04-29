@@ -117,6 +117,9 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _landingPitchAngle = "--";
     private string _landingTzExcess = "--";
     private bool _autoFailBannerVisible;
+    private bool _groundedBannerVisible;
+    private string _groundedBannerText = string.Empty;
+    private string _pilotIdentityText = string.Empty;
     private Brush _runwayMarkerBrush = new SolidColorBrush(MediaColor.FromRgb(63, 185, 80));
     private Thickness _runwayMarkerMargin = new Thickness(40, 2, 0, 2);
     private double _runwayTdzWidth = 60.0;
@@ -162,6 +165,9 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _liveSyncStatusText = "NOT CONNECTED";
     private Brush _liveSyncStatusBrush = new SolidColorBrush(MediaColor.FromRgb(90, 106, 112));
 
+    // Tracks the last auto-reset so the notification banner stays visible for a few seconds.
+    private DateTimeOffset? _lastAutoResetNotificationUtc;
+
     public MainWindowViewModel(TrackerShellBootstrapResult bootstrap)
     {
         ArgumentNullException.ThrowIfNull(bootstrap);
@@ -195,6 +201,7 @@ public sealed class MainWindowViewModel : ObservableObject
         }
         RetrySyncCommand = new RelayCommand(() => _ = RetrySyncAsync());
         SaveSettingsCommand = new RelayCommand(() => _ = SaveSettingsAsync());
+        ResetSessionCommand = new RelayCommand(() => _ = ResetSessionAsync());
 
         _pollingTimer = new DispatcherTimer
         {
@@ -243,6 +250,12 @@ public sealed class MainWindowViewModel : ObservableObject
     }
     public RelayCommand RetrySyncCommand { get; }
     public RelayCommand SaveSettingsCommand { get; }
+
+    /// <summary>
+    /// Resets the current session to Preflight without losing departure/arrival context.
+    /// Bound to a "Reset Flight" button in the dashboard header.
+    /// </summary>
+    public RelayCommand ResetSessionCommand { get; }
     public RelayCommand OpenAccountSettingsCommand { get; } = new RelayCommand(() =>
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
@@ -559,6 +572,24 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         get => _autoFailBannerVisible;
         private set => SetProperty(ref _autoFailBannerVisible, value);
+    }
+
+    public bool GroundedBannerVisible
+    {
+        get => _groundedBannerVisible;
+        private set => SetProperty(ref _groundedBannerVisible, value);
+    }
+
+    public string GroundedBannerText
+    {
+        get => _groundedBannerText;
+        private set => SetProperty(ref _groundedBannerText, value);
+    }
+
+    public string PilotIdentityText
+    {
+        get => _pilotIdentityText;
+        private set => SetProperty(ref _pilotIdentityText, value);
     }
 
     public Brush RunwayMarkerBrush
@@ -902,6 +933,20 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         ApplySnapshot(snapshot);
+
+        // Fire preflight check on startup; gates session scoring if grounded.
+        _ = Task.Run(async () =>
+        {
+            var preflight = await _shellHost.CheckPreflightAsync();
+            if (preflight is not null)
+            {
+                App.Current.Dispatcher.Invoke(() =>
+                {
+                    ApplyPreflightStatus(preflight);
+                });
+            }
+        });
+
         await RefreshAsync();
         _pollingTimer.Start();
     }
@@ -941,6 +986,13 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             ApplySnapshot(await _shellHost.PollAsync());
         }
+    }
+
+    private async Task ResetSessionAsync()
+    {
+        var snapshot = await _shellHost.ResetSessionAsync();
+        _lastAutoResetNotificationUtc = DateTimeOffset.UtcNow;
+        ApplySnapshot(snapshot);
     }
 
     /// <summary>
@@ -1055,7 +1107,7 @@ public sealed class MainWindowViewModel : ObservableObject
         DepartureName = string.Empty;
         ArrivalIcao = activeState?.Context.ArrivalAirportIcao?.ToUpperInvariant() ?? "----";
         ArrivalName = string.Empty;
-        AircraftType = BuildAircraftTypeDisplay(activeState);
+        AircraftType = BuildAircraftTypeDisplay(activeState, snapshot.LastRawTelemetryFrame);
 
         BeaconLightOn = telemetry?.BeaconLightOn == true;
         TaxiLightOn = telemetry?.TaxiLightsOn == true;
@@ -1074,13 +1126,10 @@ public sealed class MainWindowViewModel : ObservableObject
         TouchdownGForce = landingMetrics is not null ? $"{landingMetrics.TouchdownGForce:0.00}" : "--";
         TouchdownBounces = landingMetrics is not null ? $"{landingMetrics.BounceCount}" : "--";
 
-        var runway = activeState?.LandingRunwayResolution;
-        LandingRunway = runway is not null ? $"{runway.AirportIcao} {runway.Runway.RunwayIdentifier}" : string.Empty;
-        TdzDistanceFt = runway is not null ? $"{runway.Projection.DistanceFromThresholdFeet:0}" : "--";
-        TdzCrossTrackFt = runway is not null ? $"{Math.Abs(runway.Projection.CrossTrackDistanceFeet):0}" : "--";
-        TdzExcessFt = runway is not null && runway.Projection.TouchdownZoneExcessDistanceFeet > 0
-            ? $"{runway.Projection.TouchdownZoneExcessDistanceFeet:0}"
-            : "0";
+        LandingRunway = string.Empty;
+        TdzDistanceFt = "--";
+        TdzCrossTrackFt = "--";
+        TdzExcessFt = "0";
 
         var score = activeState?.ScoreResult.FinalScore ?? 88;
         ScoreBarWidth = Math.Clamp(score / 100.0 * 200.0, 0, 200);
@@ -1105,16 +1154,45 @@ public sealed class MainWindowViewModel : ObservableObject
         PopulateStatusChips(phase, telemetry);
         PopulateScoreRows(activeState?.ScoreResult);
 
-        ScoreText = activeState?.ScoreResult.FinalScore.ToString("0", CultureInfo.InvariantCulture) ?? "--";
-        GradeText = activeState?.ScoreResult.Grade is { Length: > 0 } grade ? $"Grade {grade}" : "Grade --";
-        ScoreSummary = activeState is null
-            ? "No score available until a live session is in progress."
-            : $"Phase subtotal {activeState.ScoreResult.PhaseSubtotal:0.#} with global deductions {activeState.ScoreResult.GlobalDeductions:0.#}.";
+        if (snapshot.ServerCareerResult is { } career)
+        {
+            // Server is authoritative once the session is uploaded.
+            ScoreText = career.Score.ToString("0", CultureInfo.InvariantCulture);
+            GradeText = string.IsNullOrWhiteSpace(career.Grade) ? "Grade --" : $"Grade {career.Grade}";
+            ScoreSummary = $"Server score: {career.Score:0.#}  |  +{career.HoursAdded:0.##} hrs  |  +${career.Pay:0}";
+        }
+        else
+        {
+            ScoreText = activeState?.ScoreResult.FinalScore.ToString("0", CultureInfo.InvariantCulture) ?? "--";
+            GradeText = activeState?.ScoreResult.Grade is { Length: > 0 } grade ? $"Grade {grade} (est)" : "Grade --";
+            ScoreSummary = activeState is null
+                ? "No score available until a live session is in progress."
+                : $"Estimated — phase subtotal {activeState.ScoreResult.PhaseSubtotal:0.#} with global deductions {activeState.ScoreResult.GlobalDeductions:0.#}.";
+        }
 
-        AlertPrimaryTitle = activeState is null
+        // Post-flight grounded banner (shown immediately after upload confirms a new strike).
+        if (snapshot.PostFlightStatus?.IsGrounded == true)
+        {
+            GroundedBannerVisible = true;
+            GroundedBannerText = $"Grounded — {snapshot.PostFlightStatus.StrikeAction ?? "Check simcrewops.com for details."}";
+        }
+
+        // Surface auto-reset notification for 5 seconds after a reposition or manual reset.
+        if (snapshot.AutoResetOccurredUtc is not null)
+        {
+            _lastAutoResetNotificationUtc = snapshot.AutoResetOccurredUtc;
+        }
+        var showResetNotification = _lastAutoResetNotificationUtc is not null
+            && DateTimeOffset.UtcNow - _lastAutoResetNotificationUtc < TimeSpan.FromSeconds(5);
+
+        AlertPrimaryTitle = showResetNotification
+            ? "SESSION RESET"
+            : activeState is null
             ? "Waiting for telemetry"
             : phase == FlightPhase.Approach ? "Stable by 500 AGL" : "Live phase monitoring";
-        AlertPrimaryBody = activeState is null
+        AlertPrimaryBody = showResetNotification
+            ? "Reposition detected — recording cleared. You're back to Preflight."
+            : activeState is null
             ? "The tracker will populate live alerts once SimConnect data is flowing."
             : phase == FlightPhase.Approach
             ? "VS, gear, and flap state actively monitored."
@@ -1207,6 +1285,28 @@ public sealed class MainWindowViewModel : ObservableObject
             DiagnosticsTelemetryFlow = "Enable telemetry diagnostics to inspect raw SimConnect frame flow.";
             DiagnosticsTelemetryCounters = "Poll, null-frame, and mapping counters will appear here.";
             DiagnosticsRawTelemetry = "Raw SimConnect values will appear here when telemetry diagnostics are enabled.";
+        }
+    }
+
+    private void ApplyPreflightStatus(SimCrewOps.Sync.Models.PreflightStatusResponse status)
+    {
+        var displayName = status.PilotDisplayName ?? status.PilotUsername;
+        var rank = status.Rank;
+        PilotIdentityText = !string.IsNullOrWhiteSpace(displayName)
+            ? (string.IsNullOrWhiteSpace(rank) ? displayName : $"{displayName} · {rank}")
+            : string.Empty;
+
+        if (status.IsGrounded)
+        {
+            GroundedBannerVisible = true;
+            GroundedBannerText = string.IsNullOrWhiteSpace(status.GroundingAction)
+                ? $"Grounded: {status.GroundingReason ?? "See simcrewops.com for details."}"
+                : $"Grounded: {status.GroundingReason}  •  {status.GroundingAction}";
+        }
+        else
+        {
+            GroundedBannerVisible = false;
+            GroundedBannerText = string.Empty;
         }
     }
 
@@ -1654,8 +1754,16 @@ public sealed class MainWindowViewModel : ObservableObject
             : "Free Flight";
     }
 
-    private static string BuildAircraftTypeDisplay(FlightSessionRuntimeState? activeState)
+    private static string BuildAircraftTypeDisplay(
+        FlightSessionRuntimeState? activeState,
+        SimConnectRawTelemetryFrame? rawFrame)
     {
+        // Prefer the ICAO type detected from the loaded aircraft file path.
+        if (!string.IsNullOrWhiteSpace(rawFrame?.ActiveProfileIcaoType))
+        {
+            return rawFrame.ActiveProfileIcaoType;
+        }
+
         if (activeState is null)
         {
             return "—";

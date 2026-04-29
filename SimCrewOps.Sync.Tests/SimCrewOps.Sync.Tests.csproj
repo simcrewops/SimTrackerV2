@@ -16,6 +16,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Fixtures\*.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\SimCrewOps.Persistence\SimCrewOps.Persistence.csproj" />
     <ProjectReference Include="..\SimCrewOps.Runtime\SimCrewOps.Runtime.csproj" />
     <ProjectReference Include="..\SimCrewOps.Scoring\SimCrewOps.Scoring.csproj" />

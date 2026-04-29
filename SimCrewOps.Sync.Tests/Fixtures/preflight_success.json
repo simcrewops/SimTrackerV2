@@ -1,0 +1,13 @@
+{
+  "pilotUsername": "citationx8",
+  "pilotDisplayName": "CitationX8",
+  "rank": "Captain",
+  "isGrounded": false,
+  "groundingReason": null,
+  "groundingAction": null,
+  "strikeId": null,
+  "strikeType": null,
+  "inCrewRest": false,
+  "crewRestEndsAt": null,
+  "checkedAt": "2026-04-29T01:00:00.000Z"
+}
