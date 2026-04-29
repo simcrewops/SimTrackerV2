@@ -7,7 +7,7 @@ namespace SimCrewOps.Sync.Sync;
 
 public sealed class HttpPreflightChecker : IPreflightChecker
 {
-    internal const string PreflightPath = "/api/pilot/preflight";
+    public const string PreflightPath = "/api/pilot/preflight";
 
     private readonly HttpClient _httpClient;
     private readonly SimCrewOpsApiUploaderOptions _options;
