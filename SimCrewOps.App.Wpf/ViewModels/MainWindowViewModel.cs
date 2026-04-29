@@ -43,6 +43,10 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private readonly TrackerShellHost _shellHost;
     private readonly DispatcherTimer _pollingTimer;
+    private readonly DispatcherTimer _updateCheckTimer;
+    private readonly UpdateChecker _updateChecker;
+    private readonly AppUpdater _appUpdater;
+    private UpdateInfo? _pendingUpdate;
     private TrackerShellSnapshot? _latestSnapshot;
     private bool _isRefreshing;
     private NavPage _selectedPage = NavPage.Dashboard;
@@ -121,6 +125,10 @@ public sealed class MainWindowViewModel : ObservableObject
     private bool _autoFailBannerVisible;
     private bool _groundingBannerVisible;
     private string _groundingBannerText = string.Empty;
+    private bool _updateBannerVisible;
+    private string _updateBannerText = string.Empty;
+    private bool _isInstallingUpdate;
+    private int _updateDownloadProgress; // 0-100
     private Brush _runwayMarkerBrush = new SolidColorBrush(MediaColor.FromRgb(63, 185, 80));
     private Thickness _runwayMarkerMargin = new Thickness(40, 2, 0, 2);
     private double _runwayTdzWidth = 60.0;
@@ -195,12 +203,22 @@ public sealed class MainWindowViewModel : ObservableObject
         RetrySyncCommand        = new RelayCommand(() => _ = RetrySyncAsync());
         RefreshFlightCommand    = new RelayCommand(() => _ = RefreshFlightAsync());
         SaveSettingsCommand     = new RelayCommand(() => _ = SaveSettingsAsync());
+        InstallUpdateCommand    = new RelayCommand(() => _ = InstallUpdateAsync());
 
         _pollingTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromSeconds(1),
         };
         _pollingTimer.Tick += async (_, _) => await RefreshAsync();
+
+        // Update checker — fires once on startup (from InitializeAsync) then every 4 hours.
+        _updateChecker = new UpdateChecker(new System.Net.Http.HttpClient());
+        _appUpdater    = new AppUpdater(new System.Net.Http.HttpClient());
+        _updateCheckTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromHours(4),
+        };
+        _updateCheckTimer.Tick += async (_, _) => await CheckForUpdateAsync();
 
         ApplySampleState();
     }
@@ -240,6 +258,10 @@ public sealed class MainWindowViewModel : ObservableObject
     public RelayCommand RetrySyncCommand { get; }
     public RelayCommand RefreshFlightCommand { get; }
     public RelayCommand SaveSettingsCommand { get; }
+
+    /// <summary>Downloads and applies the pending update, then exits the app.</summary>
+    public RelayCommand InstallUpdateCommand { get; }
+
     public RelayCommand OpenAccountSettingsCommand { get; } = new RelayCommand(() =>
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
@@ -573,6 +595,37 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         get => _groundingBannerText;
         private set => SetProperty(ref _groundingBannerText, value);
+    }
+
+    /// <summary>True when a new build is available and the update banner should be shown.</summary>
+    public bool UpdateBannerVisible
+    {
+        get => _updateBannerVisible;
+        private set => SetProperty(ref _updateBannerVisible, value);
+    }
+
+    /// <summary>
+    /// Text shown in the update banner, e.g. "Update 3.0.0.55 available — click to install".
+    /// Changes to show download progress while the update is being applied.
+    /// </summary>
+    public string UpdateBannerText
+    {
+        get => _updateBannerText;
+        private set => SetProperty(ref _updateBannerText, value);
+    }
+
+    /// <summary>True while the update ZIP is being downloaded / applied.</summary>
+    public bool IsInstallingUpdate
+    {
+        get => _isInstallingUpdate;
+        private set => SetProperty(ref _isInstallingUpdate, value);
+    }
+
+    /// <summary>Download progress 0–100 while <see cref="IsInstallingUpdate"/> is true.</summary>
+    public int UpdateDownloadProgress
+    {
+        get => _updateDownloadProgress;
+        private set => SetProperty(ref _updateDownloadProgress, value);
     }
 
     public Brush RunwayMarkerBrush
@@ -919,6 +972,10 @@ public sealed class MainWindowViewModel : ObservableObject
         ApplySnapshot(snapshot);
         await RefreshAsync();
         _pollingTimer.Start();
+
+        // Fire the first update check without blocking the UI startup path.
+        _ = CheckForUpdateAsync();
+        _updateCheckTimer.Start();
     }
 
     public Task RetrySyncFromTrayAsync() => RetrySyncAsync();
@@ -1034,6 +1091,82 @@ public sealed class MainWindowViewModel : ObservableObject
         catch (Exception ex)
         {
             SettingsSaveStatus = $"Unable to save settings: {ex.Message}";
+        }
+    }
+
+    // ── Auto-updater ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Checks the GitHub Releases API for a newer build and updates the banner
+    /// if one is found.  All failures are swallowed; this never throws.
+    /// </summary>
+    private async Task CheckForUpdateAsync()
+    {
+        try
+        {
+            var info = await _updateChecker.CheckForUpdateAsync().ConfigureAwait(false);
+            if (info?.IsUpdateAvailable != true)
+                return;
+
+            _pendingUpdate = info;
+
+            // Marshal back to the UI thread (DispatcherTimer callbacks already are, but
+            // the initial fire from InitializeAsync runs on a thread-pool continuation).
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                UpdateBannerText = $"Update available: v{info.LatestVersion} — click to install";
+                UpdateBannerVisible = true;
+            });
+        }
+        catch
+        {
+            // Update checks must never surface to the user.
+        }
+    }
+
+    /// <summary>
+    /// Downloads the pending update, launches the PowerShell updater script, then
+    /// exits the application so the script can overwrite the executable.
+    /// </summary>
+    private async Task InstallUpdateAsync()
+    {
+        var update = _pendingUpdate;
+        if (update is null || IsInstallingUpdate)
+            return;
+
+        IsInstallingUpdate = true;
+        UpdateBannerText = "Downloading update… 0%";
+        UpdateBannerVisible = true;
+
+        try
+        {
+            _appUpdater.DownloadProgressChanged += OnDownloadProgress;
+
+            await _appUpdater
+                .DownloadAndApplyAsync(update)
+                .ConfigureAwait(false);
+
+            // The PowerShell script has been launched and is waiting for us to exit.
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                UpdateBannerText = "Restarting…";
+                Application.Current.Shutdown();
+            });
+        }
+        catch (Exception ex)
+        {
+            _appUpdater.DownloadProgressChanged -= OnDownloadProgress;
+            IsInstallingUpdate = false;
+            UpdateBannerText =
+                $"Update failed: {ex.Message} — check your connection and try again.";
+        }
+
+        void OnDownloadProgress(object? _, double fraction)
+        {
+            var pct = (int)(fraction * 100);
+            UpdateDownloadProgress = pct;
+            Application.Current.Dispatcher.Invoke(() =>
+                UpdateBannerText = $"Downloading update… {pct}%");
         }
     }
 
