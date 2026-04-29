@@ -32,4 +32,16 @@ public sealed record TrackerShellSnapshot
     /// Null when no token is configured, the fetch failed, or no flight is queued.
     /// </summary>
     public ActiveFlightResponse? ActiveFlight { get; init; }
+
+    /// <summary>
+    /// Current preflight grounding / crew-rest status fetched from the server.
+    /// Null when no token is configured or the endpoint has not been called yet.
+    /// </summary>
+    public PreflightStatusResponse? PreflightStatus { get; init; }
+
+    /// <summary>
+    /// Most recent post-flight grounding status returned in a session upload response.
+    /// Null until at least one session has been uploaded and the server issued a strike.
+    /// </summary>
+    public PostFlightStatus? LastPostFlightStatus { get; init; }
 }

@@ -40,7 +40,7 @@ public sealed class FlightSessionScoringTrackerTests
         Assert.Equal(1.0, input.Takeoff.MaxGForce);
         Assert.True(input.Approach.GearDownBy1000Agl);
         Assert.Equal(3, input.Approach.FlapsHandleIndexAt500Agl);
-        Assert.Equal(160, input.Landing.TouchdownVerticalSpeedFpm);
+        Assert.Equal(-160, input.Landing.TouchdownVerticalSpeedFpm);
         Assert.Equal(0, input.Landing.TouchdownBankAngleDegrees);
         Assert.Equal(135, input.Landing.TouchdownIndicatedAirspeedKnots);
         Assert.Equal(0, input.Landing.TouchdownPitchAngleDegrees);
@@ -267,6 +267,65 @@ public sealed class FlightSessionScoringTrackerTests
 
         Assert.False(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
         Assert.True(input.Arrival.AllEnginesOffBeforeParkingBrakeSet);
+    }
+
+    [Fact]
+    public void BeaconGate_RepositioningWithoutBeacon_DoesNotRecordLanding()
+    {
+        // Simulate a pilot who spawns at the gate and taxis to the runway
+        // WITHOUT ever turning on the beacon light.  The WOW transition that
+        // occurs when touching down must NOT be recorded as a flight landing.
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 20, 10, 0, 0, TimeSpan.Zero);
+
+        // Spawn / taxi on ground — beacon never on
+        tracker.Ingest(Frame(t0.AddSeconds(0), FlightPhase.Preflight, onGround: true, beacon: false, parkingBrake: true));
+        tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.TaxiOut,   onGround: true, beacon: false, taxiLights: true, groundSpeed: 15));
+
+        // Brief airborne (e.g. repositioning hop), still no beacon
+        tracker.Ingest(Frame(t0.AddSeconds(10), FlightPhase.Takeoff, onGround: false, beacon: false, agl: 50, vs: -200, ias: 80));
+
+        // WOW-on — without beacon gate this would be recorded as a landing
+        tracker.Ingest(Frame(t0.AddSeconds(12), FlightPhase.Landing, onGround: true, beacon: false, agl: 0, vs: -200, ias: 70));
+
+        var input = tracker.BuildScoreInput();
+
+        // No landing data should be recorded
+        Assert.Equal(0, input.Landing.TouchdownVerticalSpeedFpm);
+        Assert.Equal(0, input.Landing.TouchdownGForce);
+        Assert.Equal(0, input.Landing.BounceCount);
+    }
+
+    [Fact]
+    public void BeaconGate_NormalFlightWithBeacon_RecordsLanding()
+    {
+        // A normal flight where the beacon is on before taxi must still record
+        // the landing correctly.
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 20, 10, 0, 0, TimeSpan.Zero);
+
+        // Beacon on during preflight — gate cleared
+        tracker.Ingest(Frame(t0.AddSeconds(0), FlightPhase.Preflight, onGround: true, beacon: true, parkingBrake: true));
+        tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.TaxiOut,   onGround: true, beacon: true, taxiLights: true, groundSpeed: 15));
+
+        // Airborne
+        tracker.Ingest(Frame(t0.AddSeconds(10), FlightPhase.Takeoff, onGround: false, beacon: true, agl: 50, vs: 800, ias: 150));
+
+        // Approach
+        tracker.Ingest(Frame(t0.AddSeconds(20), FlightPhase.Approach, onGround: false, beacon: true, gearDown: true,
+            flaps: 3, agl: 400, vs: -700, ias: 140));
+
+        // WOW-on with beacon gate cleared
+        tracker.Ingest(Frame(t0.AddSeconds(25), FlightPhase.Landing, onGround: true, beacon: true, gearDown: true,
+            flaps: 3, agl: 0, vs: -300, ias: 135, g: 1.3));
+
+        var input = tracker.BuildScoreInput();
+
+        // Landing should be recorded (vs is supplied as baro in this test — will be negative)
+        Assert.NotEqual(0, input.Landing.TouchdownVerticalSpeedFpm);
+        Assert.True(input.Landing.TouchdownVerticalSpeedFpm < 0, "Touchdown FPM should be negative (descending)");
+        Assert.Equal(135, input.Landing.TouchdownIndicatedAirspeedKnots);
+        Assert.InRange(input.Landing.TouchdownGForce, 1.0, 2.0);
     }
 
     private static TelemetryFrame Frame(
