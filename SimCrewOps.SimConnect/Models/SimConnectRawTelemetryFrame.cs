@@ -21,6 +21,11 @@ public sealed record SimConnectRawTelemetryFrame
     /// Sourced from VELOCITY WORLD Y.
     /// </summary>
     public double VelocityWorldYFps { get; init; }
+    /// <summary>
+    /// Sticky SimVar holding the normal-to-ground velocity (ft/s, negative = descending) from
+    /// the last touchdown. Sourced from PLANE TOUCHDOWN NORMAL VELOCITY. A/B comparison candidate.
+    /// </summary>
+    public double TouchdownNormalVelocityFps { get; init; }
     public double BankAngleDegrees { get; init; }
     public double PitchAngleDegrees { get; init; }
     public double HeadingMagneticDegrees { get; init; }

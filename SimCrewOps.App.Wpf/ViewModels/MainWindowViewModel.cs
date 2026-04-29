@@ -135,6 +135,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _diagnosticsTelemetryFlow = "Enable telemetry diagnostics to inspect raw SimConnect frame flow.";
     private string _diagnosticsTelemetryCounters = "Poll, null-frame, and mapping counters will appear here.";
     private string _diagnosticsRawTelemetry = "Raw SimConnect values will appear here when telemetry diagnostics are enabled.";
+    private string _diagnosticsTouchdownRates = "No touchdown recorded this session.";
     private string _settingsSaveStatus = "Changes are saved for the next launch.";
 
     // Persistent instruments
@@ -681,6 +682,12 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         get => _diagnosticsRawTelemetry;
         private set => SetProperty(ref _diagnosticsRawTelemetry, value);
+    }
+
+    public string DiagnosticsTouchdownRates
+    {
+        get => _diagnosticsTouchdownRates;
+        private set => SetProperty(ref _diagnosticsTouchdownRates, value);
     }
 
     public string SettingsSaveStatus
@@ -1284,6 +1291,7 @@ public sealed class MainWindowViewModel : ObservableObject
             DiagnosticsTelemetryCounters =
                 $"Polls {snapshot.SimConnectStatus.PollCount} • Null polls {snapshot.SimConnectStatus.NullPollCount} • Raw frames {snapshot.SimConnectStatus.RawFrameCount} • Mapped frames {snapshot.SimConnectStatus.TelemetryFrameCount}";
             DiagnosticsRawTelemetry = BuildRawTelemetryDebug(snapshot.LastRawTelemetryFrame);
+            DiagnosticsTouchdownRates = BuildTouchdownRatesDebug(snapshot.RuntimeState?.ScoreInput?.TouchdownRateCandidates);
         }
         else
         {
@@ -1291,6 +1299,7 @@ public sealed class MainWindowViewModel : ObservableObject
             DiagnosticsTelemetryFlow = "Enable telemetry diagnostics to inspect raw SimConnect frame flow.";
             DiagnosticsTelemetryCounters = "Poll, null-frame, and mapping counters will appear here.";
             DiagnosticsRawTelemetry = "Raw SimConnect values will appear here when telemetry diagnostics are enabled.";
+            DiagnosticsTouchdownRates = "No touchdown recorded this session.";
         }
     }
 
@@ -1829,6 +1838,18 @@ public sealed class MainWindowViewModel : ObservableObject
             $"  bitmask raw => 0x{rawFrame.LightStatesRaw:X4}  (BCN=0x0002 LAND=0x0004 TAXI=0x0008 STB=0x0010)\n" +
             $"  final used  => BCN {rawFrame.BeaconLightOn:0} • TAXI {rawFrame.TaxiLightsOn:0} • LDG {rawFrame.LandingLightsOn:0} • STB {rawFrame.StrobesOn:0}\n" +
             $"IAS {rawFrame.IndicatedAirspeedKnots:0.##} • GS {rawFrame.GroundSpeedKnots:0.##} • VS {rawFrame.VerticalSpeedFpm:0.##}";
+    }
+
+    private static string BuildTouchdownRatesDebug(TouchdownRateCandidates? c)
+    {
+        if (c is null)
+            return "No touchdown recorded this session.";
+
+        return
+            $"VELOCITY WORLD Y  : {c.FpmVelocityWorldY:0} fpm\n" +
+            $"TOUCHDOWN NORMAL  : {c.FpmTouchdownNormal:0} fpm\n" +
+            $"VERTICAL SPEED    : {c.FpmVerticalSpeed:0} fpm\n" +
+            $"SELECTED (final)  : {c.FinalSelected:0} fpm";
     }
 
     private void UpdatePersistentInstruments(TelemetryFrame? telemetry)

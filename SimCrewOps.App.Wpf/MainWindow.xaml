@@ -966,6 +966,17 @@
                             <TextBlock Text="{Binding DiagnosticsLastTelemetry}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
                             <TextBlock Text="RECOVERY" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
                             <TextBlock Text="{Binding DiagnosticsRecoveryState}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                            <!-- Telemetry debug — only when EnableTelemetryDiagnostics is on -->
+                            <StackPanel Visibility="{Binding TelemetryDiagnosticsEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock Text="TELEMETRY CLIENT" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
+                                <TextBlock Text="{Binding DiagnosticsTelemetryClient}" Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" FontFamily="Consolas" />
+                                <TextBlock Text="FRAME FLOW" Margin="0,12,0,0" Style="{StaticResource SectionLabelStyle}" />
+                                <TextBlock Text="{Binding DiagnosticsTelemetryFlow}" Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" FontFamily="Consolas" />
+                                <TextBlock Text="COUNTERS" Margin="0,12,0,0" Style="{StaticResource SectionLabelStyle}" />
+                                <TextBlock Text="{Binding DiagnosticsTelemetryCounters}" Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" FontFamily="Consolas" />
+                                <TextBlock Text="RAW SIMCONNECT" Margin="0,12,0,0" Style="{StaticResource SectionLabelStyle}" />
+                                <TextBlock Text="{Binding DiagnosticsRawTelemetry}" Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" FontFamily="Consolas" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                     <Border Grid.Column="2" Style="{StaticResource InnerCardStyle}" Padding="20">
@@ -976,6 +987,11 @@
                             <TextBlock Text="{Binding DiagnosticsSettingsPath}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
                             <TextBlock Text="STORAGE ROOT" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
                             <TextBlock Text="{Binding DiagnosticsStoragePath}" Margin="0,12,0,0" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                            <!-- Touchdown rate A/B debug — only when EnableTelemetryDiagnostics is on -->
+                            <StackPanel Visibility="{Binding TelemetryDiagnosticsEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock Text="TOUCHDOWN RATE CANDIDATES" Margin="0,20,0,0" Style="{StaticResource SectionLabelStyle}" />
+                                <TextBlock Text="{Binding DiagnosticsTouchdownRates}" Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" FontFamily="Consolas" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </Grid>

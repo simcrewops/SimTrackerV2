@@ -98,6 +98,12 @@ public sealed class FlightSessionScoringTracker
     private DateTimeOffset? _lastTouchdownAt;
     private DateTimeOffset? _airborneAfterTouchdownAt;
 
+    // A/B instrumentation: touchdown FPM candidates latched at first touchdown
+    private double _abFpmVelocityWorldY;
+    private double _abFpmTouchdownNormal;
+    private double _abFpmVerticalSpeed;
+    private double _abFinalSelected;
+
     private DateTimeOffset? _sessionStartUtc;
     private DateTimeOffset? _lastFlightPathSampleAt;
     private double? _lastFlightPathAltFt;
@@ -264,6 +270,11 @@ public sealed class FlightSessionScoringTracker
         _landingTouchdownWindSpeedKnots = input.LandingAnalysis.WindSpeedKnots;
         _landingTouchdownWindDirectionDegrees = input.LandingAnalysis.WindDirectionDegrees;
 
+        _abFpmVelocityWorldY = input.TouchdownRateCandidates?.FpmVelocityWorldY ?? 0;
+        _abFpmTouchdownNormal = input.TouchdownRateCandidates?.FpmTouchdownNormal ?? 0;
+        _abFpmVerticalSpeed   = input.TouchdownRateCandidates?.FpmVerticalSpeed ?? 0;
+        _abFinalSelected      = input.TouchdownRateCandidates?.FinalSelected ?? 0;
+
         _flightPath.Clear();
         _flightPath.AddRange(input.FlightPath);
         _approachPath.Clear();
@@ -428,6 +439,15 @@ public sealed class FlightSessionScoringTracker
             },
             FlightPath = _flightPath.ToArray(),
             ApproachPath = _approachPath.ToArray(),
+            TouchdownRateCandidates = _capturedFirstTouchdown
+                ? new TouchdownRateCandidates
+                {
+                    FpmVelocityWorldY = _abFpmVelocityWorldY,
+                    FpmTouchdownNormal = _abFpmTouchdownNormal,
+                    FpmVerticalSpeed   = _abFpmVerticalSpeed,
+                    FinalSelected      = _abFinalSelected,
+                }
+                : null,
             TaxiIn = new TaxiInMetrics
             {
                 // Pass if the phase hasn't been seen yet — only penalise once we enter it.
@@ -799,6 +819,15 @@ public sealed class FlightSessionScoringTracker
                 _landingTouchdownWindDirectionDegrees = frame.WindDirectionDegrees;
                 _landingGearUpAtTouchdown = !frame.GearDown;
                 _landingMaxPitchWhileWowDegrees = Math.Abs(frame.PitchAngleDegrees);
+
+                // A/B instrumentation: capture all candidates at the moment of first touchdown.
+                _abFpmVelocityWorldY = frame.VelocityWorldYFps < 0
+                    ? Math.Abs(frame.VelocityWorldYFps) * 60.0 : 0;
+                _abFpmTouchdownNormal = frame.TouchdownNormalVelocityFps < 0
+                    ? Math.Abs(frame.TouchdownNormalVelocityFps) * 60.0 : 0;
+                _abFpmVerticalSpeed = frame.VerticalSpeedFpm < 0
+                    ? Math.Abs(frame.VerticalSpeedFpm) : 0;
+                _abFinalSelected = _landingTouchdownVerticalSpeedFpm;
             }
 
             if (_airborneAfterTouchdownAt is not null &&

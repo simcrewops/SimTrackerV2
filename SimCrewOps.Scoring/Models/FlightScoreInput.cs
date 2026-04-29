@@ -16,6 +16,12 @@ public sealed record FlightScoreInput
     public LandingAnalysisData LandingAnalysis { get; init; } = new();
     public IReadOnlyList<FlightPathPoint> FlightPath { get; init; } = [];
     public IReadOnlyList<ApproachPathPoint> ApproachPath { get; init; } = [];
+    /// <summary>
+    /// A/B instrumentation: multiple touchdown FPM candidates captured at first touchdown.
+    /// Persisted locally for post-flight comparison. Not included in the upload payload.
+    /// Null until a touchdown is recorded.
+    /// </summary>
+    public TouchdownRateCandidates? TouchdownRateCandidates { get; init; }
 }
 
 public sealed record PreflightMetrics
@@ -148,4 +154,21 @@ public sealed record ApproachPathPoint
     public double AltFt { get; init; }
     public double IasKts { get; init; }
     public double VsFpm { get; init; }
+}
+
+/// <summary>
+/// A/B instrumentation: multiple touchdown FPM calculation candidates captured at first touchdown.
+/// Stored in local session JSON only — not sent in the upload payload.
+/// All values are positive magnitudes (fpm); 0 means not available.
+/// </summary>
+public sealed record TouchdownRateCandidates
+{
+    /// <summary>VELOCITY WORLD Y on the touchdown frame, converted to fpm.</summary>
+    public double FpmVelocityWorldY { get; init; }
+    /// <summary>PLANE TOUCHDOWN NORMAL VELOCITY on the touchdown frame, converted to fpm.</summary>
+    public double FpmTouchdownNormal { get; init; }
+    /// <summary>VERTICAL SPEED (barometric) on the touchdown frame, converted to fpm magnitude.</summary>
+    public double FpmVerticalSpeed { get; init; }
+    /// <summary>The value selected by CalculateTouchdownVerticalSpeed() as the authoritative rate.</summary>
+    public double FinalSelected { get; init; }
 }

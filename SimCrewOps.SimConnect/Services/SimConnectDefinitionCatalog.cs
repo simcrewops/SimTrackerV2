@@ -38,6 +38,10 @@ public static class SimConnectDefinitionCatalog
         // Unlike VERTICAL SPEED (barometric, ≥1 s lag), this reflects the true sink rate at the
         // exact frame of wheel contact. Appended last to preserve existing FlightCriticalSnapshot layout.
         Define("velocity_world_y", "VELOCITY WORLD Y", "feet per second", SimConnectUpdateRate.SimFrame),
+        // PLANE TOUCHDOWN NORMAL VELOCITY — sticky SimVar that holds the normal-to-ground velocity
+        // (ft/s, negative = descending) from the last touchdown event. Useful as an A/B comparison
+        // candidate against VELOCITY WORLD Y. Appended last; do not reorder.
+        Define("touchdown_normal", "PLANE TOUCHDOWN NORMAL VELOCITY", "feet per second", SimConnectUpdateRate.SimFrame, requiredForScoring: false),
     ];
 
     public static readonly IReadOnlyList<SimConnectVariableDefinition> ScoringAndOperationalVariables =

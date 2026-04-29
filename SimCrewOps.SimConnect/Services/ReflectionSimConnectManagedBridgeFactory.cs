@@ -337,6 +337,8 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             ParkingBrakePosition = snapshot.ParkingBrakePosition,
             OnGround = snapshot.OnGround,
             CrashFlag = snapshot.CrashFlag,
+            // VelocityWorldYFps and TouchdownNormalVelocityFps are unreliable in the managed
+            // bridge path due to pre-existing int/double misalignment in this struct. Leave at 0.
         };
 
         EnqueueFrame();
@@ -417,6 +419,8 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             Engine2Running = _latestState.Engine2Running,
             Engine3Running = _latestState.Engine3Running,
             Engine4Running = _latestState.Engine4Running,
+            VelocityWorldYFps = _latestState.VelocityWorldYFps,
+            TouchdownNormalVelocityFps = _latestState.TouchdownNormalVelocityFps,
             WindSpeedKnots = _latestState.WindSpeedKnots,
             WindDirectionDegrees = _latestState.WindDirectionDegrees,
         });
@@ -532,6 +536,11 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         public readonly int ParkingBrakePosition;
         public readonly int OnGround;
         public readonly int CrashFlag;
+        // Padding to align with the native client's all-double layout (pre-existing int fields
+        // above leave a 12-byte gap vs the native struct; these fields will not read correctly
+        // but are included to prevent struct underrun when SimConnect copies the data definition).
+        public readonly double VelocityWorldYFps;
+        public readonly double TouchdownNormalVelocityFps;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -595,6 +604,8 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         public double Engine2Running { get; init; }
         public double Engine3Running { get; init; }
         public double Engine4Running { get; init; }
+        public double VelocityWorldYFps { get; init; }
+        public double TouchdownNormalVelocityFps { get; init; }
         public double WindSpeedKnots { get; init; }
         public double WindDirectionDegrees { get; init; }
     }

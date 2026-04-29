@@ -130,6 +130,68 @@ public sealed class FlightSessionScoringTrackerTests
         Assert.True(input.Arrival.AllEnginesOffByEndOfSession);
     }
 
+    [Fact]
+    public void TouchdownRateCandidates_NullBeforeTouchdown()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 12, 22, 0, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0, FlightPhase.Preflight, onGround: true));
+        tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.Climb, onGround: false));
+
+        Assert.Null(tracker.BuildScoreInput().TouchdownRateCandidates);
+    }
+
+    [Fact]
+    public void TouchdownRateCandidates_CapturedAtFirstTouchdown()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 12, 22, 0, 0, TimeSpan.Zero);
+
+        // Airborne frame — negative VelocityWorldY = descending at 3 ft/s = 180 fpm
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
+            velocityWorldY: -3.0, touchdownNormal: -2.5, vs: -210));
+
+        // Touchdown frame — OnGround flips true
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -2.0, touchdownNormal: -1.8, vs: -180));
+
+        var input = tracker.BuildScoreInput();
+        Assert.NotNull(input.TouchdownRateCandidates);
+
+        var c = input.TouchdownRateCandidates!;
+        Assert.Equal(120.0, c.FpmVelocityWorldY, precision: 1);    // 2.0 * 60
+        Assert.Equal(108.0, c.FpmTouchdownNormal, precision: 1);    // 1.8 * 60
+        Assert.Equal(180.0, c.FpmVerticalSpeed, precision: 1);      // abs(vs=-180)
+        Assert.True(c.FinalSelected > 0, "FinalSelected must be positive");
+    }
+
+    [Fact]
+    public void TouchdownRateCandidates_RestoredFromFlightScoreInput()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 12, 22, 0, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
+            velocityWorldY: -3.0, touchdownNormal: -2.5, vs: -200));
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -2.5, touchdownNormal: -2.0, vs: -180));
+
+        var saved = tracker.BuildScoreInput();
+        Assert.NotNull(saved.TouchdownRateCandidates);
+
+        // Restore into a fresh tracker
+        var tracker2 = new FlightSessionScoringTracker();
+        tracker2.Restore(saved, FlightPhase.Landing, lastTelemetryFrame: null, wheelsOnUtc: t0.AddSeconds(1));
+        var restored = tracker2.BuildScoreInput();
+
+        Assert.NotNull(restored.TouchdownRateCandidates);
+        Assert.Equal(saved.TouchdownRateCandidates!.FpmVelocityWorldY, restored.TouchdownRateCandidates!.FpmVelocityWorldY);
+        Assert.Equal(saved.TouchdownRateCandidates.FpmTouchdownNormal, restored.TouchdownRateCandidates.FpmTouchdownNormal);
+        Assert.Equal(saved.TouchdownRateCandidates.FpmVerticalSpeed, restored.TouchdownRateCandidates.FpmVerticalSpeed);
+        Assert.Equal(saved.TouchdownRateCandidates.FinalSelected, restored.TouchdownRateCandidates.FinalSelected);
+    }
+
     private static TelemetryFrame Frame(
         DateTimeOffset timestamp,
         FlightPhase phase,
@@ -158,7 +220,9 @@ public sealed class FlightSessionScoringTrackerTests
         bool engine2 = true,
         bool engine3 = false,
         bool engine4 = false,
-        double? touchdownZoneExcess = null)
+        double? touchdownZoneExcess = null,
+        double velocityWorldY = 0,
+        double touchdownNormal = 0)
     {
         return new TelemetryFrame
         {
@@ -190,6 +254,8 @@ public sealed class FlightSessionScoringTrackerTests
             Engine3Running = engine3,
             Engine4Running = engine4,
             TouchdownZoneExcessDistanceFeet = touchdownZoneExcess,
+            VelocityWorldYFps = velocityWorldY,
+            TouchdownNormalVelocityFps = touchdownNormal,
         };
     }
 }

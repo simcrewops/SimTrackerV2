@@ -488,6 +488,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             OnGround = onGround,
             CrashFlag = snapshot.CrashFlag,
             VelocityWorldYFps = snapshot.VelocityWorldYFps,
+            TouchdownNormalVelocityFps = snapshot.TouchdownNormalVelocityFps,
         };
 
         EnqueueFrame();
@@ -755,8 +756,9 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             Engine2Running = _latestState.Engine2Running,
             Engine3Running = _latestState.Engine3Running,
             Engine4Running = _latestState.Engine4Running,
-            VelocityWorldYFps   = _latestState.VelocityWorldYFps,
-            WindSpeedKnots      = _latestState.WindSpeedKnots,
+            VelocityWorldYFps           = _latestState.VelocityWorldYFps,
+            TouchdownNormalVelocityFps  = _latestState.TouchdownNormalVelocityFps,
+            WindSpeedKnots              = _latestState.WindSpeedKnots,
             WindDirectionDegrees = _latestState.WindDirectionDegrees,
             ActiveProfileName     = _activeProfile.Name,
             ActiveProfileIcaoType = _activeProfile.IcaoType,
@@ -838,8 +840,10 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly double OnGround;              // SIM ON GROUND → 0.0 or 1.0
         public readonly double CrashFlag;             // bool SimVar → 0.0 or 1.0
         // Physics-engine vertical velocity (ft/s, negative = descending, no barometric lag).
-        // Must stay last to match velocity_world_y appended at the end of FlightCriticalVariables.
         public readonly double VelocityWorldYFps;
+        // PLANE TOUCHDOWN NORMAL VELOCITY — sticky SimVar holding normal-to-ground fps at last touchdown.
+        // Must stay last to match touchdown_normal appended at the end of FlightCriticalVariables.
+        public readonly double TouchdownNormalVelocityFps;
     }
 
     // All fields are double — uniform 8-byte layout, no mixed-type alignment issues.
@@ -961,6 +965,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public double Engine3Running { get; init; }
         public double Engine4Running { get; init; }
         public double VelocityWorldYFps { get; init; }
+        public double TouchdownNormalVelocityFps { get; init; }
         public double WindSpeedKnots { get; init; }
         public double WindDirectionDegrees { get; init; }
     }
