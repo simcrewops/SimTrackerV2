@@ -207,6 +207,9 @@ public sealed record ApproachPathPointDto
 
     [JsonPropertyName("vsFpm")]
     public double VsFpm { get; init; }
+
+    [JsonPropertyName("distanceToThresholdNm")]
+    public double? DistanceToThresholdNm { get; init; }
 }
 
 public sealed record FlightPathPointDto

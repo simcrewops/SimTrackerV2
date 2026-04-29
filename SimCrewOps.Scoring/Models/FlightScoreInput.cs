@@ -40,6 +40,8 @@ public sealed record TakeoffMetrics
     public bool LandingLightsOnBeforeTakeoff { get; init; }
     public bool LandingLightsOffByFl180 { get; init; }
     public bool StrobesOnFromTakeoffToLanding { get; init; }
+    public int FlapsHandleIndexAtLiftoff { get; init; }
+    public double InitialClimbFpm { get; init; }
 }
 
 public sealed record ClimbMetrics
@@ -48,6 +50,9 @@ public sealed record ClimbMetrics
     public double MaxIasBelowFl100Knots { get; init; }
     public double MaxBankAngleDegrees { get; init; }
     public double MaxGForce { get; init; }
+    public double AvgClimbFpm { get; init; }
+    public double? TimeToFL100Minutes { get; init; }
+    public double VsStabilityScore { get; init; }
 }
 
 public sealed record CruiseMetrics
@@ -57,6 +62,7 @@ public sealed record CruiseMetrics
     public int SpeedInstabilityEvents { get; init; }
     public double MaxBankAngleDegrees { get; init; }
     public double MaxGForce { get; init; }
+    public double MaxSpeedDeviationKts { get; init; }
 }
 
 public sealed record DescentMetrics
@@ -66,6 +72,8 @@ public sealed record DescentMetrics
     public double MaxPitchAngleDegrees { get; init; }
     public double MaxGForce { get; init; }
     public bool LandingLightsOnByFl180 { get; init; }
+    public double AvgDescentFpm { get; init; }
+    public double? SpeedAtFL100Kts { get; init; }
 }
 
 public sealed record ApproachMetrics

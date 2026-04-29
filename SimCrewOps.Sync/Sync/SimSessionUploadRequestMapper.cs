@@ -41,26 +41,30 @@ public sealed class SimSessionUploadRequestMapper
         {
             Departure = new DepartureScoringDto
             {
+                // V1/Vr/V2 are not observable from MSFS SimConnect telemetry — sent null.
                 TakeoffPitchDeg  = s.Takeoff.MaxPitchAngleDegrees,
-                FlapsAtTakeoff   = s.Takeoff.BounceCount > 0 ? 0 : 0, // placeholder; tracker doesn't capture flaps at rotation
+                FlapsAtTakeoff   = s.Takeoff.FlapsHandleIndexAtLiftoff,
+                InitialClimbFpm  = s.Takeoff.InitialClimbFpm,
             },
             Climb = new ClimbScoringDto
             {
-                AvgClimbFpm      = 0, // placeholder; tracker doesn't compute averages
-                VsStabilityScore = 0,
+                AvgClimbFpm      = s.Climb.AvgClimbFpm,
+                TimeToFL100Min   = s.Climb.TimeToFL100Minutes,
+                VsStabilityScore = s.Climb.VsStabilityScore,
             },
             Cruise = new CruiseScoringDto
             {
                 AltitudeDeviationFt = s.Cruise.MaxAltitudeDeviationFeet,
-                SpeedDeviationKts   = 0,
+                SpeedDeviationKts   = s.Cruise.MaxSpeedDeviationKts,
             },
             Descent = new DescentScoringDto
             {
-                AvgDescentFpm = 0, // placeholder
+                AvgDescentFpm   = s.Descent.AvgDescentFpm,
+                SpeedAtFL100Kts = s.Descent.SpeedAtFL100Kts,
             },
             Landing = new LandingScoringDto
             {
-                // Tracker stores positive magnitude (PR #36 fixed the sign); negate for payload convention
+                // Tracker stores positive magnitude; negate for payload convention (negative = descending).
                 TouchdownRateFpm    = -(s.Landing.TouchdownVerticalSpeedFpm),
                 TouchdownPitchDeg   = s.Landing.TouchdownPitchAngleDegrees,
                 MaxPitchWhileWowDeg = s.Landing.MaxPitchWhileWowDegrees,
@@ -78,17 +82,22 @@ public sealed class SimSessionUploadRequestMapper
             },
         };
 
-    private static LandingAnalysisDto MapLandingAnalysis(FlightScoreInput s) =>
-        new()
+    private static LandingAnalysisDto MapLandingAnalysis(FlightScoreInput s)
+    {
+        var tdLat = s.LandingAnalysis.TouchdownLat;
+        var tdLon = s.LandingAnalysis.TouchdownLon;
+        var hasTouch = tdLat.HasValue && tdLon.HasValue;
+
+        return new LandingAnalysisDto
         {
-            TouchdownLat                  = s.LandingAnalysis.TouchdownLat,
-            TouchdownLon                  = s.LandingAnalysis.TouchdownLon,
-            TouchdownHeadingDeg           = s.LandingAnalysis.TouchdownHeadingMagneticDeg,
-            TouchdownAltFt                = s.LandingAnalysis.TouchdownAltFt,
-            TouchdownIAS                  = s.LandingAnalysis.TouchdownIAS,
-            WindSpeedAtTouchdownKnots     = s.LandingAnalysis.WindSpeedKnots,
+            TouchdownLat                    = tdLat,
+            TouchdownLon                    = tdLon,
+            TouchdownHeadingDeg             = s.LandingAnalysis.TouchdownHeadingMagneticDeg,
+            TouchdownAltFt                  = s.LandingAnalysis.TouchdownAltFt,
+            TouchdownIAS                    = s.LandingAnalysis.TouchdownIAS,
+            WindSpeedAtTouchdownKnots       = s.LandingAnalysis.WindSpeedKnots,
             WindDirectionAtTouchdownDegrees = s.LandingAnalysis.WindDirectionDegrees,
-            ApproachPath                  = s.ApproachPath
+            ApproachPath                    = s.ApproachPath
                 .Select(p => new ApproachPathPointDto
                 {
                     Lat        = p.Lat,
@@ -96,9 +105,25 @@ public sealed class SimSessionUploadRequestMapper
                     AltitudeFt = p.AltFt,
                     IasKts     = p.IasKts,
                     VsFpm      = p.VsFpm,
+                    DistanceToThresholdNm = hasTouch
+                        ? HaversineNm(p.Lat, p.Lon, tdLat!.Value, tdLon!.Value)
+                        : null,
                 })
                 .ToArray(),
         };
+    }
+
+    private static double HaversineNm(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double EarthRadiusNm = 3440.065;
+        const double DegToRad = Math.PI / 180.0;
+        var dLat = (lat2 - lat1) * DegToRad;
+        var dLon = (lon2 - lon1) * DegToRad;
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2)
+              + Math.Cos(lat1 * DegToRad) * Math.Cos(lat2 * DegToRad)
+              * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        return EarthRadiusNm * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+    }
 
     private static FlightPathPointDto[] MapFlightPath(IReadOnlyList<FlightPathPoint> points) =>
         points

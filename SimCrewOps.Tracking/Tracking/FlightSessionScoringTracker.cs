@@ -33,15 +33,22 @@ public sealed class FlightSessionScoringTracker
     private int _takeoffBounceCount;
     private bool _takeoffTailStrikeDetected;
     private DateTimeOffset? _lastTakeoffLiftoffAt;
+    private int _takeoffFlapsAtLiftoff;
+    private double _takeoffInitialClimbFpm;
 
     private double _climbMaxIasBelowFl100;
     private double _climbMaxBank;
     private double _climbMaxG;
+    private double _climbVsSum;
+    private int _climbVsCount;
+    private int _climbStableFrames;
+    private DateTimeOffset? _climbFL100CrossingAt;
 
     private double _cruiseMaxAltitudeDeviation;
     private double _cruiseMaxBank;
     private double _cruiseMaxG;
     private int _cruiseSpeedInstabilityEvents;
+    private double _cruiseMaxSpeedDeviationKts;
     private DateTimeOffset? _lastCruiseSpeedInstabilityAt;
     private DateTimeOffset? _cruiseSpeedInstabilityStartedAt;
     private bool _cruiseSpeedInstabilityActive;
@@ -59,6 +66,9 @@ public sealed class FlightSessionScoringTracker
     private double _descentMaxPitch;
     private double _descentMaxG;
     private bool _descentLandingLightsOnByFl180 = true;
+    private double _descentVsSum;
+    private int _descentVsCount;
+    private double? _descentSpeedAtFL100Kts;
 
     private bool _capturedApproach1000Agl;
     private bool _gearDownBy1000Agl;
@@ -177,15 +187,23 @@ public sealed class FlightSessionScoringTracker
         _takeoffBounceCount = input.Takeoff.BounceCount;
         _takeoffTailStrikeDetected = input.Takeoff.TailStrikeDetected;
         _lastTakeoffLiftoffAt = wheelsOffUtc;
+        _takeoffFlapsAtLiftoff = input.Takeoff.FlapsHandleIndexAtLiftoff;
+        _takeoffInitialClimbFpm = input.Takeoff.InitialClimbFpm;
 
         _climbMaxIasBelowFl100 = input.Climb.MaxIasBelowFl100Knots;
         _climbMaxBank = input.Climb.MaxBankAngleDegrees;
         _climbMaxG = input.Climb.MaxGForce;
+        // Restore avg climb as a single synthetic sample; exact accumulators can't be persisted.
+        _climbVsSum = input.Climb.AvgClimbFpm;
+        _climbVsCount = input.Climb.AvgClimbFpm != 0 ? 1 : 0;
+        _climbStableFrames = input.Climb.VsStabilityScore > 0 ? 1 : 0;
+        _climbFL100CrossingAt = null;
 
         _cruiseMaxAltitudeDeviation = input.Cruise.MaxAltitudeDeviationFeet;
         _cruiseMaxBank = input.Cruise.MaxBankAngleDegrees;
         _cruiseMaxG = input.Cruise.MaxGForce;
         _cruiseSpeedInstabilityEvents = input.Cruise.SpeedInstabilityEvents;
+        _cruiseMaxSpeedDeviationKts = input.Cruise.MaxSpeedDeviationKts;
         _lastCruiseSpeedInstabilityAt = null;
         _cruiseSpeedInstabilityStartedAt = null;
         _cruiseSpeedInstabilityActive = false;
@@ -213,6 +231,10 @@ public sealed class FlightSessionScoringTracker
         _descentMaxPitch = input.Descent.MaxPitchAngleDegrees;
         _descentMaxG = input.Descent.MaxGForce;
         _descentLandingLightsOnByFl180 = !_descentSeen || input.Descent.LandingLightsOnByFl180;
+        // Restore avg descent as a single synthetic sample.
+        _descentVsSum = input.Descent.AvgDescentFpm;
+        _descentVsCount = input.Descent.AvgDescentFpm != 0 ? 1 : 0;
+        _descentSpeedAtFL100Kts = input.Descent.SpeedAtFL100Kts;
 
         _capturedApproach1000Agl = input.Approach.GearDownBy1000Agl;
         _gearDownBy1000Agl = input.Approach.GearDownBy1000Agl;
@@ -335,6 +357,8 @@ public sealed class FlightSessionScoringTracker
                 LandingLightsOnBeforeTakeoff = !_takeoffSeen || _takeoffLandingLightsOnBeforeTakeoff,
                 LandingLightsOffByFl180 = !_takeoffSeen || _takeoffLandingLightsOffByFl180,
                 StrobesOnFromTakeoffToLanding = !_takeoffSeen || _takeoffStrobesOnFromTakeoffToLanding,
+                FlapsHandleIndexAtLiftoff = _takeoffFlapsAtLiftoff,
+                InitialClimbFpm = _takeoffInitialClimbFpm,
             },
             Climb = new ClimbMetrics
             {
@@ -342,6 +366,11 @@ public sealed class FlightSessionScoringTracker
                 MaxIasBelowFl100Knots = _climbMaxIasBelowFl100,
                 MaxBankAngleDegrees = _climbMaxBank,
                 MaxGForce = _climbMaxG,
+                AvgClimbFpm = _climbVsCount > 0 ? _climbVsSum / _climbVsCount : 0,
+                TimeToFL100Minutes = (_climbFL100CrossingAt.HasValue && _lastTakeoffLiftoffAt.HasValue)
+                    ? (_climbFL100CrossingAt.Value - _lastTakeoffLiftoffAt.Value).TotalMinutes
+                    : null,
+                VsStabilityScore = _climbVsCount > 0 ? (double)_climbStableFrames / _climbVsCount : 0,
             },
             Cruise = new CruiseMetrics
             {
@@ -350,6 +379,7 @@ public sealed class FlightSessionScoringTracker
                 SpeedInstabilityEvents = _cruiseSpeedInstabilityEvents,
                 MaxBankAngleDegrees = _cruiseMaxBank,
                 MaxGForce = _cruiseMaxG,
+                MaxSpeedDeviationKts = _cruiseMaxSpeedDeviationKts,
             },
             Descent = new DescentMetrics
             {
@@ -359,6 +389,8 @@ public sealed class FlightSessionScoringTracker
                 MaxGForce = _descentMaxG,
                 // Pass if descent hasn't been seen yet — only penalise once we enter it.
                 LandingLightsOnByFl180 = !_descentSeen || _descentLandingLightsOnByFl180,
+                AvgDescentFpm = _descentVsCount > 0 ? _descentVsSum / _descentVsCount : 0,
+                SpeedAtFL100Kts = _descentSpeedAtFL100Kts,
             },
             Approach = new ApproachMetrics
             {
@@ -521,6 +553,7 @@ public sealed class FlightSessionScoringTracker
         if (_previousFrame.Phase == FlightPhase.Takeoff && _previousFrame.OnGround && !frame.OnGround)
         {
             _lastTakeoffLiftoffAt = frame.TimestampUtc;
+            _takeoffFlapsAtLiftoff = frame.FlapsHandleIndex;
         }
 
         if (_previousFrame.Phase == FlightPhase.Takeoff &&
@@ -541,10 +574,28 @@ public sealed class FlightSessionScoringTracker
             return;
         }
 
+        if (_previousFrame is null || _previousFrame.Phase != FlightPhase.Climb)
+        {
+            _takeoffInitialClimbFpm = frame.VerticalSpeedFpm;
+        }
+
         if (frame.IndicatedAltitudeFeet < 10000)
         {
             _climbMaxIasBelowFl100 = Math.Max(_climbMaxIasBelowFl100, frame.IndicatedAirspeedKnots);
         }
+
+        if (_previousFrame is not null &&
+            _previousFrame.IndicatedAltitudeFeet < 10000 &&
+            frame.IndicatedAltitudeFeet >= 10000 &&
+            _climbFL100CrossingAt is null)
+        {
+            _climbFL100CrossingAt = frame.TimestampUtc;
+        }
+
+        _climbVsSum += frame.VerticalSpeedFpm;
+        _climbVsCount++;
+        if (frame.VerticalSpeedFpm >= 300)
+            _climbStableFrames++;
 
         _climbMaxBank = Math.Max(_climbMaxBank, Math.Abs(frame.BankAngleDegrees));
         _climbMaxG = Math.Max(_climbMaxG, frame.GForce);
@@ -620,6 +671,7 @@ public sealed class FlightSessionScoringTracker
 
         var machDelta = Math.Abs(frame.Mach - _cruiseReferenceMach.Value);
         var iasDelta = Math.Abs(frame.IndicatedAirspeedKnots - _cruiseReferenceIasKnots.Value);
+        _cruiseMaxSpeedDeviationKts = Math.Max(_cruiseMaxSpeedDeviationKts, iasDelta);
         var unstable = machDelta > 0.03 || iasDelta > 15;
 
         if (unstable)
@@ -655,9 +707,20 @@ public sealed class FlightSessionScoringTracker
 
         _descentSeen = true;
 
+        _descentVsSum += frame.VerticalSpeedFpm;
+        _descentVsCount++;
+
         if (frame.IndicatedAltitudeFeet < 10000)
         {
             _descentMaxIasBelowFl100 = Math.Max(_descentMaxIasBelowFl100, frame.IndicatedAirspeedKnots);
+        }
+
+        if (_previousFrame is not null &&
+            _previousFrame.IndicatedAltitudeFeet > 10000 &&
+            frame.IndicatedAltitudeFeet <= 10000 &&
+            _descentSpeedAtFL100Kts is null)
+        {
+            _descentSpeedAtFL100Kts = frame.IndicatedAirspeedKnots;
         }
 
         if (_postRestoreGraceFrames <= 0 && frame.IndicatedAltitudeFeet <= 18000 && !frame.LandingLightsOn)
