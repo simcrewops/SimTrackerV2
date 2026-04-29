@@ -146,24 +146,26 @@ public sealed class AppUpdater
         var safeDir = appDirectory.Replace("'", "''");
         var safeExe = exePath.Replace("'", "''");
 
-        return $"""
+        // $$""" (two-dollar raw string) lets PowerShell's { } appear as literal braces;
+        // C# interpolation holes are written with double braces: {{expr}}.
+        return $$"""
 $ErrorActionPreference = 'Stop'
 
 # ── Step 1: wait for the tracker process to fully exit ────────────────────────
-try {{
-    $proc = Get-Process -Id {pid} -ErrorAction SilentlyContinue
-    if ($null -ne $proc) {{
+try {
+    $proc = Get-Process -Id {{pid}} -ErrorAction SilentlyContinue
+    if ($null -ne $proc) {
         $null = $proc.WaitForExit(30000)
-    }}
-}} catch {{ }}
+    }
+} catch { }
 
 # Give the OS a moment to release any file handles.
 Start-Sleep -Milliseconds 800
 
 # ── Step 2: extract the update package ───────────────────────────────────────
-try {{
-    Expand-Archive -Path '{safeZip}' -DestinationPath '{safeDir}' -Force
-}} catch {{
+try {
+    Expand-Archive -Path '{{safeZip}}' -DestinationPath '{{safeDir}}' -Force
+} catch {
     Add-Type -AssemblyName System.Windows.Forms
     [void][System.Windows.Forms.MessageBox]::Show(
         "SimCrewOps Tracker update failed:`n$_",
@@ -172,13 +174,13 @@ try {{
         'Error'
     )
     exit 1
-}}
+}
 
 # ── Step 3: clean up the downloaded ZIP ──────────────────────────────────────
-Remove-Item -Path '{safeZip}' -Force -ErrorAction SilentlyContinue
+Remove-Item -Path '{{safeZip}}' -Force -ErrorAction SilentlyContinue
 
 # ── Step 4: restart the tracker ──────────────────────────────────────────────
-Start-Process -FilePath '{safeExe}'
+Start-Process -FilePath '{{safeExe}}'
 """;
     }
 }
