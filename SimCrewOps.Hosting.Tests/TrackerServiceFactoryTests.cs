@@ -20,6 +20,7 @@ public sealed class TrackerServiceFactoryTests
         Assert.NotNull(stack.CompletedSessionUploader);
         Assert.NotNull(stack.CompletedSessionSyncService);
         Assert.NotNull(stack.BackgroundSyncCoordinator);
+        Assert.NotNull(stack.PreflightChecker);
         Assert.True(stack.SyncEnabled);
     }
 
@@ -36,6 +37,7 @@ public sealed class TrackerServiceFactoryTests
         Assert.Null(stack.CompletedSessionUploader);
         Assert.Null(stack.CompletedSessionSyncService);
         Assert.Null(stack.BackgroundSyncCoordinator);
+        Assert.Null(stack.PreflightChecker);
         Assert.False(stack.SyncEnabled);
     }
 
@@ -52,6 +54,7 @@ public sealed class TrackerServiceFactoryTests
         Assert.Null(stack.CompletedSessionUploader);
         Assert.Null(stack.CompletedSessionSyncService);
         Assert.Null(stack.BackgroundSyncCoordinator);
+        Assert.NotNull(stack.PreflightChecker);
         Assert.False(stack.SyncEnabled);
     }
 

@@ -8,6 +8,9 @@ namespace SimCrewOps.App.Wpf.Services;
 
 public static class TrackerShellBootstrapper
 {
+    // Logical name assigned in SimCrewOps.App.Wpf.csproj via <EmbeddedResource LogicalName="...">.
+    private const string EmbeddedRunwayCsvResourceName = "SimCrewOps.RunwayData.csv";
+
     public static async Task<TrackerShellBootstrapResult> BootstrapAsync(CancellationToken cancellationToken = default)
     {
         var appRootDirectory = Path.Combine(
@@ -16,6 +19,10 @@ public static class TrackerShellBootstrapper
             "SimTrackerV2");
 
         Directory.CreateDirectory(appRootDirectory);
+
+        // Extract the bundled runway CSV on first launch (single-file publish embeds it).
+        // The destination matches GetFallbackCsvPaths search order in TrackerShellHost.
+        await ExtractBundledRunwayCsvAsync(appRootDirectory, cancellationToken).ConfigureAwait(false);
 
         var settingsFilePath = Path.Combine(appRootDirectory, "settings.json");
         var settingsStore = new FileSystemTrackerAppSettingsStore(new FileSystemTrackerAppSettingsStoreOptions
@@ -42,6 +49,27 @@ public static class TrackerShellBootstrapper
             SettingsFilePath = settingsFilePath,
             LiveMapService = serviceStack.LiveMapService,
         };
+    }
+
+    /// <summary>
+    /// Extracts the embedded runway CSV to {appRootDirectory}/data/ourairports-runways.csv
+    /// if the file does not already exist.  Does nothing when the embedded resource is absent
+    /// (non-bundled dev builds that still use the file-system CSV).
+    /// </summary>
+    private static async Task ExtractBundledRunwayCsvAsync(string appRootDirectory, CancellationToken cancellationToken)
+    {
+        var destination = Path.Combine(appRootDirectory, "data", "ourairports-runways.csv");
+        if (File.Exists(destination))
+            return;
+
+        var assembly = Assembly.GetEntryAssembly() ?? typeof(TrackerShellBootstrapper).Assembly;
+        using var resourceStream = assembly.GetManifestResourceStream(EmbeddedRunwayCsvResourceName);
+        if (resourceStream is null)
+            return;  // No embedded resource — this is a non-bundled build; skip gracefully.
+
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        await using var fileStream = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+        await resourceStream.CopyToAsync(fileStream, cancellationToken).ConfigureAwait(false);
     }
 
     private static TrackerAppSettings CreateDefaultSettings(string appRootDirectory) =>

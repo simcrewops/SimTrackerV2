@@ -16,22 +16,26 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- ExcludeFromSingleFile keeps these alongside the exe instead of bundling them inside.
-         SimConnect.dll is a native DLL that must be next to the executable at runtime. -->
+    <!-- No ExcludeFromSingleFile — both native DLLs are bundled into the single-file EXE via
+         IncludeNativeLibrariesForSelfExtract and are extracted to %TEMP%\.net\... at runtime.
+         The .NET host adds the extraction directory to the DLL search path so that
+         NativeLibrary.TryLoad("SimConnect", ...) resolves them automatically.
+         CopyToOutputDirectory is kept for local (non-single-file) development builds. -->
     <None Include="..\lib\SimConnect.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
     <None Include="..\lib\Microsoft.FlightSimulator.SimConnect.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="data\ourairports-runways.csv">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
+    <!-- Runway CSV is embedded in the assembly so the single-file EXE needs no sidecar.
+         TrackerShellBootstrapper extracts it to %LOCALAPPDATA%\SimCrewOps\SimTrackerV2\data\
+         on first launch, which matches the existing GetFallbackCsvPaths search order. -->
+    <EmbeddedResource Include="data\ourairports-runways.csv">
+      <LogicalName>SimCrewOps.RunwayData.csv</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
