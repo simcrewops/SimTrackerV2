@@ -15,6 +15,29 @@ public sealed class TrackerServiceFactory
     }
 
     /// <summary>
+    /// Creates just the preflight checker from the given settings.
+    /// Returns null if no API token is configured.
+    /// Used for hot-reloading after a settings change without restarting the app.
+    /// </summary>
+    public IPreflightChecker? CreatePreflightChecker(TrackerApiSettings apiSettings)
+    {
+        ArgumentNullException.ThrowIfNull(apiSettings);
+
+        if (string.IsNullOrWhiteSpace(apiSettings.PilotApiToken))
+            return null;
+
+        return new HttpPreflightChecker(
+            _httpClientFactory(),
+            new SimCrewOpsApiUploaderOptions
+            {
+                BaseUri = apiSettings.BaseUri,
+                SimSessionsPath = apiSettings.SimSessionsPath,
+                PilotApiToken = apiSettings.PilotApiToken!,
+                TrackerVersion = apiSettings.TrackerVersion,
+            });
+    }
+
+    /// <summary>
     /// Creates just the active flight fetcher from the given settings.
     /// Returns null if no API token is configured.
     /// Used for hot-reloading after settings change without restarting the app.
@@ -118,6 +141,18 @@ public sealed class TrackerServiceFactory
                 settings.Api.BaseUri,
                 settings.Api.PilotApiToken);
 
+        var preflightChecker = string.IsNullOrWhiteSpace(settings.Api.PilotApiToken)
+            ? null
+            : new HttpPreflightChecker(
+                _httpClientFactory(),
+                new SimCrewOpsApiUploaderOptions
+                {
+                    BaseUri = settings.Api.BaseUri,
+                    SimSessionsPath = settings.Api.SimSessionsPath,
+                    PilotApiToken = settings.Api.PilotApiToken!,
+                    TrackerVersion = settings.Api.TrackerVersion,
+                });
+
         if (!settings.BackgroundSync.Enabled || string.IsNullOrWhiteSpace(settings.Api.PilotApiToken))
         {
             return new TrackerServiceStack
@@ -128,6 +163,7 @@ public sealed class TrackerServiceFactory
                 ActiveFlightFetcher = activeFlightFetcher,
                 LiveMapService = liveMapService,
                 TrackerApiKeyStore = apiKeyStore,
+                PreflightChecker = preflightChecker,
             };
         }
 
@@ -159,6 +195,7 @@ public sealed class TrackerServiceFactory
             ActiveFlightFetcher = activeFlightFetcher,
             LiveMapService = liveMapService,
             TrackerApiKeyStore = apiKeyStore,
+            PreflightChecker = preflightChecker,
         };
     }
 }

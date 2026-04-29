@@ -128,6 +128,9 @@ public sealed class BackgroundSyncCoordinator : IAsyncDisposable
                 LastSummary = summary,
                 LastErrorMessage = null,
                 ConsecutiveFailureCount = 0,
+                // Persist the most recent post-flight status across passes so the UI can show
+                // a grounding banner until the pilot acknowledges it.
+                LastPostFlightStatus = summary.LastPostFlightStatus ?? _status.LastPostFlightStatus,
             };
 
             // If at least one session was uploaded successfully, invoke the callback so

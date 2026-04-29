@@ -119,6 +119,8 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _landingPitchAngle = "--";
     private string _landingTzExcess = "--";
     private bool _autoFailBannerVisible;
+    private bool _groundingBannerVisible;
+    private string _groundingBannerText = string.Empty;
     private Brush _runwayMarkerBrush = new SolidColorBrush(MediaColor.FromRgb(63, 185, 80));
     private Thickness _runwayMarkerMargin = new Thickness(40, 2, 0, 2);
     private double _runwayTdzWidth = 60.0;
@@ -553,6 +555,24 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         get => _autoFailBannerVisible;
         private set => SetProperty(ref _autoFailBannerVisible, value);
+    }
+
+    /// <summary>
+    /// True when the pilot is currently grounded or in crew rest — shows the banner.
+    /// </summary>
+    public bool GroundingBannerVisible
+    {
+        get => _groundingBannerVisible;
+        private set => SetProperty(ref _groundingBannerVisible, value);
+    }
+
+    /// <summary>
+    /// Human-readable grounding or crew-rest message shown in the banner.
+    /// </summary>
+    public string GroundingBannerText
+    {
+        get => _groundingBannerText;
+        private set => SetProperty(ref _groundingBannerText, value);
     }
 
     public Brush RunwayMarkerBrush
@@ -1136,6 +1156,37 @@ public sealed class MainWindowViewModel : ObservableObject
         OnTime  = FormatTimeUtc(activeState?.BlockTimes.WheelsOnUtc,  "--:--z");
         InTime  = FormatTimeUtc(activeState?.BlockTimes.BlocksOnUtc,  "--:--z");
         BlockTime = FormatBlockElapsed(activeState?.BlockTimes.BlocksOffUtc, activeState?.BlockTimes.BlocksOnUtc);
+
+        // ── Grounding / crew-rest banner ──────────────────────────────────────
+        // Preflight check takes priority; post-flight status is used as fallback.
+        var preflightStatus  = snapshot.PreflightStatus;
+        var postFlightStatus = snapshot.LastPostFlightStatus;
+
+        if (preflightStatus?.IsGrounded == true)
+        {
+            GroundingBannerVisible = true;
+            GroundingBannerText = preflightStatus.GroundingReason is { Length: > 0 } reason
+                ? $"⚠ You are grounded: {reason}. {preflightStatus.GroundingAction}".Trim(' ', '.')  + "."
+                : "⚠ You are grounded. Check SimCrewOps for details.";
+        }
+        else if (preflightStatus?.InCrewRest == true)
+        {
+            GroundingBannerVisible = true;
+            var endsAt = preflightStatus.CrewRestEndsAt?.ToLocalTime().ToString("HH:mm") ?? "soon";
+            GroundingBannerText = $"✈ Crew rest active — you may fly again after {endsAt}.";
+        }
+        else if (postFlightStatus?.IsGrounded == true)
+        {
+            GroundingBannerVisible = true;
+            GroundingBannerText = postFlightStatus.StrikeAction is { Length: > 0 } action
+                ? $"⚠ Strike issued for this flight. {action}".Trim()
+                : "⚠ A strike was issued for your last flight. Check SimCrewOps for details.";
+        }
+        else
+        {
+            GroundingBannerVisible = false;
+            GroundingBannerText = string.Empty;
+        }
 
         UpdatePersistentInstruments(telemetry);
         PopulatePhasePills(phase);

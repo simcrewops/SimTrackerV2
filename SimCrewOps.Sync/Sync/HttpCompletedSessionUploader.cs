@@ -1,13 +1,30 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using SimCrewOps.Persistence.Models;
 using SimCrewOps.Sync.Models;
 
 namespace SimCrewOps.Sync.Sync;
 
+// Internal shape of the POST /api/sim-sessions 201 response body.
+file sealed record SimSessionCreatedResponse
+{
+    public string? Id { get; init; }
+
+    [JsonPropertyName("postFlight")]
+    public PostFlightStatus? PostFlight { get; init; }
+}
+
 public sealed class HttpCompletedSessionUploader : ICompletedSessionUploader
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
     private readonly HttpClient _httpClient;
     private readonly SimCrewOpsApiUploaderOptions _options;
     private readonly SimSessionUploadRequestMapper _requestMapper;
@@ -48,18 +65,34 @@ public sealed class HttpCompletedSessionUploader : ICompletedSessionUploader
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authToken);
 
             using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            var responseBody = response.Content is null
-                ? null
-                : await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
             if (response.StatusCode == HttpStatusCode.Created)
             {
+                // Parse the response body to extract post-flight status (strike issued, grounding).
+                PostFlightStatus? postFlight = null;
+                try
+                {
+                    var body = await response.Content
+                        .ReadFromJsonAsync<SimSessionCreatedResponse>(JsonOptions, cancellationToken)
+                        .ConfigureAwait(false);
+                    postFlight = body?.PostFlight;
+                }
+                catch (JsonException)
+                {
+                    // Body parse failure is non-fatal — the upload itself succeeded.
+                }
+
                 return new CompletedSessionUploadResult
                 {
                     Status = SessionUploadStatus.Success,
                     StatusCode = (int)response.StatusCode,
+                    PostFlightStatus = postFlight,
                 };
             }
+
+            var responseBody = response.Content is null
+                ? null
+                : await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
             return new CompletedSessionUploadResult
             {
@@ -103,10 +136,7 @@ public sealed class HttpCompletedSessionUploader : ICompletedSessionUploader
 
     private static string BuildErrorMessage(HttpStatusCode statusCode, string? responseBody)
     {
-        var prefix = statusCode == HttpStatusCode.Created
-            ? "Unexpected success status."
-            : $"Upload failed with HTTP {(int)statusCode}.";
-
+        var prefix = $"Upload failed with HTTP {(int)statusCode}.";
         return string.IsNullOrWhiteSpace(responseBody)
             ? prefix
             : $"{prefix} {responseBody.Trim()}";

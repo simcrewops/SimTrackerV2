@@ -34,6 +34,8 @@ public sealed class TrackerShellHost : IAsyncDisposable
     private ActiveFlightResponse? _activeFlight;
     private DateTimeOffset _activeFlightFetchedUtc = DateTimeOffset.MinValue;
     private IActiveFlightFetcher? _activeFlightFetcher;
+    private IPreflightChecker? _preflightChecker;
+    private PreflightStatusResponse? _preflightStatus;
     private string? _lastDetectedAircraftTitle;
     private string? _lastGpsDestinationIdent;
     private DateTimeOffset? _lastKnownBlocksOffUtc;
@@ -56,6 +58,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
         _serviceFactory = new TrackerServiceFactory();
         _settings = serviceStack.Settings;
         _activeFlightFetcher = serviceStack.ActiveFlightFetcher;
+        _preflightChecker = serviceStack.PreflightChecker;
         var managedSimConnectClient = new ManagedSimConnectClient();
         _simConnectHost = new MsfsSimConnectHost(
             new SimulatorProcessDetector(new SystemProcessListProvider()),
@@ -102,6 +105,8 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
         // Fetch the pilot's next assigned flight from the web app to pre-populate
         // departure/arrival ICAO and flight number in the tracker UI.
+        // Also runs the preflight grounding check so any strike banner is visible
+        // immediately after startup.
         await RefreshActiveFlightAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -208,8 +213,17 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
     private async Task RefreshActiveFlightAsync(CancellationToken cancellationToken = default)
     {
+        // Run preflight grounding check in parallel with the active flight fetch so the
+        // banner appears immediately on startup and refreshes every polling cycle.
+        var preflightTask = _preflightChecker is not null
+            ? _preflightChecker.CheckAsync(cancellationToken)
+            : Task.FromResult<PreflightStatusResponse?>(null);
+
         if (_activeFlightFetcher is null)
+        {
+            _preflightStatus = await preflightTask.ConfigureAwait(false);
             return;
+        }
 
         try
         {
@@ -269,6 +283,12 @@ public sealed class TrackerShellHost : IAsyncDisposable
         {
             // Swallow — active flight is optional; don't crash the tracker over it.
         }
+        finally
+        {
+            // Capture the preflight check result regardless of whether the flight fetch
+            // succeeded — errors in preflightTask are swallowed inside CheckAsync.
+            _preflightStatus = await preflightTask.ConfigureAwait(false);
+        }
     }
 
     private async Task PreWarmRunwayCacheAsync(
@@ -299,10 +319,10 @@ public sealed class TrackerShellHost : IAsyncDisposable
             _serviceStack.TrackerApiKeyStore);
         _persistentRuntimeCoordinator.UpdateLivePositionUploader(newUploader);
 
-        // Hot-reload the active flight fetcher and immediately pull the latest flight info.
-        // This means a user who just pasted their API token sees their flight assignment
-        // right away without having to restart the app.
+        // Hot-reload the active flight fetcher and preflight checker so a newly-entered
+        // API token takes effect immediately.  The refresh below will run the preflight check.
         _activeFlightFetcher = _serviceFactory.CreateActiveFlightFetcher(settings.Api);
+        _preflightChecker = _serviceFactory.CreatePreflightChecker(settings.Api);
         _activeFlightFetchedUtc = DateTimeOffset.MinValue; // force refresh on next poll
         await RefreshActiveFlightAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -433,5 +453,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
             LivePositionEnabled = !string.IsNullOrWhiteSpace(Settings.Api.PilotApiToken),
             LivePositionLastUploadUtc = _persistentRuntimeCoordinator.LastSuccessfulUploadUtc,
             ActiveFlight = _activeFlight,
+            PreflightStatus = _preflightStatus,
+            LastPostFlightStatus = _serviceStack.BackgroundSyncCoordinator?.Status.LastPostFlightStatus,
         };
 }
