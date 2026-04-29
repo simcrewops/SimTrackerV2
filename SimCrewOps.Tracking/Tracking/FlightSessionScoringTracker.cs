@@ -108,6 +108,7 @@ public sealed class FlightSessionScoringTracker
     private bool _arrivalSeen;
     private bool _arrivalParkingBrakeObserved;
     private bool _arrivalTaxiLightsOffBeforeParkingBrakeSet;
+    private bool _taxiLightsWentOffBeforeBrake;
     private bool _arrivalParkingBrakeSetBeforeAllEnginesShutdown = true;
     private bool _arrivalAllEnginesOffByEndOfSession;
 
@@ -900,12 +901,16 @@ public sealed class FlightSessionScoringTracker
             _arrivalSeen = true;
         }
 
-        var brakeAlreadyObserved = _arrivalParkingBrakeObserved;
-
         if (!_arrivalParkingBrakeObserved)
         {
             if (!frame.ParkingBrakeSet)
             {
+                // Accumulate whether lights went off before the brake frame arrives.
+                if (!frame.TaxiLightsOn)
+                {
+                    _taxiLightsWentOffBeforeBrake = true;
+                }
+
                 if (!AnyEngineRunning(frame))
                 {
                     _arrivalParkingBrakeSetBeforeAllEnginesShutdown = false;
@@ -914,14 +919,9 @@ public sealed class FlightSessionScoringTracker
             else
             {
                 _arrivalParkingBrakeObserved = true;
+                // Lights count only if they went off in an earlier frame, not simultaneously.
+                _arrivalTaxiLightsOffBeforeParkingBrakeSet = _taxiLightsWentOffBeforeBrake;
             }
-        }
-
-        // Taxi lights must be off in a frame AFTER parking brake was already set.
-        // Same-frame simultaneous brake+lights-off does not count.
-        if (brakeAlreadyObserved && !frame.TaxiLightsOn)
-        {
-            _arrivalTaxiLightsOffBeforeParkingBrakeSet = true;
         }
 
         _arrivalAllEnginesOffByEndOfSession = !AnyEngineRunning(frame);
