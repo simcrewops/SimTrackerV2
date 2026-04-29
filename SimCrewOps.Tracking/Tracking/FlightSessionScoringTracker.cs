@@ -900,6 +900,8 @@ public sealed class FlightSessionScoringTracker
             _arrivalSeen = true;
         }
 
+        var brakeAlreadyObserved = _arrivalParkingBrakeObserved;
+
         if (!_arrivalParkingBrakeObserved)
         {
             if (!frame.ParkingBrakeSet)
@@ -915,11 +917,9 @@ public sealed class FlightSessionScoringTracker
             }
         }
 
-        // Taxi lights: must be turned off after parking brake is set (shutdown checklist).
-        // Correct flow: taxi with lights on → set brake → turn lights off → passes.
-        // We only update after brake is observed so keeping lights on during taxi never
-        // fires a penalty early; the penalty clears the moment lights go off post-brake.
-        if (_arrivalParkingBrakeObserved && !frame.TaxiLightsOn)
+        // Taxi lights must be off in a frame AFTER parking brake was already set.
+        // Same-frame simultaneous brake+lights-off does not count.
+        if (brakeAlreadyObserved && !frame.TaxiLightsOn)
         {
             _arrivalTaxiLightsOffBeforeParkingBrakeSet = true;
         }
