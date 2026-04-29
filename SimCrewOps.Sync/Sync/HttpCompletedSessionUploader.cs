@@ -50,15 +50,18 @@ public sealed class HttpCompletedSessionUploader : ICompletedSessionUploader
             if (response.StatusCode == HttpStatusCode.Created)
             {
                 SimSessionUploadResponse? uploadResponse = null;
-                try
+                if (responseBody is not null)
                 {
-                    uploadResponse = await response.Content
-                        .ReadFromJsonAsync<SimSessionUploadResponse>(cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch
-                {
-                    // Ignore deserialization failures — treat as success without server result
+                    try
+                    {
+                        uploadResponse = System.Text.Json.JsonSerializer.Deserialize<SimSessionUploadResponse>(
+                            responseBody,
+                            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    }
+                    catch
+                    {
+                        // Ignore deserialization failures — treat as success without server result
+                    }
                 }
 
                 return new CompletedSessionUploadResult

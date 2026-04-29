@@ -9,12 +9,6 @@ namespace SimCrewOps.Sync.Tests;
 
 public sealed class SimSessionPayloadTests
 {
-    private static readonly JsonSerializerOptions JsonOpts = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        WriteIndented = false,
-    };
-
     // ── Golden shape ──────────────────────────────────────────────────────────
 
     [Fact]
