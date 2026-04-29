@@ -33,22 +33,22 @@ From a Windows machine with the .NET 8 SDK installed:
 ```powershell
 dotnet publish SimCrewOps.App.Wpf/SimCrewOps.App.Wpf.csproj `
   -c Release `
-  -p:PublishProfile=Properties\PublishProfiles\Alpha-win-x64.pubxml `
-  -p:InformationalVersion=2.0.0-alpha-local
+  -p:PublishProfile=Properties\PublishProfiles\Beta-win-x64.pubxml `
+  -p:InformationalVersion=3.0.0-beta-local
 
-powershell -ExecutionPolicy Bypass -File packaging/windows/prepare-alpha-package.ps1 `
+powershell -ExecutionPolicy Bypass -File packaging/windows/prepare-beta-package.ps1 `
   -PublishOutputDirectory SimCrewOps.App.Wpf/artifacts/publish/SimTrackerV2-win-x64 `
-  -PackageOutputDirectory artifacts/package/SimTrackerV2-alpha-win-x64 `
-  -Version 2.0.0-alpha-local `
+  -PackageOutputDirectory artifacts/package/SimTrackerV2-beta-win-x64 `
+  -Version 3.0.0-beta-local `
   -CommitSha local
 ```
 
 ## Installer Status
 
-This pass builds a publishable alpha artifact path first. A traditional Windows installer can layer on top of this package layout without changing the app runtime structure.
+This pass builds a publishable beta artifact path. A traditional Windows installer can layer on top of this package layout without changing the app runtime structure.
 
 An Inno Setup scaffold is included at:
 
 - `packaging/windows/installer/SimTrackerV2.iss`
 
-It targets the staged alpha package directory created by the prep script.
+It targets the staged beta package directory created by the prep script.

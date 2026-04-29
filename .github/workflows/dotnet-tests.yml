@@ -144,14 +144,14 @@ jobs:
           dotnet publish SimCrewOps.App.Wpf/SimCrewOps.App.Wpf.csproj
           --configuration Release
           --no-restore
-          -p:PublishProfile=Alpha-win-x64
+          -p:PublishProfile=Beta-win-x64
           -p:Version=${{ env.PACKAGE_VERSION }}
           -p:InformationalVersion=${{ env.PACKAGE_VERSION }}+${{ github.sha }}
 
       - name: Stage preview package
         shell: pwsh
         run: >
-          ./packaging/windows/prepare-alpha-package.ps1
+          ./packaging/windows/prepare-beta-package.ps1
           -PublishOutputDirectory "SimCrewOps.App.Wpf/artifacts/publish/SimTrackerV2-win-x64"
           -PackageOutputDirectory "artifacts/package/SimTrackerV2-preview-win-x64"
           -Version "${{ env.PACKAGE_VERSION }}"
@@ -174,14 +174,14 @@ jobs:
             artifacts/package/SimTrackerV2-preview-win-x64/**
           if-no-files-found: error
 
-  publish-windows-alpha:
-    name: Publish Windows Alpha (main only)
+  publish-windows-beta:
+    name: Publish Windows Beta (main only)
     needs: test
     if: github.ref == 'refs/heads/main'
     runs-on: windows-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      PACKAGE_VERSION: 3.0.0-alpha.${{ github.run_number }}
+      PACKAGE_VERSION: 3.0.0-beta.${{ github.run_number }}
 
     steps:
       - name: Check out repository
@@ -203,49 +203,49 @@ jobs:
           dotnet publish SimCrewOps.App.Wpf/SimCrewOps.App.Wpf.csproj
           --configuration Release
           --no-restore
-          -p:PublishProfile=Alpha-win-x64
+          -p:PublishProfile=Beta-win-x64
           -p:Version=${{ env.PACKAGE_VERSION }}
           -p:InformationalVersion=${{ env.PACKAGE_VERSION }}+${{ github.sha }}
 
-      - name: Stage alpha package
+      - name: Stage beta package
         shell: pwsh
         run: >
-          ./packaging/windows/prepare-alpha-package.ps1
+          ./packaging/windows/prepare-beta-package.ps1
           -PublishOutputDirectory "SimCrewOps.App.Wpf/artifacts/publish/SimTrackerV2-win-x64"
-          -PackageOutputDirectory "artifacts/package/SimTrackerV2-alpha-win-x64"
+          -PackageOutputDirectory "artifacts/package/SimTrackerV2-beta-win-x64"
           -Version "${{ env.PACKAGE_VERSION }}"
           -CommitSha "${{ github.sha }}"
 
-      - name: Archive alpha package
+      - name: Archive beta package
         shell: pwsh
         run: >
           Compress-Archive
-          -Path "artifacts/package/SimTrackerV2-alpha-win-x64/*"
-          -DestinationPath "artifacts/package/SimTrackerV2-alpha-win-x64.zip"
+          -Path "artifacts/package/SimTrackerV2-beta-win-x64/*"
+          -DestinationPath "artifacts/package/SimTrackerV2-beta-win-x64.zip"
           -Force
 
-      - name: Upload alpha package
+      - name: Upload beta package
         uses: actions/upload-artifact@v7
         with:
-          name: simtracker-alpha-win-x64
+          name: simtracker-beta-win-x64
           path: |
-            artifacts/package/SimTrackerV2-alpha-win-x64.zip
-            artifacts/package/SimTrackerV2-alpha-win-x64/**
+            artifacts/package/SimTrackerV2-beta-win-x64.zip
+            artifacts/package/SimTrackerV2-beta-win-x64/**
           if-no-files-found: error
 
-      - name: Publish GitHub Release (rolling alpha)
+      - name: Publish GitHub Release (rolling beta)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: alpha-latest
+          tag_name: beta-latest
           name: "SimCrewOps Tracker v${{ env.PACKAGE_VERSION }}"
           body: |
-            **Alpha build** — automatically updated on every push to `main`.
+            **Beta build** — automatically updated on every push to `main`.
 
             **Version:** `${{ env.PACKAGE_VERSION }}`
             **Commit:** `${{ github.sha }}`
 
             ### Install
-            1. Download `SimCrewOps-Tracker-alpha-win-x64.zip` below
+            1. Download `SimCrewOps-Tracker-beta-win-x64.zip` below
             2. Extract anywhere and run `SimCrewOps.App.Wpf.exe`
 
             ### Connect your account
@@ -253,5 +253,5 @@ jobs:
             - The **LIVE SYNC ON** badge in the nav bar confirms you're connected
           prerelease: true
           make_latest: false
-          files: artifacts/package/SimTrackerV2-alpha-win-x64.zip
+          files: artifacts/package/SimTrackerV2-beta-win-x64.zip
           token: ${{ secrets.GITHUB_TOKEN }}
