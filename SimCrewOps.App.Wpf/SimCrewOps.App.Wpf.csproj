@@ -16,17 +16,18 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- No ExcludeFromSingleFile — both native DLLs are bundled into the single-file EXE via
-         IncludeNativeLibrariesForSelfExtract and are extracted to %TEMP%\.net\... at runtime.
-         The .NET host adds the extraction directory to the DLL search path so that
-         NativeLibrary.TryLoad("SimConnect", ...) resolves them automatically.
-         CopyToOutputDirectory is kept for local (non-single-file) development builds. -->
-    <None Include="..\lib\SimConnect.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="..\lib\Microsoft.FlightSimulator.SimConnect.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <!-- Both SimConnect DLLs are embedded as managed resources so the single-file EXE
+         needs no sidecars. TrackerShellBootstrapper.ExtractBundledNativeDllsAsync()
+         extracts them to %LOCALAPPDATA%\SimCrewOps\SimTrackerV2\native\ at startup and
+         sets SIMCONNECT_NATIVE_DLL_PATH so NativeSimConnectLibraryLocator finds them.
+         Works for both single-file publish and regular dev builds (extraction still runs,
+         placing the DLLs in the app-data native dir rather than the bin dir). -->
+    <EmbeddedResource Include="..\lib\SimConnect.dll">
+      <LogicalName>SimCrewOps.NativeSimConnect.dll</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\lib\Microsoft.FlightSimulator.SimConnect.dll">
+      <LogicalName>SimCrewOps.NativeMsfsSimConnect.dll</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
