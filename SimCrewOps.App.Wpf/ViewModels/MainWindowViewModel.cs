@@ -1672,7 +1672,9 @@ public sealed class MainWindowViewModel : ObservableObject
                 : $"{phaseScore.AwardedPoints:0.#} / {phaseScore.MaxPoints:0.#}",
             fillWidth,
             fillBrush,
-            finding is not null ? $"↳ {finding.Description}" : string.Empty);
+            finding is not null
+                ? [new FindingRowModel($"↳ {finding.Description}", finding.IsAutomaticFail)]
+                : []);
     }
 
     private static List<ScoreRowModel> CreateSampleScoreRows()
@@ -1680,13 +1682,13 @@ public sealed class MainWindowViewModel : ObservableObject
         var muted = new SolidColorBrush(MediaColor.FromRgb(56, 91, 105));
         return new List<ScoreRowModel>
         {
-            new("Preflight", "--", 0, muted),
-            new("Taxi Out",  "--", 0, muted),
-            new("Takeoff",   "--", 0, muted),
-            new("Approach",  "--", 0, muted),
-            new("Landing",   "--", 0, muted),
-            new("Taxi In",   "--", 0, muted),
-            new("Arrival",   "--", 0, muted),
+            new("Preflight", "--", 0, muted, []),
+            new("Taxi Out",  "--", 0, muted, []),
+            new("Takeoff",   "--", 0, muted, []),
+            new("Approach",  "--", 0, muted, []),
+            new("Landing",   "--", 0, muted, []),
+            new("Taxi In",   "--", 0, muted, []),
+            new("Arrival",   "--", 0, muted, []),
         };
     }
 
