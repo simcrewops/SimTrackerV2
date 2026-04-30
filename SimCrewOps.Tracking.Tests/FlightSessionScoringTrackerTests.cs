@@ -148,11 +148,11 @@ public sealed class FlightSessionScoringTrackerTests
         var tracker = new FlightSessionScoringTracker();
         var t0 = new DateTimeOffset(2026, 4, 12, 22, 0, 0, TimeSpan.Zero);
 
-        // Airborne frame — negative VelocityWorldY = descending at 3 ft/s = 180 fpm
+        // Last-airborne frame (velocityWorldY: -3.0 ft/s = 180 fpm; vs: -210 fpm)
         tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
             velocityWorldY: -3.0, touchdownNormal: -2.5, vs: -210));
 
-        // Touchdown frame — OnGround flips true
+        // Touchdown frame — OnGround flips true; velocityWorldY: -2.0 ft/s = 120 fpm
         tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
             velocityWorldY: -2.0, touchdownNormal: -1.8, vs: -180));
 
@@ -160,10 +160,108 @@ public sealed class FlightSessionScoringTrackerTests
         Assert.NotNull(input.TouchdownRateCandidates);
 
         var c = input.TouchdownRateCandidates!;
+        // TD-frame candidates
         Assert.Equal(120.0, c.FpmVelocityWorldY, precision: 1);    // 2.0 * 60
         Assert.Equal(108.0, c.FpmTouchdownNormal, precision: 1);    // 1.8 * 60
         Assert.Equal(180.0, c.FpmVerticalSpeed, precision: 1);      // abs(vs=-180)
         Assert.True(c.FinalSelected > 0, "FinalSelected must be positive");
+
+        // Last-airborne candidates from the preceding airborne frame
+        Assert.Equal(180.0, c.FpmVelocityWorldYLastAirborne, precision: 1);  // 3.0 * 60
+        Assert.Equal(210.0, c.FpmVerticalSpeedLastAirborne, precision: 1);   // abs(vs=-210)
+
+        // Source label must be set
+        Assert.NotEmpty(c.SelectedSourceLabel);
+
+        // Raw TouchdownNormal fps on TD frame (negative, descending)
+        Assert.Equal(-1.8, c.RawTouchdownNormalVelocityFpsTouchdownFrame, precision: 5);
+    }
+
+    [Fact]
+    public void TouchdownRateCandidates_LastAirborneFromPreviousFrame()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 12, 22, 0, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
+            velocityWorldY: -3.5, vs: -220));
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -2.0, vs: -180));
+
+        var c = tracker.BuildScoreInput().TouchdownRateCandidates!;
+        Assert.Equal(210.0, c.FpmVelocityWorldYLastAirborne, precision: 1);  // 3.5 * 60
+        Assert.Equal(220.0, c.FpmVerticalSpeedLastAirborne, precision: 1);   // abs(-220)
+    }
+
+    [Fact]
+    public void TouchdownRateCandidates_SelectedSourceLabelPrimary()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 12, 22, 0, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false));
+        // TD frame with negative VelocityWorldY — should use primary path
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -2.0, vs: -180));
+
+        var c = tracker.BuildScoreInput().TouchdownRateCandidates!;
+        Assert.Equal("VelocityWorldY (TD frame)", c.SelectedSourceLabel);
+    }
+
+    [Fact]
+    public void TouchdownRateCandidates_SelectedSourceLabel_FallbackA()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 12, 22, 0, 0, TimeSpan.Zero);
+
+        // Last-airborne has negative VelocityWorldY; TD frame reports 0
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
+            velocityWorldY: -2.0, vs: -180));
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
+            velocityWorldY: 0.0, vs: -150));
+
+        var c = tracker.BuildScoreInput().TouchdownRateCandidates!;
+        Assert.Equal("VelocityWorldY (last airborne)", c.SelectedSourceLabel);
+    }
+
+    [Fact]
+    public void TouchdownRateCandidates_PostTouchdownNormalScan_CapturesFirstNonZero()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 12, 22, 0, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
+            velocityWorldY: -2.0, vs: -150));
+
+        // TD frame: TouchdownNormal is 0 — opens the 2-second scan window
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -2.0, touchdownNormal: 0.0, vs: -150));
+
+        // Post-touchdown frame within the 2-second window: sticky SimVar now has a value
+        tracker.Ingest(Frame(t0.AddSeconds(1.1), FlightPhase.Landing, onGround: true,
+            velocityWorldY: 0.0, touchdownNormal: -2.1, vs: -120));
+
+        var c = tracker.BuildScoreInput().TouchdownRateCandidates!;
+        Assert.NotNull(c.RawTouchdownNormalVelocityFpsFirstNonZero);
+        Assert.Equal(-2.1, c.RawTouchdownNormalVelocityFpsFirstNonZero!.Value, precision: 5);
+    }
+
+    [Fact]
+    public void TouchdownRateCandidates_PostTouchdownNormalScan_SkippedWhenTdFrameNonZero()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 12, 22, 0, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
+            velocityWorldY: -2.0, vs: -150));
+
+        // TD frame already has non-zero TouchdownNormal — no scan needed
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -2.0, touchdownNormal: -1.8, vs: -150));
+
+        var c = tracker.BuildScoreInput().TouchdownRateCandidates!;
+        Assert.Equal(-1.8, c.RawTouchdownNormalVelocityFpsTouchdownFrame, precision: 5);
+        Assert.Null(c.RawTouchdownNormalVelocityFpsFirstNonZero);
     }
 
     [Fact]
@@ -186,10 +284,20 @@ public sealed class FlightSessionScoringTrackerTests
         var restored = tracker2.BuildScoreInput();
 
         Assert.NotNull(restored.TouchdownRateCandidates);
-        Assert.Equal(saved.TouchdownRateCandidates!.FpmVelocityWorldY, restored.TouchdownRateCandidates!.FpmVelocityWorldY);
-        Assert.Equal(saved.TouchdownRateCandidates.FpmTouchdownNormal, restored.TouchdownRateCandidates.FpmTouchdownNormal);
-        Assert.Equal(saved.TouchdownRateCandidates.FpmVerticalSpeed, restored.TouchdownRateCandidates.FpmVerticalSpeed);
-        Assert.Equal(saved.TouchdownRateCandidates.FinalSelected, restored.TouchdownRateCandidates.FinalSelected);
+        var s = saved.TouchdownRateCandidates!;
+        var r = restored.TouchdownRateCandidates!;
+
+        Assert.Equal(s.FpmVelocityWorldY, r.FpmVelocityWorldY);
+        Assert.Equal(s.FpmTouchdownNormal, r.FpmTouchdownNormal);
+        Assert.Equal(s.FpmVerticalSpeed, r.FpmVerticalSpeed);
+        Assert.Equal(s.FinalSelected, r.FinalSelected);
+
+        // New fields survive round-trip
+        Assert.Equal(s.FpmVelocityWorldYLastAirborne, r.FpmVelocityWorldYLastAirborne);
+        Assert.Equal(s.FpmVerticalSpeedLastAirborne, r.FpmVerticalSpeedLastAirborne);
+        Assert.Equal(s.SelectedSourceLabel, r.SelectedSourceLabel);
+        Assert.Equal(s.RawTouchdownNormalVelocityFpsTouchdownFrame, r.RawTouchdownNormalVelocityFpsTouchdownFrame);
+        Assert.Equal(s.RawTouchdownNormalVelocityFpsFirstNonZero, r.RawTouchdownNormalVelocityFpsFirstNonZero);
     }
 
     private static TelemetryFrame Frame(

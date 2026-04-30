@@ -163,16 +163,30 @@ public sealed record ApproachPathPoint
 /// <summary>
 /// A/B instrumentation: multiple touchdown FPM calculation candidates captured at first touchdown.
 /// Stored in local session JSON only — not sent in the upload payload.
-/// All values are positive magnitudes (fpm); 0 means not available.
+/// FPM fields are positive magnitudes (0 = not available); raw fps fields are signed (negative = descending).
 /// </summary>
 public sealed record TouchdownRateCandidates
 {
-    /// <summary>VELOCITY WORLD Y on the touchdown frame, converted to fpm.</summary>
+    /// <summary>VELOCITY WORLD Y on the touchdown frame, converted to fpm magnitude.</summary>
     public double FpmVelocityWorldY { get; init; }
-    /// <summary>PLANE TOUCHDOWN NORMAL VELOCITY on the touchdown frame, converted to fpm.</summary>
+    /// <summary>PLANE TOUCHDOWN NORMAL VELOCITY on the touchdown frame, converted to fpm magnitude.</summary>
     public double FpmTouchdownNormal { get; init; }
-    /// <summary>VERTICAL SPEED (barometric) on the touchdown frame, converted to fpm magnitude.</summary>
+    /// <summary>VERTICAL SPEED (barometric) on the touchdown frame, fpm magnitude.</summary>
     public double FpmVerticalSpeed { get; init; }
     /// <summary>The value selected by CalculateTouchdownVerticalSpeed() as the authoritative rate.</summary>
     public double FinalSelected { get; init; }
+
+    /// <summary>VELOCITY WORLD Y on the last airborne frame (frame before OnGround flip), fpm magnitude.</summary>
+    public double FpmVelocityWorldYLastAirborne { get; init; }
+    /// <summary>VERTICAL SPEED on the last airborne frame, fpm magnitude.</summary>
+    public double FpmVerticalSpeedLastAirborne { get; init; }
+    /// <summary>Human-readable label identifying which fallback path CalculateTouchdownVerticalSpeed chose.</summary>
+    public string SelectedSourceLabel { get; init; } = string.Empty;
+    /// <summary>Raw signed fps from PLANE TOUCHDOWN NORMAL VELOCITY on the touchdown frame (negative = descending).</summary>
+    public double RawTouchdownNormalVelocityFpsTouchdownFrame { get; init; }
+    /// <summary>
+    /// Raw signed fps from PLANE TOUCHDOWN NORMAL VELOCITY at the first non-zero reading within a
+    /// 2-second post-touchdown window. Null when the TD-frame value was already non-zero, or the window expired with no reading.
+    /// </summary>
+    public double? RawTouchdownNormalVelocityFpsFirstNonZero { get; init; }
 }

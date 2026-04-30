@@ -103,6 +103,13 @@ public sealed class FlightSessionScoringTracker
     private double _abFpmTouchdownNormal;
     private double _abFpmVerticalSpeed;
     private double _abFinalSelected;
+    private double _abFpmVelocityWorldYLastAirborne;
+    private double _abFpmVerticalSpeedLastAirborne;
+    private string _abSelectedSourceLabel = string.Empty;
+    private double _abRawTouchdownNormalFpsTdFrame;
+    private double? _abRawTouchdownNormalFpsFirstNonZero;
+    private bool _abTouchdownNormalSearchActive;
+    private DateTimeOffset? _abTouchdownNormalSearchExpiry;
 
     private DateTimeOffset? _sessionStartUtc;
     private DateTimeOffset? _lastFlightPathSampleAt;
@@ -274,6 +281,11 @@ public sealed class FlightSessionScoringTracker
         _abFpmTouchdownNormal = input.TouchdownRateCandidates?.FpmTouchdownNormal ?? 0;
         _abFpmVerticalSpeed   = input.TouchdownRateCandidates?.FpmVerticalSpeed ?? 0;
         _abFinalSelected      = input.TouchdownRateCandidates?.FinalSelected ?? 0;
+        _abFpmVelocityWorldYLastAirborne     = input.TouchdownRateCandidates?.FpmVelocityWorldYLastAirborne ?? 0;
+        _abFpmVerticalSpeedLastAirborne      = input.TouchdownRateCandidates?.FpmVerticalSpeedLastAirborne ?? 0;
+        _abSelectedSourceLabel               = input.TouchdownRateCandidates?.SelectedSourceLabel ?? string.Empty;
+        _abRawTouchdownNormalFpsTdFrame      = input.TouchdownRateCandidates?.RawTouchdownNormalVelocityFpsTouchdownFrame ?? 0;
+        _abRawTouchdownNormalFpsFirstNonZero = input.TouchdownRateCandidates?.RawTouchdownNormalVelocityFpsFirstNonZero;
 
         _flightPath.Clear();
         _flightPath.AddRange(input.FlightPath);
@@ -442,10 +454,15 @@ public sealed class FlightSessionScoringTracker
             TouchdownRateCandidates = _capturedFirstTouchdown
                 ? new TouchdownRateCandidates
                 {
-                    FpmVelocityWorldY = _abFpmVelocityWorldY,
+                    FpmVelocityWorldY  = _abFpmVelocityWorldY,
                     FpmTouchdownNormal = _abFpmTouchdownNormal,
                     FpmVerticalSpeed   = _abFpmVerticalSpeed,
                     FinalSelected      = _abFinalSelected,
+                    FpmVelocityWorldYLastAirborne               = _abFpmVelocityWorldYLastAirborne,
+                    FpmVerticalSpeedLastAirborne                = _abFpmVerticalSpeedLastAirborne,
+                    SelectedSourceLabel                         = _abSelectedSourceLabel,
+                    RawTouchdownNormalVelocityFpsTouchdownFrame = _abRawTouchdownNormalFpsTdFrame,
+                    RawTouchdownNormalVelocityFpsFirstNonZero   = _abRawTouchdownNormalFpsFirstNonZero,
                 }
                 : null,
             TaxiIn = new TaxiInMetrics
@@ -799,7 +816,8 @@ public sealed class FlightSessionScoringTracker
         if (!_previousFrame.OnGround && frame.OnGround)
         {
             _lastTouchdownAt = frame.TimestampUtc;
-            _landingTouchdownVerticalSpeedFpm = Math.Max(_landingTouchdownVerticalSpeedFpm, CalculateTouchdownVerticalSpeed(frame));
+            var (tdFpm, tdLabel) = CalculateTouchdownVerticalSpeed(frame);
+            _landingTouchdownVerticalSpeedFpm = Math.Max(_landingTouchdownVerticalSpeedFpm, tdFpm);
             _landingTouchdownGForce = Math.Max(_landingTouchdownGForce, CalculateTouchdownGForce());
             if (_landingTouchdownIndicatedAirspeedKnots == 0)
             {
@@ -828,6 +846,29 @@ public sealed class FlightSessionScoringTracker
                 _abFpmVerticalSpeed = frame.VerticalSpeedFpm < 0
                     ? Math.Abs(frame.VerticalSpeedFpm) : 0;
                 _abFinalSelected = _landingTouchdownVerticalSpeedFpm;
+
+                // Last-airborne candidates (frame immediately before OnGround flip).
+                if (_previousFrame is not null && !_previousFrame.OnGround)
+                {
+                    _abFpmVelocityWorldYLastAirborne = _previousFrame.VelocityWorldYFps < 0
+                        ? Math.Abs(_previousFrame.VelocityWorldYFps) * 60.0 : 0;
+                    _abFpmVerticalSpeedLastAirborne = _previousFrame.VerticalSpeedFpm < 0
+                        ? Math.Abs(_previousFrame.VerticalSpeedFpm) : 0;
+                }
+
+                // Selected-source label from the fallback cascade above.
+                _abSelectedSourceLabel = tdLabel;
+
+                // Raw TouchdownNormal fps (signed) at TD frame.
+                _abRawTouchdownNormalFpsTdFrame = frame.TouchdownNormalVelocityFps;
+
+                // If TD-frame TouchdownNormal is zero, open a 2-second scan for first non-zero.
+                // The sticky SimVar can take a frame or two to update after wheel contact.
+                if (frame.TouchdownNormalVelocityFps == 0)
+                {
+                    _abTouchdownNormalSearchActive = true;
+                    _abTouchdownNormalSearchExpiry = frame.TimestampUtc + TimeSpan.FromSeconds(2);
+                }
             }
 
             if (_airborneAfterTouchdownAt is not null &&
@@ -839,6 +880,22 @@ public sealed class FlightSessionScoringTracker
             if (frame.TouchdownZoneExcessDistanceFeet is not null)
             {
                 _landingTouchdownZoneExcessDistanceFeet = frame.TouchdownZoneExcessDistanceFeet.Value;
+            }
+        }
+
+        // Post-touchdown scan: capture first non-zero PLANE TOUCHDOWN NORMAL VELOCITY within 2 s.
+        // The sticky SimVar can take a frame or two to update after wheel contact.
+        if (_abTouchdownNormalSearchActive)
+        {
+            if (frame.OnGround && frame.TouchdownNormalVelocityFps != 0
+                && frame.TimestampUtc <= _abTouchdownNormalSearchExpiry)
+            {
+                _abRawTouchdownNormalFpsFirstNonZero = frame.TouchdownNormalVelocityFps;
+                _abTouchdownNormalSearchActive = false;
+            }
+            else if (frame.TimestampUtc > _abTouchdownNormalSearchExpiry)
+            {
+                _abTouchdownNormalSearchActive = false;
             }
         }
 
@@ -1093,7 +1150,7 @@ public sealed class FlightSessionScoringTracker
         }
     }
 
-    private double CalculateTouchdownVerticalSpeed(TelemetryFrame touchdownFrame)
+    private (double Fpm, string Label) CalculateTouchdownVerticalSpeed(TelemetryFrame touchdownFrame)
     {
         // Primary: VELOCITY WORLD Y at the moment of wheel contact.
         //
@@ -1104,12 +1161,12 @@ public sealed class FlightSessionScoringTracker
         // still reads the pre-flare rate at touchdown. VELOCITY WORLD Y does not have
         // this problem and matches what Volanta and other pro trackers report.
         if (touchdownFrame.VelocityWorldYFps < 0)
-            return Math.Abs(touchdownFrame.VelocityWorldYFps) * 60.0;
+            return (Math.Abs(touchdownFrame.VelocityWorldYFps) * 60.0, "VelocityWorldY (TD frame)");
 
         // Fallback A: VelocityWorldY on the last airborne frame (slightly earlier reading).
         // Catches the case where the sim briefly reports 0 or positive on the touchdown frame.
         if (_previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VelocityWorldYFps < 0)
-            return Math.Abs(_previousFrame.VelocityWorldYFps) * 60.0;
+            return (Math.Abs(_previousFrame.VelocityWorldYFps) * 60.0, "VelocityWorldY (last airborne)");
 
         // Fallback B: barometric VS on the last airborne frame (sampled just before contact).
         // The frame immediately before OnGround is free of gear-compression artefacts.
@@ -1118,14 +1175,14 @@ public sealed class FlightSessionScoringTracker
             && _previousFrame.AltitudeAglFeet <= 50
             && _previousFrame.VerticalSpeedFpm < 0)
         {
-            return Math.Abs(_previousFrame.VerticalSpeedFpm);
+            return (Math.Abs(_previousFrame.VerticalSpeedFpm), "VerticalSpeed (last airborne)");
         }
 
         // Fallback C: barometric VS on the touchdown frame itself.
         if (touchdownFrame.VerticalSpeedFpm < 0)
-            return Math.Abs(touchdownFrame.VerticalSpeedFpm);
+            return (Math.Abs(touchdownFrame.VerticalSpeedFpm), "VerticalSpeed (TD frame)");
 
-        // Fallback B: AGL rate-of-change across the full flare window in the 2-second rolling
+        // Fallback D: AGL rate-of-change across the full flare window in the 2-second rolling
         // buffer.  Using a wider time span (first → last sample in 0.5–30 ft range) smooths
         // out per-frame noise and gives a stable average sink rate.
         var flareFrames = _recentSamples
@@ -1141,7 +1198,7 @@ public sealed class FlightSessionScoringTracker
             if (dtSeconds >= 0.1)
             {
                 var aglSinkFpm = (first.AltitudeAglFeet - last.AltitudeAglFeet) / dtSeconds * 60.0;
-                if (aglSinkFpm > 0) return aglSinkFpm;
+                if (aglSinkFpm > 0) return (aglSinkFpm, "AGL rate-of-change");
             }
         }
 
@@ -1150,9 +1207,10 @@ public sealed class FlightSessionScoringTracker
             .Where(static s => s.AltitudeAglFeet is > 0 and <= 100)
             .ToList();
 
-        return subHundredSamples.Count > 0
-            ? Math.Abs(subHundredSamples.Min(static s => s.VerticalSpeedFpm))
-            : 0;
+        if (subHundredSamples.Count > 0)
+            return (Math.Abs(subHundredSamples.Min(static s => s.VerticalSpeedFpm)), "BaroVS min (sub-100ft)");
+
+        return (0, "zero");
     }
 
     private double CalculateTouchdownGForce()
