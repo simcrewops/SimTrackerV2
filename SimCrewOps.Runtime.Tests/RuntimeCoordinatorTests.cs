@@ -59,12 +59,22 @@ public sealed class RuntimeCoordinatorTests
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(1), onGround: true, parkingBrake: false, groundSpeed: 2));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(30), onGround: true, indicatedAirspeed: 55));
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(31), onGround: false, altitudeAgl: 20, indicatedAirspeed: 90));
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(100), onGround: false, altitudeAgl: 35_000));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(40), onGround: false, altitudeAgl: 500, verticalSpeed: 1500, indicatedAirspeed: 160));
+        // Cruise (VS ≈ 0 sustained ≥ 30 s)
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(100), onGround: false, altitudeAgl: 35_000, verticalSpeed: 0));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(131), onGround: false, altitudeAgl: 35_000, verticalSpeed: 0));
+        // Descent (VS < -200 sustained ≥ 30 s)
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(200), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(231), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600));
+        // Approach (AGL < 3000 + gear down)
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(290), onGround: false, altitudeAgl: 2_800, gearDown: true, verticalSpeed: -500));
+        // WheelsOn: touchdown
         await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(310), onGround: true, altitudeAgl: 0, groundSpeed: 100));
-        var arrival = await coordinator.ProcessFrameAsync(Frame(
-            t0.AddSeconds(400), onGround: true, parkingBrake: true, groundSpeed: 0));
+        // Landing rollout: GS < 40 sustained ≥ 5 s → TaxiIn
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(320), onGround: true, groundSpeed: 30));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(326), onGround: true, groundSpeed: 10));
+        // Parking brake set + GS ≈ 0 → Arrival + BlocksOn
+        var arrival = await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(327), onGround: true, parkingBrake: true, groundSpeed: 0));
 
         Assert.Equal(FlightPhase.Arrival, arrival.State.CurrentPhase);
         Assert.True(arrival.State.IsComplete);
@@ -194,22 +204,32 @@ public sealed class RuntimeCoordinatorTests
         // Drive through a full flight cycle. Position increments stay under 0.01° (< 1 nm)
         // so reposition detection never fires and _blockTimes accumulates correctly.
         await coordinator.ProcessFrameAsync(Frame(t0, onGround: true, parkingBrake: true, latitude: 40.000, longitude: -75.000));
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(1), onGround: true, parkingBrake: false, groundSpeed: 2, latitude: 40.005, longitude: -75.005));
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(31), onGround: false, altitudeAgl: 20, indicatedAirspeed: 90, latitude: 40.006, longitude: -75.006));
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(100), onGround: false, altitudeAgl: 35_000, latitude: 40.007, longitude: -75.007));
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(200), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, latitude: 40.008, longitude: -75.008));
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(290), onGround: false, altitudeAgl: 2_800, gearDown: true, verticalSpeed: -500, latitude: 40.009, longitude: -75.009));
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(310), onGround: true, altitudeAgl: 0, groundSpeed: 100, latitude: 40.010, longitude: -75.010));
-        // Arrival + BlocksOn (session complete).
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(400), onGround: true, parkingBrake: true, groundSpeed: 0, latitude: 40.011, longitude: -75.011));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(1), onGround: true, parkingBrake: false, groundSpeed: 2, latitude: 40.001, longitude: -75.001));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(31), onGround: false, altitudeAgl: 20, indicatedAirspeed: 90, latitude: 40.002, longitude: -75.002));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(40), onGround: false, altitudeAgl: 500, verticalSpeed: 1500, indicatedAirspeed: 160, latitude: 40.003, longitude: -75.003));
+        // Cruise (VS ≈ 0 sustained ≥ 30 s)
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(100), onGround: false, altitudeAgl: 35_000, verticalSpeed: 0, latitude: 40.004, longitude: -75.004));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(131), onGround: false, altitudeAgl: 35_000, verticalSpeed: 0, latitude: 40.005, longitude: -75.005));
+        // Descent (VS < -200 sustained ≥ 30 s)
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(200), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, latitude: 40.006, longitude: -75.006));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(231), onGround: false, altitudeAgl: 35_000, verticalSpeed: -600, latitude: 40.007, longitude: -75.007));
+        // Approach (AGL < 3000 + gear down)
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(290), onGround: false, altitudeAgl: 2_800, gearDown: true, verticalSpeed: -500, latitude: 40.008, longitude: -75.008));
+        // WheelsOn: touchdown
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(310), onGround: true, altitudeAgl: 0, groundSpeed: 100, latitude: 40.009, longitude: -75.009));
+        // Landing rollout: GS < 40 sustained ≥ 5 s → TaxiIn
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(320), onGround: true, groundSpeed: 30, latitude: 40.009, longitude: -75.009));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(326), onGround: true, groundSpeed: 10, latitude: 40.009, longitude: -75.009));
+        // Parking brake set + GS ≈ 0 → Arrival + BlocksOn (session complete).
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(327), onGround: true, parkingBrake: true, groundSpeed: 0, latitude: 40.009, longitude: -75.009));
 
         await Task.Delay(50);
 
         var countBeforeArrivalComplete = uploader.Payloads.Count;
 
         // Additional frames after session complete — must not beacon.
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(500), onGround: true, parkingBrake: true, groundSpeed: 0, latitude: 40.011, longitude: -75.011));
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(600), onGround: true, parkingBrake: true, groundSpeed: 0, latitude: 40.012, longitude: -75.012));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(500), onGround: true, parkingBrake: true, groundSpeed: 0, latitude: 40.009, longitude: -75.009));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(600), onGround: true, parkingBrake: true, groundSpeed: 0, latitude: 40.010, longitude: -75.010));
 
         await Task.Delay(50);
 
@@ -282,7 +302,8 @@ public sealed class RuntimeCoordinatorTests
         double altitudeAgl = 0,
         double groundSpeed = 0,
         double verticalSpeed = 0,
-        double heading = 0)
+        double heading = 0,
+        bool engine1Running = true)
     {
         return new TelemetryFrame
         {
@@ -300,6 +321,7 @@ public sealed class RuntimeCoordinatorTests
             VerticalSpeedFpm       = verticalSpeed,
             HeadingMagneticDegrees = heading,
             HeadingTrueDegrees     = heading,
+            Engine1Running         = engine1Running,
         };
     }
 
