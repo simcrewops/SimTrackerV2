@@ -7,6 +7,7 @@ using SimCrewOps.Runways.Models;
 using SimCrewOps.Runways.Providers;
 using SimCrewOps.SimConnect.Models;
 
+
 namespace SimCrewOps.SimConnect.Services;
 
 public sealed class SimConnectFacilityRunwayProvider : IRunwayDataProvider
@@ -17,6 +18,16 @@ public sealed class SimConnectFacilityRunwayProvider : IRunwayDataProvider
     public SimConnectFacilityRunwayProvider()
         : this(new ManagedSimConnectFacilityDataSource())
     {
+    }
+
+    /// <summary>
+    /// Creates a provider that routes all facility requests through the supplied live
+    /// SimConnect client, avoiding the per-lookup connection that races with the main session.
+    /// </summary>
+    public static SimConnectFacilityRunwayProvider ForLiveConnection(ManagedSimConnectClient client)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        return new SimConnectFacilityRunwayProvider(new LiveConnectionFacilityDataSource(client));
     }
 
     internal SimConnectFacilityRunwayProvider(ISimConnectFacilityDataSource facilityDataSource)
@@ -34,12 +45,12 @@ public sealed class SimConnectFacilityRunwayProvider : IRunwayDataProvider
             return null;
         }
 
-        if (snapshot.Runways.Any(runway => !runway.HasPrimaryThresholdData || !runway.HasSecondaryThresholdData))
-        {
-            return null;
-        }
-
+        // Filter out individual runways missing threshold data rather than rejecting the
+        // entire catalog. Some MSFS airports return complete data for the active runways
+        // but null for closed or construction runways — discarding the whole airport was
+        // causing all runway resolution to fail silently.
         var mappedRunways = snapshot.Runways
+            .Where(runway => runway.HasPrimaryThresholdData && runway.HasSecondaryThresholdData)
             .SelectMany(MapRunwayEnds)
             .OrderBy(runway => runway.RunwayIdentifier, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -188,27 +199,33 @@ public sealed class SimConnectFacilityRunwayProvider : IRunwayDataProvider
         Task<SimConnectAirportFacilitySnapshot?> GetRunwaysAsync(string airportIcao, CancellationToken cancellationToken = default);
     }
 
-    internal sealed record SimConnectAirportFacilitySnapshot
-    {
-        public required string AirportIcao { get; init; }
-        public required IReadOnlyList<SimConnectFacilityRunway> Runways { get; init; }
-    }
+    // SimConnectAirportFacilitySnapshot and SimConnectFacilityRunway are defined in
+    // SimCrewOps.SimConnect.Models.SimConnectFacilityModels — shared with the bridge.
 
-    internal sealed record SimConnectFacilityRunway
+    /// <summary>
+    /// Routes facility requests through the existing live SimConnect connection to avoid
+    /// the race condition caused by opening a second connection per lookup.
+    /// Per-session cache ensures each airport is only requested once.
+    /// </summary>
+    internal sealed class LiveConnectionFacilityDataSource : ISimConnectFacilityDataSource
     {
-        public required string AirportIcao { get; init; }
-        public required double CenterLatitude { get; init; }
-        public required double CenterLongitude { get; init; }
-        public required double HeadingTrueDegrees { get; init; }
-        public required double LengthFeet { get; init; }
-        public required int PrimaryNumber { get; init; }
-        public required int PrimaryDesignator { get; init; }
-        public required int SecondaryNumber { get; init; }
-        public required int SecondaryDesignator { get; init; }
-        public required bool HasPrimaryThresholdData { get; init; }
-        public required bool HasSecondaryThresholdData { get; init; }
-        public double PrimaryThresholdLengthFeet { get; init; }
-        public double SecondaryThresholdLengthFeet { get; init; }
+        private readonly ManagedSimConnectClient _client;
+        private readonly ConcurrentDictionary<string, Task<SimConnectAirportFacilitySnapshot?>> _cache
+            = new(StringComparer.OrdinalIgnoreCase);
+
+        public LiveConnectionFacilityDataSource(ManagedSimConnectClient client)
+        {
+            _client = client;
+        }
+
+        public Task<SimConnectAirportFacilitySnapshot?> GetRunwaysAsync(
+            string airportIcao,
+            CancellationToken cancellationToken = default)
+        {
+            return _cache.GetOrAdd(
+                airportIcao,
+                icao => _client.RequestFacilityDataAsync(icao, cancellationToken));
+        }
     }
 
     private sealed class ManagedSimConnectFacilityDataSource : ISimConnectFacilityDataSource

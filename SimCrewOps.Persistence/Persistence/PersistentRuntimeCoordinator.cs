@@ -86,8 +86,18 @@ public sealed class PersistentRuntimeCoordinator
     /// Updates the flight session context with data fetched from the web app
     /// (departure/arrival ICAO, flight number, etc.). No-op if a flight is already in progress.
     /// </summary>
+    public FlightSessionContext CurrentContext
+        => _runtimeCoordinator.CurrentContext;
+
     public void UpdateContext(FlightSessionContext context)
         => _runtimeCoordinator.UpdateContext(context);
+
+    /// <summary>
+    /// Updates only the aircraft type and category from a SimConnect detection event.
+    /// Bypasses the blocks-off guard — see <see cref="RuntimeCoordinator.UpdateAircraftType"/>.
+    /// </summary>
+    public void UpdateAircraftType(string aircraftType, string aircraftCategory)
+        => _runtimeCoordinator.UpdateAircraftType(aircraftType, aircraftCategory);
 
     public void Restore(FlightSessionRuntimeState state)
     {
@@ -101,6 +111,19 @@ public sealed class PersistentRuntimeCoordinator
     {
         _completedSessionQueued = false;
         return _flightSessionStore.ClearCurrentSessionAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Clears the persisted session and resets the coordinator to a clean
+    /// Preflight state, preserving the current flight context.  Called when
+    /// a completed session is detected at the start of a new SimConnect
+    /// connection so the new flight is not stuck in the previous Arrival phase.
+    /// </summary>
+    public async Task ResetForNewSessionAsync(CancellationToken cancellationToken = default)
+    {
+        _completedSessionQueued = false;
+        await _flightSessionStore.ClearCurrentSessionAsync(cancellationToken).ConfigureAwait(false);
+        _runtimeCoordinator.ResetForNewSession();
     }
 
     private async Task<SessionPersistenceResult> PersistRuntimeStateAsync(

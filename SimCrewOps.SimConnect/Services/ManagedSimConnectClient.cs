@@ -71,4 +71,16 @@ public sealed class ManagedSimConnectClient : ISimConnectClient, ISimConnectClie
 
         return _bridge.ReadNextFrameAsync(cancellationToken);
     }
+
+    public Task<SimConnectAirportFacilitySnapshot?> RequestFacilityDataAsync(
+        string airportIcao,
+        CancellationToken cancellationToken = default)
+    {
+        if (_bridge is null || !_bridge.IsConnected)
+        {
+            return Task.FromResult<SimConnectAirportFacilitySnapshot?>(null);
+        }
+
+        return _bridge.RequestFacilityDataAsync(airportIcao, cancellationToken);
+    }
 }

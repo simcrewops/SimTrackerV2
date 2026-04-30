@@ -30,7 +30,7 @@ public sealed class ScoringEngine
         var globalDeductions = globalFindings.Sum(finding => finding.PointsDeducted);
         var automaticFail = globalFindings.Any(finding => finding.IsAutomaticFail);
         var finalScore = ScoreMath.Clamp(phaseSubtotal - globalDeductions, 0, maximumScore);
-        var grade = automaticFail ? "F" : GradeFromScore(finalScore);
+        var grade = automaticFail ? "F" : GradeFromScore(finalScore, maximumScore);
 
         return new ScoreResult(maximumScore, finalScore, grade, automaticFail, phaseScores, globalFindings);
     }
@@ -145,11 +145,12 @@ public sealed class ScoringEngine
         var findings = new List<ScoreFinding>();
         var speedLimit = metrics.HeavyFourEngineAircraft ? 300 : 250;
 
+        // 10-knot buffer before the penalty ramp starts (250+10 = 260 kts perfect threshold).
         AddPenalty(
             findings,
             "CLIMB_SPEED",
-            $"Climb speed below FL100 exceeded the {speedLimit} knot target.",
-            ScoreMath.LinearPenalty(metrics.MaxIasBelowFl100Knots, speedLimit, speedLimit + 40, weights.SpeedCompliance));
+            $"Climb speed below FL100 exceeded the {speedLimit + 10} knot target.",
+            ScoreMath.LinearPenalty(metrics.MaxIasBelowFl100Knots, speedLimit + 10, speedLimit + 50, weights.SpeedCompliance));
 
         AddPenalty(
             findings,
@@ -210,11 +211,12 @@ public sealed class ScoringEngine
     {
         var findings = new List<ScoreFinding>();
 
+        // 10-knot buffer: penalty ramp starts at 260 kts, full penalty at 300 kts.
         AddPenalty(
             findings,
             "DESCENT_SPEED",
-            "Descent speed below FL100 exceeded the 250 knot target.",
-            ScoreMath.LinearPenalty(metrics.MaxIasBelowFl100Knots, 250, 290, weights.SpeedCompliance));
+            "Descent speed below FL100 exceeded the 260 knot target.",
+            ScoreMath.LinearPenalty(metrics.MaxIasBelowFl100Knots, 260, 300, weights.SpeedCompliance));
 
         AddPenalty(
             findings,
@@ -234,12 +236,12 @@ public sealed class ScoringEngine
             "Descent G-force exceeded the comfort target.",
             ScoreMath.LinearPenalty(metrics.MaxGForce, weights.GForcePerfect, weights.GForceMax, weights.GForce));
 
-        if (!metrics.LandingLightsOnByFl180)
+        if (!metrics.LandingLightsOnBy9900)
         {
             findings.Add(new ScoreFinding(
                 "DESCENT_LANDING_LIGHTS_OFF",
-                "Landing lights were not on by FL180 during descent.",
-                weights.LandingLightsOnByFl180));
+                "Landing lights were not on by 9,900 ft during descent.",
+                weights.LandingLightsOnBy9900));
         }
 
         return CreatePhaseResult(FlightPhase.Descent, weights.Total, findings);
@@ -360,7 +362,55 @@ public sealed class ScoringEngine
             "Landing bounce(s) detected.",
             ScoreMath.PerEventPenalty(metrics.BounceCount, 2.5, weights.Bounce));
 
+        // Only score centerline and crab when runway data was available (non-zero values).
+        if (metrics.TouchdownCenterlineDeviationFeet != 0 || metrics.TouchdownCrabAngleDegrees != 0)
+        {
+            AddPenalty(
+                findings,
+                "LANDING_CENTERLINE",
+                "Touchdown centerline deviation exceeded target.",
+                CenterlinePenalty(metrics.TouchdownCenterlineDeviationFeet, weights.CenterlineDeviation));
+
+            AddPenalty(
+                findings,
+                "LANDING_CRAB_ANGLE",
+                "Touchdown crab angle exceeded target.",
+                CrabAnglePenalty(metrics.TouchdownCrabAngleDegrees, weights.CrabAngle));
+        }
+
         return CreatePhaseResult(FlightPhase.Landing, weights.Total, findings);
+    }
+
+    // Tiered penalty based on real-world aviation centerline standards (metres converted to feet).
+    // Dead zone: 0–1 m (0–3.3 ft) = perfect; >20 m (>65.6 ft) = zero points.
+    private static double CenterlinePenalty(double feet, double maxPoints)
+    {
+        var absFeet = Math.Abs(feet);
+        var fraction = absFeet switch
+        {
+            <= 3.3  => 0.0,   // 10/10 pts — dead zone
+            <= 16.4 => 0.2,   //  8/10 pts
+            <= 32.8 => 0.4,   //  6/10 pts
+            <= 65.6 => 0.7,   //  3/10 pts
+            _       => 1.0,   //  0/10 pts
+        };
+        return fraction * maxPoints;
+    }
+
+    // Tiered penalty based on real-world aviation crab angle standards.
+    // Dead zone: 0–0.5° = perfect; >5° = zero points.
+    private static double CrabAnglePenalty(double degrees, double maxPoints)
+    {
+        var absDeg = Math.Abs(degrees);
+        var fraction = absDeg switch
+        {
+            <= 0.5 => 0.0,   // 10/10 pts — dead zone
+            <= 2.0 => 0.2,   //  8/10 pts
+            <= 3.5 => 0.5,   //  5/10 pts
+            <= 5.0 => 0.8,   //  2/10 pts
+            _      => 1.0,   //  0/10 pts
+        };
+        return fraction * maxPoints;
     }
 
     private static PhaseScoreResult ScoreTaxiIn(TaxiInMetrics metrics, TaxiInWeights weights)
@@ -418,12 +468,12 @@ public sealed class ScoringEngine
                 weights.TaxiLightsOffBeforeParkingBrakeSet));
         }
 
-        if (!metrics.ParkingBrakeSetBeforeAllEnginesShutdown)
+        if (!metrics.AllEnginesOffBeforeParkingBrakeSet)
         {
             findings.Add(new ScoreFinding(
                 "ARRIVAL_PARKING_BRAKE_ORDER",
-                "All engines were shut down before the parking brake was set.",
-                weights.ParkingBrakeBeforeAllEnginesShutdown));
+                "Parking brake was set while engines were still running. Shut down all engines before setting the parking brake.",
+                weights.EnginesOffBeforeParkingBrake));
         }
 
         if (!metrics.AllEnginesOffByEndOfSession)
@@ -501,13 +551,20 @@ public sealed class ScoringEngine
         findings.Add(new ScoreFinding(code, description, points));
     }
 
-    private static string GradeFromScore(double score) =>
-        score switch
+    /// <summary>
+    /// Converts a raw score into a letter grade using percentage thresholds so the grade
+    /// remains consistent regardless of the maximum possible score (e.g. 100 or 120).
+    /// </summary>
+    private static string GradeFromScore(double score, double maximumScore)
+    {
+        var pct = maximumScore > 0 ? score / maximumScore * 100.0 : score;
+        return pct switch
         {
             >= 90 => "A",
-            >= 80 => "B",
-            >= 70 => "C",
-            >= 60 => "D",
-            _ => "F",
+            >= 75 => "B",
+            >= 60 => "C",
+            >= 50 => "D",
+            _     => "F",
         };
+    }
 }

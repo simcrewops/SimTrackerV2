@@ -1,5 +1,6 @@
 using SimCrewOps.Runways.Models;
 using SimCrewOps.Runways.Providers;
+using SimCrewOps.SimConnect.Models;
 using SimCrewOps.SimConnect.Services;
 using Xunit;
 
@@ -12,12 +13,12 @@ public sealed class SimConnectFacilityRunwayProviderTests
     {
         var provider = new SimConnectFacilityRunwayProvider(
             new StubFacilityDataSource(
-                new SimConnectFacilityRunwayProvider.SimConnectAirportFacilitySnapshot
+                new SimConnectAirportFacilitySnapshot
                 {
                     AirportIcao = "KJFK",
                     Runways =
                     [
-                        new SimConnectFacilityRunwayProvider.SimConnectFacilityRunway
+                        new SimConnectFacilityRunway
                         {
                             AirportIcao = "KJFK",
                             CenterLatitude = 40.6400,
@@ -59,12 +60,12 @@ public sealed class SimConnectFacilityRunwayProviderTests
     {
         var provider = new SimConnectFacilityRunwayProvider(
             new StubFacilityDataSource(
-                new SimConnectFacilityRunwayProvider.SimConnectAirportFacilitySnapshot
+                new SimConnectAirportFacilitySnapshot
                 {
                     AirportIcao = "KSEA",
                     Runways =
                     [
-                        new SimConnectFacilityRunwayProvider.SimConnectFacilityRunway
+                        new SimConnectFacilityRunway
                         {
                             AirportIcao = "KSEA",
                             CenterLatitude = 47.4489,
@@ -100,10 +101,10 @@ public sealed class SimConnectFacilityRunwayProviderTests
     }
 
     private sealed class StubFacilityDataSource(
-        SimConnectFacilityRunwayProvider.SimConnectAirportFacilitySnapshot? snapshot)
+        SimConnectAirportFacilitySnapshot? snapshot)
         : SimConnectFacilityRunwayProvider.ISimConnectFacilityDataSource
     {
-        public Task<SimConnectFacilityRunwayProvider.SimConnectAirportFacilitySnapshot?> GetRunwaysAsync(
+        public Task<SimConnectAirportFacilitySnapshot?> GetRunwaysAsync(
             string airportIcao,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(snapshot);

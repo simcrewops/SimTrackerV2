@@ -13,6 +13,12 @@ public sealed record LivePositionPayload
     [JsonPropertyName("headingMagnetic")]
     public double HeadingMagnetic { get; init; }
 
+    [JsonPropertyName("headingTrue")]
+    public double HeadingTrue { get; init; }
+
+    [JsonPropertyName("onGround")]
+    public bool OnGround { get; init; }
+
     [JsonPropertyName("altitudeFt")]
     public double AltitudeFt { get; init; }
 

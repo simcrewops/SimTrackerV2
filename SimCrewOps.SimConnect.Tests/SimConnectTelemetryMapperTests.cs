@@ -58,4 +58,46 @@ public sealed class SimConnectTelemetryMapperTests
         Assert.True(frame.Engine1Running);
         Assert.False(frame.Engine3Running);
     }
+
+    [Fact]
+    public void Map_MapsExtendedContextFieldsCorrectly()
+    {
+        var mapper = new SimConnectTelemetryMapper();
+
+        var frame = mapper.Map(new SimConnectRawTelemetryFrame
+        {
+            TimestampUtc = new DateTimeOffset(2026, 4, 13, 15, 30, 0, TimeSpan.Zero),
+
+            // Extended context fields under test
+            AutopilotMaster          = 1,      // true
+            FuelTotalLbs             = 42_500,
+            AmbientWindSpeedKnots    = 18.5,
+            AmbientWindDirectionDegrees = 270,
+            AmbientTemperatureCelsius = -12.3,
+            SpoilerHandlePosition    = 0.75,
+            SpoilersArmed            = 1,      // true
+            Engine1N1Pct             = 83.2,
+            Engine2N1Pct             = 83.4,
+            Engine3N1Pct             = 0,      // engine not installed / idle
+            Engine4N1Pct             = 0,
+            Nav1IlsSignalValid       = 1,      // true
+
+            // Minimum required fields so Map() produces a valid frame
+            Engine1Running = 1,
+            Engine2Running = 1,
+        });
+
+        Assert.True(frame.AutopilotEngaged);
+        Assert.Equal(42_500, frame.FuelTotalLbs);
+        Assert.Equal(18.5,  frame.WindSpeedKnots);
+        Assert.Equal(270,   frame.WindDirectionDegrees);
+        Assert.Equal(-12.3, frame.OutsideAirTempCelsius);
+        Assert.Equal(0.75,  frame.SpoilerHandlePosition);
+        Assert.True(frame.SpoilersArmed);
+        Assert.Equal(83.2, frame.Engine1N1Pct, precision: 6);
+        Assert.Equal(83.4, frame.Engine2N1Pct, precision: 6);
+        Assert.Equal(0,    frame.Engine3N1Pct);
+        Assert.Equal(0,    frame.Engine4N1Pct);
+        Assert.True(frame.Nav1IlsSignalValid);
+    }
 }

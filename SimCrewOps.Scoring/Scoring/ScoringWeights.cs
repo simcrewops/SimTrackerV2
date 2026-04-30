@@ -82,10 +82,10 @@ public sealed class DescentWeights
     public double BankAngle { get; init; } = 2.5;
     public double PitchAngle { get; init; } = 1.5;
     public double GForce { get; init; } = 3.0;
-    public double LandingLightsOnByFl180 { get; init; } = 0.5;
+    public double LandingLightsOnBy9900 { get; init; } = 0.5;
     public double GForcePerfect { get; init; } = 1.7;
     public double GForceMax { get; init; } = 2.5;
-    public double Total => SpeedCompliance + BankAngle + PitchAngle + GForce + LandingLightsOnByFl180;
+    public double Total => SpeedCompliance + BankAngle + PitchAngle + GForce + LandingLightsOnBy9900;
 }
 
 public sealed class ApproachWeights
@@ -113,6 +113,8 @@ public sealed class LandingWeights
     public double VerticalSpeed { get; init; } = 6.0;
     public double GForce { get; init; } = 6.0;
     public double Bounce { get; init; } = 3.0;
+    public double CenterlineDeviation { get; init; } = 10.0;
+    public double CrabAngle { get; init; } = 10.0;
 
     /// <summary>VS at or below this threshold earns full marks.</summary>
     public double VerticalSpeedPerfectFpm { get; init; } = 300;
@@ -126,7 +128,7 @@ public sealed class LandingWeights
     /// <summary>G-force above this threshold fails the landing section.</summary>
     public double GForceAutoFail { get; init; } = 2.0;
 
-    public double Total => TouchdownZone + VerticalSpeed + GForce + Bounce;
+    public double Total => TouchdownZone + VerticalSpeed + GForce + Bounce + CenterlineDeviation + CrabAngle;
 }
 
 public sealed class TaxiInWeights : TaxiWeights
@@ -142,9 +144,9 @@ public sealed class TaxiInWeights : TaxiWeights
 public sealed class ArrivalWeights
 {
     public double TaxiLightsOffBeforeParkingBrakeSet { get; init; } = 2.0;
-    public double ParkingBrakeBeforeAllEnginesShutdown { get; init; } = 3.0;
+    public double EnginesOffBeforeParkingBrake { get; init; } = 3.0;
     public double AllEnginesOffByEndOfSession { get; init; } = 2.0;
-    public double Total => TaxiLightsOffBeforeParkingBrakeSet + ParkingBrakeBeforeAllEnginesShutdown + AllEnginesOffByEndOfSession;
+    public double Total => TaxiLightsOffBeforeParkingBrakeSet + EnginesOffBeforeParkingBrake + AllEnginesOffByEndOfSession;
 }
 
 public sealed class SafetyWeights

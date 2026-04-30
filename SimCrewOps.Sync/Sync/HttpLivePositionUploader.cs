@@ -13,14 +13,19 @@ public sealed class HttpLivePositionUploader : ILivePositionUploader
 
     private readonly HttpClient _httpClient;
     private readonly SimCrewOpsApiUploaderOptions _options;
+    private readonly TrackerApiKeyStore? _apiKeyStore;
 
-    public HttpLivePositionUploader(HttpClient httpClient, SimCrewOpsApiUploaderOptions options)
+    public HttpLivePositionUploader(
+        HttpClient httpClient,
+        SimCrewOpsApiUploaderOptions options,
+        TrackerApiKeyStore? apiKeyStore = null)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentNullException.ThrowIfNull(options);
 
         _httpClient = httpClient;
         _options = options;
+        _apiKeyStore = apiKeyStore;
     }
 
     public async Task<bool> SendPositionAsync(LivePositionPayload payload, CancellationToken cancellationToken = default)
@@ -33,7 +38,9 @@ public sealed class HttpLivePositionUploader : ILivePositionUploader
             {
                 Content = JsonContent.Create(payload),
             };
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.PilotApiToken);
+            // Prefer the per-session tracker API key (from bootstrap) when available.
+            var authToken = _apiKeyStore?.ApiKey ?? _options.PilotApiToken;
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authToken);
 
             using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
             if (response.StatusCode == HttpStatusCode.OK)

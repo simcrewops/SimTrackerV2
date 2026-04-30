@@ -13,7 +13,7 @@ public sealed class ScoringEngineTests
     {
         var result = _engine.Calculate(BuildBaselineInput());
 
-        Assert.Equal(100, result.FinalScore);
+        Assert.Equal(120, result.FinalScore);
         Assert.Equal("A", result.Grade);
         Assert.False(result.AutomaticFail);
     }
@@ -54,7 +54,7 @@ public sealed class ScoringEngineTests
             },
         });
 
-        Assert.True(result.FinalScore < 85);
+        Assert.True(result.FinalScore < 105);
         Assert.False(result.AutomaticFail);
         Assert.Contains(result.PhaseScores.Single(phase => phase.Phase == FlightPhase.Approach).Findings, finding => finding.Code == "APPROACH_GEAR_1000");
         Assert.Contains(result.PhaseScores.Single(phase => phase.Phase == FlightPhase.Landing).Findings, finding => finding.Code == "LANDING_BOUNCE");
@@ -78,7 +78,7 @@ public sealed class ScoringEngineTests
         Assert.False(result.AutomaticFail);
         Assert.True(landing.SectionFailed);
         Assert.Equal(0, landing.AwardedPoints);
-        Assert.Equal("B", result.Grade);
+        Assert.Equal("C", result.Grade); // 80/120 = 66.7 % — falls in the C band (60–75 %)
         Assert.Contains(landing.Findings, f => f.Code == "LANDING_VERTICAL_SPEED" && f.IsAutomaticFail);
     }
 
@@ -100,7 +100,7 @@ public sealed class ScoringEngineTests
         Assert.False(result.AutomaticFail);
         Assert.True(landing.SectionFailed);
         Assert.Equal(0, landing.AwardedPoints);
-        Assert.Equal("B", result.Grade);
+        Assert.Equal("C", result.Grade); // 80/120 = 66.7 % — falls in the C band (60–75 %)
         Assert.Contains(landing.Findings, f => f.Code == "LANDING_GFORCE" && f.IsAutomaticFail);
     }
 
@@ -122,7 +122,7 @@ public sealed class ScoringEngineTests
 
         Assert.False(result.AutomaticFail);
         Assert.False(landing.SectionFailed);
-        Assert.Equal(8, landing.AwardedPoints);
+        Assert.Equal(28, landing.AwardedPoints);
         Assert.DoesNotContain(landing.Findings, f => f.IsAutomaticFail);
     }
 
@@ -142,8 +142,8 @@ public sealed class ScoringEngineTests
         });
 
         Assert.Equal(9 + 10 + 9 + 9 + 10, result.GlobalDeductions);
-        Assert.Equal(53, result.FinalScore);
-        Assert.Equal("F", result.Grade);
+        Assert.Equal(73, result.FinalScore);
+        Assert.Equal("C", result.Grade);
     }
 
     private static FlightScoreInput BuildBaselineInput() =>
@@ -183,7 +183,7 @@ public sealed class ScoringEngineTests
                 MaxBankAngleDegrees = 18,
                 MaxPitchAngleDegrees = 5,
                 MaxGForce = 1.20,
-                LandingLightsOnByFl180 = true,
+                LandingLightsOnBy9900 = true,
             },
             Approach = new ApproachMetrics
             {
@@ -212,7 +212,7 @@ public sealed class ScoringEngineTests
             Arrival = new ArrivalMetrics
             {
                 TaxiLightsOffBeforeParkingBrakeSet = true,
-                ParkingBrakeSetBeforeAllEnginesShutdown = true,
+                AllEnginesOffBeforeParkingBrakeSet = true,
                 AllEnginesOffByEndOfSession = true,
             },
             Safety = new SafetyMetrics(),

@@ -71,6 +71,7 @@ public sealed class CompletedSessionSyncService : ICompletedSessionSyncService
                 StatusCode = upload.StatusCode,
                 ErrorMessage = upload.ErrorMessage,
                 RemovedFromQueue = removed,
+                PostFlightStatus = upload.PostFlightStatus,
             };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
