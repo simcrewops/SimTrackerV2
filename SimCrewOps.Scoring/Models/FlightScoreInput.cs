@@ -78,6 +78,7 @@ public sealed record DescentMetrics
     public double MaxPitchAngleDegrees { get; init; }
     public double MaxGForce { get; init; }
     public bool LandingLightsOnByFl180 { get; init; }
+    public bool LandingLightsOnBy9900 { get; init; }
     public double AvgDescentFpm { get; init; }
     public double? SpeedAtFL100Kts { get; init; }
 }
@@ -103,6 +104,8 @@ public sealed record LandingMetrics
     public double TouchdownGForce { get; init; }
     public int BounceCount { get; init; }
     public bool GearUpAtTouchdown { get; init; }
+    public double TouchdownCenterlineDeviationFeet { get; init; }
+    public double TouchdownCrabAngleDegrees { get; init; }
 }
 
 public sealed record TaxiInMetrics : TaxiMetrics
@@ -115,6 +118,7 @@ public sealed record ArrivalMetrics
 {
     public bool TaxiLightsOffBeforeParkingBrakeSet { get; init; }
     public bool ParkingBrakeSetBeforeAllEnginesShutdown { get; init; }
+    public bool AllEnginesOffBeforeParkingBrakeSet { get; init; }
     public bool AllEnginesOffByEndOfSession { get; init; }
 }
 
