@@ -17,5 +17,5 @@ public sealed record BackgroundSyncStatus
     /// The most recent post-flight grounding status received from the server after a session
     /// upload. Persists across sync passes until a new post-flight status is received.
     /// </summary>
-    public PostFlightStatus? LastPostFlightStatus { get; init; }
+    public PostFlightStatusDto? LastPostFlightStatus { get; init; }
 }

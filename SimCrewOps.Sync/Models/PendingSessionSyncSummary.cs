@@ -14,7 +14,7 @@ public sealed record PendingSessionSyncSummary
     /// The most recent post-flight grounding status from a successfully uploaded session
     /// in this batch. Null when no session in this batch returned a post-flight status.
     /// </summary>
-    public PostFlightStatus? LastPostFlightStatus =>
+    public PostFlightStatusDto? LastPostFlightStatus =>
         Results
             .LastOrDefault(r => r.Status == SessionUploadStatus.Success && r.PostFlightStatus is not null)
             ?.PostFlightStatus;

@@ -12,5 +12,5 @@ public sealed record PendingSessionSyncResult
     /// Post-flight grounding status parsed from the 201 response body.
     /// Non-null when the server issued a strike for this session.
     /// </summary>
-    public PostFlightStatus? PostFlightStatus { get; init; }
+    public PostFlightStatusDto? PostFlightStatus { get; init; }
 }
