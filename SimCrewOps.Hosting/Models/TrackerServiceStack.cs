@@ -18,12 +18,6 @@ public sealed record TrackerServiceStack
     public LiveMapService? LiveMapService { get; init; }
 
     /// <summary>
-    /// Checks preflight grounding/crew-rest status via GET /api/pilot/preflight.
-    /// Null when no API token is configured.
-    /// </summary>
-    public IPreflightChecker? PreflightChecker { get; init; }
-
-    /// <summary>
     /// Shared mutable holder for the tracker API key returned by the bootstrap endpoint.
     /// Null when no API token is configured (no HTTP stack was created).
     /// Update <see cref="TrackerApiKeyStore.ApiKey"/> when the bootstrap response includes
