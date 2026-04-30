@@ -34,14 +34,37 @@ public sealed record TrackerShellSnapshot
     public ActiveFlightResponse? ActiveFlight { get; init; }
 
     /// <summary>
-    /// Current preflight grounding / crew-rest status fetched from the server.
-    /// Null when no token is configured or the endpoint has not been called yet.
+    /// Set when a sim reposition (teleport / "Set on Ground") was detected during the
+    /// last poll and the session was automatically reset. The UI should show a brief
+    /// notification so the pilot knows the tracker started fresh.
+    /// Null means no auto-reset this poll.
+    /// </summary>
+    public DateTimeOffset? AutoResetOccurredUtc { get; init; }
+
+    /// <summary>
+    /// Last preflight check result. Null until CheckPreflightAsync is called.
+    /// IsGrounded == true means session start is blocked.
     /// </summary>
     public PreflightStatusResponse? PreflightStatus { get; init; }
 
     /// <summary>
-    /// Most recent post-flight grounding status returned in a session upload response.
-    /// Null until at least one session has been uploaded and the server issued a strike.
+    /// Server-authoritative career result returned by the 201 upload response.
+    /// Null until a session completes and uploads successfully.
     /// </summary>
-    public PostFlightStatus? LastPostFlightStatus { get; init; }
+    public CareerResultDto? ServerCareerResult { get; init; }
+
+    /// <summary>
+    /// Post-flight status returned alongside career result. Non-null when an
+    /// upload succeeds. IsGrounded == true means a new strike was applied.
+    /// </summary>
+    public PostFlightStatusDto? PostFlightStatus { get; init; }
+
+    /// <summary>UTC timestamp of the most recent completed-session upload attempt this run.</summary>
+    public DateTimeOffset? LastUploadAttemptUtc { get; init; }
+
+    /// <summary>Result of the most recent completed-session upload attempt. Null until one is made.</summary>
+    public CompletedSessionUploadResult? LastUploadResult { get; init; }
+
+    /// <summary>True when the current session was resumed from a persisted recovery snapshot.</summary>
+    public bool SessionWasResumed { get; init; }
 }

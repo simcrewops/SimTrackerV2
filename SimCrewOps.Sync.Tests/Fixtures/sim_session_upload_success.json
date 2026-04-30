@@ -1,0 +1,28 @@
+{
+  "id": "cmoj6kgf201rflm66lymx24j0",
+  "career": {
+    "grade": "A",
+    "score": 91.4,
+    "phaseScores": [
+      { "phase": "Departure", "score": 94, "maxScore": 100, "deductions": [] },
+      { "phase": "Climb", "score": 91, "maxScore": 100, "deductions": [] },
+      { "phase": "Cruise", "score": 96, "maxScore": 100, "deductions": [] },
+      { "phase": "Descent", "score": 89, "maxScore": 100, "deductions": [] },
+      { "phase": "Landing", "score": 95, "maxScore": 100, "deductions": [] }
+    ],
+    "hoursAdded": 1.967,
+    "newTotalHours": 144.7,
+    "pay": 847.00,
+    "reputationDelta": 3,
+    "newReputation": 87,
+    "tierChange": null,
+    "contractCompleted": false,
+    "safetyIncidents": [],
+    "flightLogId": "cmp1234abc"
+  },
+  "postFlight": {
+    "isGrounded": false,
+    "strikeType": null,
+    "strikeAction": null
+  }
+}

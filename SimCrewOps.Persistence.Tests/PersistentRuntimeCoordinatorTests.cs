@@ -1,8 +1,5 @@
 using SimCrewOps.Persistence.Models;
 using SimCrewOps.Persistence.Persistence;
-using SimCrewOps.Runways.Models;
-using SimCrewOps.Runways.Providers;
-using SimCrewOps.Runways.Services;
 using SimCrewOps.Runtime.Models;
 using SimCrewOps.Runtime.Runtime;
 using SimCrewOps.Scoring.Models;
@@ -213,31 +210,11 @@ public sealed class PersistentRuntimeCoordinatorTests
         SpyFlightSessionStore store,
         string? arrivalAirportIcao = null)
     {
-        var runway = new RunwayEnd
+        var runtime = new RuntimeCoordinator(new FlightSessionContext
         {
-            AirportIcao = "KTEST",
-            RunwayIdentifier = "18",
-            TrueHeadingDegrees = 180,
-            LengthFeet = 10_000,
-            ThresholdLatitude = 40.0,
-            ThresholdLongitude = -75.0,
-            DataSource = RunwayDataSource.OurAirportsFallback,
-        };
-
-        var provider = new StubRunwayDataProvider(new AirportRunwayCatalog
-        {
-            AirportIcao = "KTEST",
-            DataSource = RunwayDataSource.OurAirportsFallback,
-            Runways = new[] { runway },
+            DepartureAirportIcao = "KDEP",
+            ArrivalAirportIcao   = arrivalAirportIcao,
         });
-
-        var runtime = new RuntimeCoordinator(
-            new FlightSessionContext
-            {
-                DepartureAirportIcao = "KDEP",
-                ArrivalAirportIcao = arrivalAirportIcao,
-            },
-            new RunwayResolver(provider));
 
         return new PersistentRuntimeCoordinator(runtime, store);
     }
@@ -287,12 +264,6 @@ public sealed class PersistentRuntimeCoordinatorTests
             ScoreInput = new(),
             ScoreResult = new(100, 88, "B", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
         };
-
-    private sealed class StubRunwayDataProvider(AirportRunwayCatalog? catalog) : IRunwayDataProvider
-    {
-        public Task<AirportRunwayCatalog?> GetRunwaysAsync(string airportIcao, CancellationToken cancellationToken = default) =>
-            Task.FromResult(catalog);
-    }
 
     private sealed class SpyFlightSessionStore : IFlightSessionStore
     {

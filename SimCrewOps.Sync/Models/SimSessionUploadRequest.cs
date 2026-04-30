@@ -5,7 +5,7 @@ namespace SimCrewOps.Sync.Models;
 public sealed record SimSessionUploadRequest
 {
     [JsonPropertyName("trackerVersion")]
-    public string TrackerVersion { get; init; } = "3.0.0";
+    public string TrackerVersion { get; init; } = "dev";
 
     [JsonPropertyName("flightMode")]
     public string FlightMode { get; init; } = "free_flight";
@@ -19,22 +19,11 @@ public sealed record SimSessionUploadRequest
     [JsonPropertyName("arrival")]
     public string? Arrival { get; init; }
 
-    /// <summary>
-    /// ICAO aircraft type code as detected by MSFS (e.g. "A319", "B738").
-    /// Sourced from the ATC MODEL SimVar; null for free flights where no type
-    /// was detected before blocks-on.
-    /// </summary>
     [JsonPropertyName("aircraft")]
-    public string? AircraftType { get; init; }
+    public string? Aircraft { get; init; }
 
-    /// <summary>
-    /// World map size category: "regional", "narrowbody", or "widebody".
-    /// Derived from <see cref="AircraftType"/> at upload time.
-    /// </summary>
     [JsonPropertyName("aircraftCategory")]
     public string? AircraftCategory { get; init; }
-
-    // ── Block times ─────────────────────────────────────────────────────────────
 
     [JsonPropertyName("actualBlocksOff")]
     public DateTimeOffset? ActualBlocksOff { get; init; }
@@ -54,106 +43,177 @@ public sealed record SimSessionUploadRequest
     [JsonPropertyName("blockTimeScheduled")]
     public double? BlockTimeScheduled { get; init; }
 
-    // ── Session timing ──────────────────────────────────────────────────────────
+    [JsonPropertyName("scoringInput")]
+    public ScoringInputDto ScoringInput { get; init; } = new();
 
-    [JsonPropertyName("enginesStartedAt")]
-    public DateTimeOffset? EnginesStartedAt { get; init; }
+    [JsonPropertyName("landingAnalysis")]
+    public LandingAnalysisDto LandingAnalysis { get; init; } = new();
 
-    [JsonPropertyName("wheelsOffAt")]
-    public DateTimeOffset? WheelsOffAt { get; init; }
+    [JsonPropertyName("flightPath")]
+    public FlightPathPointDto[] FlightPath { get; init; } = [];
+}
 
-    [JsonPropertyName("wheelsOnAt")]
-    public DateTimeOffset? WheelsOnAt { get; init; }
+public sealed record ScoringInputDto
+{
+    [JsonPropertyName("departure")]
+    public DepartureScoringDto Departure { get; init; } = new();
 
-    [JsonPropertyName("enginesOffAt")]
-    public DateTimeOffset? EnginesOffAt { get; init; }
+    [JsonPropertyName("climb")]
+    public ClimbScoringDto Climb { get; init; } = new();
 
-    // ── Fuel ───────────────────────────────────────────────────────────────────
+    [JsonPropertyName("cruise")]
+    public CruiseScoringDto Cruise { get; init; } = new();
 
-    [JsonPropertyName("fuelAtDepartureLbs")]
-    public double FuelAtDepartureLbs { get; init; }
+    [JsonPropertyName("descent")]
+    public DescentScoringDto Descent { get; init; } = new();
 
-    [JsonPropertyName("fuelAtLandingLbs")]
-    public double FuelAtLandingLbs { get; init; }
+    [JsonPropertyName("landing")]
+    public LandingScoringDto Landing { get; init; } = new();
 
-    [JsonPropertyName("fuelBurnedLbs")]
-    public double FuelBurnedLbs { get; init; }
+    [JsonPropertyName("safety")]
+    public SafetyScoringDto Safety { get; init; } = new();
+}
 
-    // ── Touchdown position ──────────────────────────────────────────────────────
+public sealed record DepartureScoringDto
+{
+    [JsonPropertyName("v1Kts")]
+    public double? V1Kts { get; init; }
 
-    /// <summary>
-    /// WGS-84 latitude of the initial wheel contact point, in decimal degrees.
-    /// Zero when no touchdown was recorded (e.g. session ended in the air).
-    /// </summary>
-    [JsonPropertyName("touchdownLat")]
-    public double TouchdownLat { get; init; }
+    [JsonPropertyName("vrKts")]
+    public double? VrKts { get; init; }
 
-    /// <summary>
-    /// WGS-84 longitude of the initial wheel contact point, in decimal degrees.
-    /// Zero when no touchdown was recorded (e.g. session ended in the air).
-    /// </summary>
-    [JsonPropertyName("touchdownLon")]
-    public double TouchdownLon { get; init; }
+    [JsonPropertyName("v2Kts")]
+    public double? V2Kts { get; init; }
 
-    // ── Crash flag ──────────────────────────────────────────────────────────────
+    [JsonPropertyName("takeoffPitchDeg")]
+    public double TakeoffPitchDeg { get; init; }
 
+    [JsonPropertyName("initialClimbFpm")]
+    public double InitialClimbFpm { get; init; }
+
+    [JsonPropertyName("flapsAtTakeoff")]
+    public int FlapsAtTakeoff { get; init; }
+}
+
+public sealed record ClimbScoringDto
+{
+    [JsonPropertyName("avgClimbFpm")]
+    public double AvgClimbFpm { get; init; }
+
+    [JsonPropertyName("timeToFL100Min")]
+    public double? TimeToFL100Min { get; init; }
+
+    [JsonPropertyName("vsStabilityScore")]
+    public double VsStabilityScore { get; init; }
+}
+
+public sealed record CruiseScoringDto
+{
+    [JsonPropertyName("altitudeDeviationFt")]
+    public double AltitudeDeviationFt { get; init; }
+
+    [JsonPropertyName("speedDeviationKts")]
+    public double SpeedDeviationKts { get; init; }
+}
+
+public sealed record DescentScoringDto
+{
+    [JsonPropertyName("avgDescentFpm")]
+    public double AvgDescentFpm { get; init; }
+
+    [JsonPropertyName("speedAtFL100Kts")]
+    public double? SpeedAtFL100Kts { get; init; }
+}
+
+public sealed record LandingScoringDto
+{
+    [JsonPropertyName("touchdownRateFpm")]
+    public double TouchdownRateFpm { get; init; }
+
+    [JsonPropertyName("touchdownPitchDeg")]
+    public double TouchdownPitchDeg { get; init; }
+
+    [JsonPropertyName("maxPitchWhileWowDeg")]
+    public double MaxPitchWhileWowDeg { get; init; }
+
+    [JsonPropertyName("touchdownBankDeg")]
+    public double TouchdownBankDeg { get; init; }
+
+    [JsonPropertyName("touchdownGForce")]
+    public double TouchdownGForce { get; init; }
+
+    [JsonPropertyName("bounceCount")]
+    public int BounceCount { get; init; }
+
+    [JsonPropertyName("gearUpAtTouchdown")]
+    public bool GearUpAtTouchdown { get; init; }
+}
+
+public sealed record SafetyScoringDto
+{
     [JsonPropertyName("crashDetected")]
     public bool CrashDetected { get; init; }
 
-    // ── GPS flight-path track ───────────────────────────────────────────────────
+    [JsonPropertyName("overspeedWarningCount")]
+    public int OverspeedWarningCount { get; init; }
 
-    /// <summary>
-    /// Downsampled GPS track (one point every ~30 s plus phase-change points).
-    /// Null when no track was recorded (e.g. session started after cruise).
-    /// </summary>
-    [JsonPropertyName("gpsTrack")]
-    public IReadOnlyList<GpsTrackPointUpload>? GpsTrack { get; init; }
+    [JsonPropertyName("stallWarningCount")]
+    public int StallWarningCount { get; init; }
 
-    // ── Structured scoring input ───────────────────────────────────────────────
-
-    /// <summary>
-    /// All raw phase metrics collected during the flight in a structured object.
-    /// Allows the webapp to score or re-score the session with any algorithm.
-    /// </summary>
-    [JsonPropertyName("scoringInput")]
-    public FlightScoreInputV5Upload? ScoreInputV5 { get; init; }
-
-    // ── Landing analysis ──────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Rich landing geometry including approach path, threshold crossing speed/height,
-    /// and touchdown distance from threshold.  Null when no landing was recorded.
-    /// </summary>
-    [JsonPropertyName("landingAnalysis")]
-    public LandingAnalysisUpload? LandingAnalysis { get; init; }
-
-    // ── Flight path ───────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Full-flight path sampled every 60 seconds from blocks-off to blocks-on.
-    /// Null when no flight path data was recorded (e.g. blocks-off was never set).
-    /// </summary>
-    [JsonPropertyName("flightPath")]
-    public IReadOnlyList<FlightPathPointUpload>? FlightPath { get; init; }
-
-    /// <summary>
-    /// Timestamped engine, parking-brake, and lights events with GPS coordinates.
-    /// Null when no events were recorded.
-    /// </summary>
-    [JsonPropertyName("flightEvents")]
-    public IReadOnlyList<FlightEventUpload>? FlightEvents { get; init; }
+    [JsonPropertyName("gpwsAlertCount")]
+    public int GpwsAlertCount { get; init; }
 }
 
-/// <summary>A single flight event (engine, brake, or lights state change).</summary>
-public sealed record FlightEventUpload
+public sealed record LandingAnalysisDto
 {
-    [JsonPropertyName("type")]
-    public string Type { get; init; } = "";
+    [JsonPropertyName("touchdownLat")]
+    public double? TouchdownLat { get; init; }
 
-    /// <summary>1-based engine index. Only present for engine_on / engine_off events.</summary>
-    [JsonPropertyName("engineIndex")]
-    public int? EngineIndex { get; init; }
+    [JsonPropertyName("touchdownLon")]
+    public double? TouchdownLon { get; init; }
 
+    [JsonPropertyName("touchdownHeadingDeg")]
+    public double? TouchdownHeadingDeg { get; init; }
+
+    [JsonPropertyName("touchdownAltFt")]
+    public double? TouchdownAltFt { get; init; }
+
+    [JsonPropertyName("touchdownIAS")]
+    public double? TouchdownIAS { get; init; }
+
+    [JsonPropertyName("windSpeedAtTouchdownKnots")]
+    public double? WindSpeedAtTouchdownKnots { get; init; }
+
+    [JsonPropertyName("windDirectionAtTouchdownDegrees")]
+    public double? WindDirectionAtTouchdownDegrees { get; init; }
+
+    [JsonPropertyName("approachPath")]
+    public ApproachPathPointDto[] ApproachPath { get; init; } = [];
+}
+
+public sealed record ApproachPathPointDto
+{
+    [JsonPropertyName("lat")]
+    public double Lat { get; init; }
+
+    [JsonPropertyName("lon")]
+    public double Lon { get; init; }
+
+    [JsonPropertyName("altitudeFt")]
+    public double AltitudeFt { get; init; }
+
+    [JsonPropertyName("iasKts")]
+    public double IasKts { get; init; }
+
+    [JsonPropertyName("vsFpm")]
+    public double VsFpm { get; init; }
+
+    [JsonPropertyName("distanceToThresholdNm")]
+    public double? DistanceToThresholdNm { get; init; }
+}
+
+public sealed record FlightPathPointDto
+{
     [JsonPropertyName("lat")]
     public double Lat { get; init; }
 
@@ -163,29 +223,6 @@ public sealed record FlightEventUpload
     [JsonPropertyName("altFt")]
     public double AltFt { get; init; }
 
-    /// <summary>Minutes since blocks-off.</summary>
     [JsonPropertyName("tMin")]
     public double TMin { get; init; }
-}
-
-/// <summary>A single point in the GPS flight-path track.</summary>
-public sealed record GpsTrackPointUpload
-{
-    [JsonPropertyName("t")]
-    public DateTimeOffset TimestampUtc { get; init; }
-
-    [JsonPropertyName("lat")]
-    public double Latitude { get; init; }
-
-    [JsonPropertyName("lon")]
-    public double Longitude { get; init; }
-
-    [JsonPropertyName("alt")]
-    public double AltitudeFeet { get; init; }
-
-    [JsonPropertyName("gs")]
-    public double GroundSpeedKnots { get; init; }
-
-    [JsonPropertyName("phase")]
-    public string Phase { get; init; } = "";
 }

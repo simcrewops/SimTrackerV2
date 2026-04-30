@@ -12,6 +12,15 @@ on:
       - "**/*.ps1"
       - "**/*.sln"
       - "**/*.xaml"
+      - "**/*.png"
+      - "**/*.ico"
+      - "**/*.json"
+      - "**/*.props"
+      - "**/*.targets"
+      - "global.json"
+      - "NuGet.config"
+      - "Directory.Build.props"
+      - "Directory.Build.targets"
       - "packaging/**"
       - ".github/workflows/dotnet-tests.yml"
   pull_request:
@@ -22,6 +31,15 @@ on:
       - "**/*.ps1"
       - "**/*.sln"
       - "**/*.xaml"
+      - "**/*.png"
+      - "**/*.ico"
+      - "**/*.json"
+      - "**/*.props"
+      - "**/*.targets"
+      - "global.json"
+      - "NuGet.config"
+      - "Directory.Build.props"
+      - "Directory.Build.targets"
       - "packaging/**"
       - ".github/workflows/dotnet-tests.yml"
   workflow_dispatch:
@@ -78,9 +96,6 @@ jobs:
       - name: Test phase engine
         run: dotnet test SimCrewOps.PhaseEngine.Tests/SimCrewOps.PhaseEngine.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=phase-engine-tests.trx" --results-directory TestResults
 
-      - name: Test runways
-        run: dotnet test SimCrewOps.Runways.Tests/SimCrewOps.Runways.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=runways-tests.trx" --results-directory TestResults
-
       - name: Test runtime
         run: dotnet test SimCrewOps.Runtime.Tests/SimCrewOps.Runtime.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=runtime-tests.trx" --results-directory TestResults
 
@@ -104,14 +119,91 @@ jobs:
           path: TestResults/**/*.trx
           if-no-files-found: ignore
 
-  publish-windows-beta:
-    name: Publish Windows Beta
+  publish-windows-preview:
+    name: Publish Windows Preview (feature branches)
     needs: test
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    if: github.ref != 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: windows-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      PACKAGE_VERSION: 3.0.0.${{ github.run_number }}
+      PACKAGE_VERSION: 3.0.0-preview.${{ github.run_number }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up .NET 8 SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+
+      - name: Restore WPF app
+        run: dotnet restore SimCrewOps.App.Wpf/SimCrewOps.App.Wpf.csproj -r win-x64
+
+      - name: Publish WPF app
+        run: >
+          dotnet publish SimCrewOps.App.Wpf/SimCrewOps.App.Wpf.csproj
+          --configuration Release
+          --no-restore
+          -p:PublishProfile=Beta-win-x64
+          -p:Version=${{ env.PACKAGE_VERSION }}
+          -p:InformationalVersion=${{ env.PACKAGE_VERSION }}+${{ github.sha }}
+
+      - name: Stage preview package
+        shell: pwsh
+        run: >
+          ./packaging/windows/prepare-beta-package.ps1
+          -PublishOutputDirectory "SimCrewOps.App.Wpf/artifacts/publish/SimTrackerV2-win-x64"
+          -PackageOutputDirectory "artifacts/package/SimTrackerV2-preview-win-x64"
+          -Version "${{ env.PACKAGE_VERSION }}"
+          -CommitSha "${{ github.sha }}"
+
+      - name: Archive preview package
+        shell: pwsh
+        run: >
+          Compress-Archive
+          -Path "artifacts/package/SimTrackerV2-preview-win-x64/*"
+          -DestinationPath "artifacts/package/SimTrackerV2-preview-win-x64.zip"
+          -Force
+
+      - name: Build preview installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "artifacts/installer" | Out-Null
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            Write-Warning "Inno Setup not found at $iscc — skipping installer build."
+            exit 0
+          }
+          & $iscc `
+            /DMyAppVersion="${{ env.PACKAGE_VERSION }}" `
+            "/DMyAppSourceDir=${{ github.workspace }}\artifacts\package\SimTrackerV2-preview-win-x64" `
+            "packaging\windows\installer\SimTrackerV2.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Rename-Item "artifacts/installer/SimTrackerV2-Setup.exe" `
+            "SimTrackerV2-Setup-${{ env.PACKAGE_VERSION }}.exe" -ErrorAction SilentlyContinue
+
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: simtracker-preview-win-x64-${{ github.run_number }}
+          path: |
+            artifacts/package/SimTrackerV2-preview-win-x64.zip
+            artifacts/package/SimTrackerV2-preview-win-x64/**
+            artifacts/installer/SimTrackerV2-Setup*.exe
+          if-no-files-found: error
+
+  publish-windows-beta:
+    name: Publish Windows Beta (main only)
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      PACKAGE_VERSION: 3.0.0-beta.${{ github.run_number }}
 
     steps:
       - name: Check out repository
@@ -154,13 +246,31 @@ jobs:
           -DestinationPath "artifacts/package/SimTrackerV2-beta-win-x64.zip"
           -Force
 
-      - name: Upload beta package artifact
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "artifacts/installer" | Out-Null
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            Write-Warning "Inno Setup not found at $iscc — skipping installer build."
+            exit 0
+          }
+          & $iscc `
+            /DMyAppVersion="${{ env.PACKAGE_VERSION }}" `
+            "/DMyAppSourceDir=${{ github.workspace }}\artifacts\package\SimTrackerV2-beta-win-x64" `
+            "packaging\windows\installer\SimTrackerV2.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Rename-Item "artifacts/installer/SimTrackerV2-Setup.exe" `
+            "SimTrackerV2-Setup-${{ env.PACKAGE_VERSION }}.exe" -ErrorAction SilentlyContinue
+
+      - name: Upload beta package
         uses: actions/upload-artifact@v7
         with:
           name: simtracker-beta-win-x64
           path: |
             artifacts/package/SimTrackerV2-beta-win-x64.zip
             artifacts/package/SimTrackerV2-beta-win-x64/**
+            artifacts/installer/SimTrackerV2-Setup*.exe
           if-no-files-found: error
 
       - name: Publish GitHub Release (rolling beta)
@@ -174,14 +284,20 @@ jobs:
             **Version:** `${{ env.PACKAGE_VERSION }}`
             **Commit:** `${{ github.sha }}`
 
-            ### Install
-            1. Download `SimTrackerV2-beta-win-x64.zip` below
-            2. Extract and run `SimTrackerV2.exe` — no installer needed
+            ### Install (recommended)
+            Download **SimTrackerV2-Setup.exe** and run it — no manual extraction required.
+            The installer places the app in your user profile and creates a Start Menu entry.
+
+            ### Portable / fallback
+            Download `SimTrackerV2-beta-win-x64.zip`, extract anywhere, and run `SimTrackerV2.exe`.
+            All runtime dependencies are bundled — no DLLs to manage manually.
 
             ### Connect your account
-            - Open **Settings** tab → copy your **API Token** from `simcrewops.com/settings` → paste and Save
+            - Open **Settings** tab → click the `simcrewops.com/settings` link → copy your **API Token** → paste it in and Save
             - The **LIVE SYNC ON** badge in the nav bar confirms you're connected
           prerelease: true
-          make_latest: true
-          files: artifacts/package/SimTrackerV2-beta-win-x64.zip
+          make_latest: false
+          files: |
+            artifacts/package/SimTrackerV2-beta-win-x64.zip
+            artifacts/installer/SimTrackerV2-Setup*.exe
           token: ${{ secrets.GITHUB_TOKEN }}

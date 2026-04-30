@@ -21,6 +21,11 @@ public sealed record SimConnectRawTelemetryFrame
     /// Sourced from VELOCITY WORLD Y.
     /// </summary>
     public double VelocityWorldYFps { get; init; }
+    /// <summary>
+    /// Sticky SimVar holding the normal-to-ground velocity (ft/s, negative = descending) from
+    /// the last touchdown. Sourced from PLANE TOUCHDOWN NORMAL VELOCITY. A/B comparison candidate.
+    /// </summary>
+    public double TouchdownNormalVelocityFps { get; init; }
     public double BankAngleDegrees { get; init; }
     public double PitchAngleDegrees { get; init; }
     public double HeadingMagneticDegrees { get; init; }
@@ -47,6 +52,9 @@ public sealed record SimConnectRawTelemetryFrame
     public int LightStrobeRaw { get; init; }          // LIGHT STROBE individual SimVar
     public bool LightSourceIsIndividual { get; init; } // true = used individual vars, false = used bitmask
 
+    public double WindSpeedKnots { get; init; }
+    public double WindDirectionDegrees { get; init; }
+
     public double StallWarning { get; init; }
     public double GpwsAlert { get; init; }
     public double OverspeedWarning { get; init; }
@@ -58,6 +66,7 @@ public sealed record SimConnectRawTelemetryFrame
 
     // Aircraft profile — set on connect when SimConnect returns the loaded aircraft path.
     public string ActiveProfileName   { get; init; } = "Default (Standard SimVars)";
+    public string? ActiveProfileIcaoType { get; init; }
     /// <summary>True when the matched profile needs LVARs that require a MobiFlight WASM bridge.</summary>
     public bool LvarBridgeRequired  { get; init; }
     /// <summary>True when the MobiFlight WASM bridge is connected and serving LVAR values.</summary>
@@ -68,59 +77,4 @@ public sealed record SimConnectRawTelemetryFrame
     /// e.g. "Community\fenix-a319\..." → "fenix-a319". Null until first AircraftLoaded event.
     /// </summary>
     public string? AircraftTitle { get; init; }
-
-    /// <summary>NAV1 glideslope deviation in degrees. Positive = above glidepath, negative = below.</summary>
-    public double Nav1GlideslopeErrorDegrees { get; init; }
-
-    /// <summary>NAV1 radial/LOC deviation in degrees. Positive = right of centreline, negative = left.</summary>
-    public double Nav1RadialErrorDegrees { get; init; }
-
-    /// <summary>
-    /// Destination airport ICAO from the active GPS flight plan (e.g. "KLAX").
-    /// Null when no flight plan is loaded or the SimVar returns an empty / invalid value.
-    /// </summary>
-    public string? GpsDestinationIdent { get; init; }
-
-    // ── Extended context SimVars ───────────────────────────────────────────────
-    // All are optional (zero/false when the SimVar is unsupported or not yet received).
-
-    /// <summary>Autopilot master switch state (1.0 = engaged, 0.0 = off).</summary>
-    public double AutopilotMaster { get; init; }
-
-    /// <summary>Total usable fuel weight in pounds.</summary>
-    public double FuelTotalLbs { get; init; }
-
-    /// <summary>Ambient wind speed at the aircraft's current position, in knots.</summary>
-    public double AmbientWindSpeedKnots { get; init; }
-
-    /// <summary>
-    /// Ambient wind direction in degrees magnetic (direction wind is coming FROM).
-    /// </summary>
-    public double AmbientWindDirectionDegrees { get; init; }
-
-    /// <summary>Outside air temperature in degrees Celsius.</summary>
-    public double AmbientTemperatureCelsius { get; init; }
-
-    /// <summary>
-    /// Spoiler/speedbrake handle position (0.0 = fully retracted, 1.0 = fully deployed).
-    /// </summary>
-    public double SpoilerHandlePosition { get; init; }
-
-    /// <summary>True when spoilers are armed for automatic deployment (1.0 = armed, 0.0 = not armed).</summary>
-    public double SpoilersArmed { get; init; }
-
-    /// <summary>Engine 1 turbine N1 fan speed as a percentage (0–110 %).</summary>
-    public double Engine1N1Pct { get; init; }
-    /// <summary>Engine 2 turbine N1 fan speed as a percentage (0–110 %).</summary>
-    public double Engine2N1Pct { get; init; }
-    /// <summary>Engine 3 turbine N1 fan speed as a percentage (0–110 %).</summary>
-    public double Engine3N1Pct { get; init; }
-    /// <summary>Engine 4 turbine N1 fan speed as a percentage (0–110 %).</summary>
-    public double Engine4N1Pct { get; init; }
-
-    /// <summary>
-    /// True when a NAV1 ILS glideslope signal is being received (1.0 = valid, 0.0 = no signal).
-    /// Used to distinguish a genuine ILS approach from a NAV radio tuned to a VOR.
-    /// </summary>
-    public double Nav1IlsSignalValid { get; init; }
 }

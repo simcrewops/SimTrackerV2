@@ -1,6 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.IO;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -24,7 +22,6 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
 {
     private const uint FlightCriticalRequestId = 1;
     private const uint OperationalRequestId = 2;
-    private const uint AircraftStateRequestId = 3;
     private const uint FlightCriticalDefinitionId = 11;
     private const uint OperationalDefinitionId = 12;
 
@@ -39,21 +36,7 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
     private readonly uint _userObjectId;
 
     private LatestSimConnectState _latestState = new();
-    private string? _detectedAircraftTitle;
     private bool _disposed;
-
-    // Facility request state — initialized lazily on first RequestFacilityDataAsync call.
-    private const uint FacilityDefinitionId = 401;
-    private const uint FacilityRequestId    = 402;
-    private const double FeetPerMeter = 3.28084;
-    private MethodInfo? _addToFacilityDefinitionMethod;
-    private MethodInfo? _requestFacilityDataMethod;
-    private bool _facilityDefinitionRegistered;
-    private readonly object _facilityInitLock = new();
-    private volatile TaskCompletionSource<SimConnectAirportFacilitySnapshot?>? _facilityCompletion;
-    private readonly Dictionary<uint, FacilityPendingRunwayNode> _facilityRunways = [];
-    private readonly ConcurrentQueue<Exception> _facilityErrors = new();
-    private string? _facilityActiveIcao;
 
     public ReflectionSimConnectManagedBridge(Assembly managedAssembly, SimConnectHostOptions options)
     {
@@ -75,12 +58,10 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         _userObjectId = GetUnsignedStaticValue(simConnectType, "SIMCONNECT_OBJECT_ID_USER");
 
         WireEvent(simConnectType, "OnRecvSimobjectData", HandleSimObjectData);
-        WireEvent(simConnectType, "OnRecvSystemState", HandleSystemState);
         WireEvent(simConnectType, "OnRecvException", HandleSimConnectException);
         WireEvent(simConnectType, "OnRecvQuit", HandleSimConnectQuit);
 
         RegisterDefinitions(managedAssembly, simConnectType);
-        RequestAircraftState(simConnectType);
     }
 
     public bool IsConnected => !_disposed;
@@ -145,311 +126,10 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         return Task.CompletedTask;
     }
 
-    public async Task<SimConnectAirportFacilitySnapshot?> RequestFacilityDataAsync(
+    public Task<SimConnectAirportFacilitySnapshot?> RequestFacilityDataAsync(
         string airportIcao,
         CancellationToken cancellationToken = default)
-    {
-        ThrowIfDisposed();
-
-        var normalizedIcao = airportIcao.Trim().ToUpperInvariant();
-
-        lock (_facilityInitLock)
-        {
-            if (!_facilityDefinitionRegistered)
-            {
-                try
-                {
-                    InitializeFacilityDefinitions();
-                    _facilityDefinitionRegistered = true;
-                }
-                catch (Exception ex)
-                {
-                    Trace.TraceWarning("SimConnect facility definition init failed: {0}", ex.Message);
-                    return null;
-                }
-            }
-        }
-
-        var completion = new TaskCompletionSource<SimConnectAirportFacilitySnapshot?>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        _facilityRunways.Clear();
-        _facilityErrors.Clear();
-        _facilityActiveIcao = normalizedIcao;
-        _facilityCompletion = completion;
-
-        try
-        {
-            InvokeFacilityRequest(normalizedIcao);
-        }
-        catch (Exception ex)
-        {
-            _facilityCompletion = null;
-            Trace.TraceWarning("SimConnect facility request failed for {0}: {1}", normalizedIcao, ex.Message);
-            return null;
-        }
-
-        var started = DateTimeOffset.UtcNow;
-        var timeout = TimeSpan.FromSeconds(3);
-
-        while (!completion.Task.IsCompleted)
-        {
-            if (_facilityErrors.TryDequeue(out var err))
-            {
-                _facilityCompletion = null;
-                Trace.TraceWarning("SimConnect facility error for {0}: {1}", normalizedIcao, err.Message);
-                return null;
-            }
-
-            var elapsed = DateTimeOffset.UtcNow - started;
-            var remaining = timeout - elapsed;
-            if (remaining <= TimeSpan.Zero || cancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
-
-            var handles = new WaitHandle[] { cancellationToken.WaitHandle, _messageSignal };
-            var signaled = WaitHandle.WaitAny(handles, (int)Math.Clamp(remaining.TotalMilliseconds, 1, int.MaxValue));
-            if (signaled == 0)
-            {
-                break;
-            }
-
-            DrainMessages();
-        }
-
-        _facilityCompletion = null;
-
-        return completion.Task.IsCompletedSuccessfully
-            ? await completion.Task.ConfigureAwait(false)
-            : null;
-    }
-
-    private void InitializeFacilityDefinitions()
-    {
-        var simConnectType = _simConnect.GetType();
-
-        _addToFacilityDefinitionMethod = simConnectType.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-            .SingleOrDefault(m => m.Name == "AddToFacilityDefinition" && m.GetParameters().Length == 2)
-            ?? throw new InvalidOperationException("Managed SimConnect AddToFacilityDefinition method was not found.");
-
-        _requestFacilityDataMethod = simConnectType.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-            .Where(m => m.Name == "RequestFacilityData")
-            .OrderByDescending(m => m.GetParameters().Length)
-            .FirstOrDefault()
-            ?? throw new InvalidOperationException("Managed SimConnect RequestFacilityData method was not found.");
-
-        foreach (var field in FacilityDefinitionFields.All)
-        {
-            _addToFacilityDefinitionMethod.Invoke(_simConnect, [FacilityDefinitionId, field]);
-        }
-
-        WireEvent(simConnectType, "OnRecvFacilityData", HandleFacilityData);
-        WireEvent(simConnectType, "OnRecvFacilityDataEnd", HandleFacilityDataEnd);
-    }
-
-    private void InvokeFacilityRequest(string airportIcao)
-    {
-        var parameters = _requestFacilityDataMethod!.GetParameters();
-        object?[] args = parameters.Length switch
-        {
-            4 => [FacilityDefinitionId, FacilityRequestId, airportIcao, string.Empty],
-            3 => [FacilityDefinitionId, FacilityRequestId, airportIcao],
-            _ => throw new InvalidOperationException("RequestFacilityData overload not supported."),
-        };
-        _requestFacilityDataMethod.Invoke(_simConnect, args);
-    }
-
-    private void HandleFacilityData(object? data)
-    {
-        try
-        {
-            if (data is null || FacilityGetUint(data, "UserRequestId", "dwRequestID", "RequestId") != FacilityRequestId)
-            {
-                return;
-            }
-
-            var uniqueId       = FacilityGetUint(data, "UniqueRequestId", "dwUniqueRequestId");
-            var parentUniqueId = FacilityGetUint(data, "ParentUniqueRequestId", "dwParentUniqueRequestId");
-            var facilityType   = FacilityGetEnumName(FacilityGetValue(data, "Type", "dwType"));
-            var payload        = FacilityGetPayload(data);
-
-            if (facilityType.Contains("RUNWAY", StringComparison.OrdinalIgnoreCase))
-            {
-                var runway = FacilityParseRunwayPayload(payload);
-                if (runway is not null)
-                {
-                    _facilityRunways[uniqueId] = new FacilityPendingRunwayNode { Runway = runway };
-                }
-                return;
-            }
-
-            if (facilityType.Contains("PAVEMENT", StringComparison.OrdinalIgnoreCase)
-                && _facilityRunways.TryGetValue(parentUniqueId, out var node))
-            {
-                node.AddThresholdPayload(FacilityParsePavementPayload(payload));
-            }
-        }
-        catch (Exception ex)
-        {
-            _facilityErrors.Enqueue(ex);
-        }
-    }
-
-    private void HandleFacilityDataEnd(object? data)
-    {
-        try
-        {
-            if (data is null || FacilityGetUint(data, "UserRequestId", "dwRequestID", "RequestId") != FacilityRequestId)
-            {
-                return;
-            }
-
-            _facilityCompletion?.TrySetResult(BuildFacilitySnapshot());
-        }
-        catch (Exception ex)
-        {
-            _facilityErrors.Enqueue(ex);
-        }
-    }
-
-    private SimConnectAirportFacilitySnapshot? BuildFacilitySnapshot()
-    {
-        if (string.IsNullOrWhiteSpace(_facilityActiveIcao))
-        {
-            return null;
-        }
-
-        var runways = _facilityRunways.Values
-            .Select(node => node.ToFacilityRunway(_facilityActiveIcao!, FeetPerMeter))
-            .Where(r => r is not null)
-            .Cast<SimConnectFacilityRunway>()
-            .OrderBy(r => r.PrimaryNumber)
-            .ThenBy(r => r.PrimaryDesignator)
-            .ToArray();
-
-        return runways.Length == 0
-            ? null
-            : new SimConnectAirportFacilitySnapshot
-            {
-                AirportIcao = _facilityActiveIcao!,
-                Runways = runways,
-            };
-    }
-
-    // ── Facility reflection helpers ───────────────────────────────────────────────
-
-    private static FacilityRunwayPayload? FacilityParseRunwayPayload(object payload)
-    {
-        if (payload is IntPtr ptr && ptr != IntPtr.Zero)
-            return Marshal.PtrToStructure<FacilityRunwayPayload>(ptr);
-
-        if (payload is byte[] bytes)
-        {
-            var handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
-            try { return Marshal.PtrToStructure<FacilityRunwayPayload>(handle.AddrOfPinnedObject()); }
-            finally { handle.Free(); }
-        }
-
-        return new FacilityRunwayPayload
-        {
-            Latitude          = FacilityGetDouble(payload, "Latitude",           "LATITUDE"),
-            Longitude         = FacilityGetDouble(payload, "Longitude",          "LONGITUDE"),
-            Heading           = (float)FacilityGetDouble(payload, "Heading",     "HEADING"),
-            Length            = (float)FacilityGetDouble(payload, "Length",      "LENGTH"),
-            PrimaryNumber     = FacilityGetInt32(payload,   "PrimaryNumber",     "PRIMARY_NUMBER"),
-            PrimaryDesignator = FacilityGetInt32(payload,   "PrimaryDesignator", "PRIMARY_DESIGNATOR"),
-            SecondaryNumber   = FacilityGetInt32(payload,   "SecondaryNumber",   "SECONDARY_NUMBER"),
-            SecondaryDesignator = FacilityGetInt32(payload, "SecondaryDesignator", "SECONDARY_DESIGNATOR"),
-        };
-    }
-
-    private static FacilityPavementPayload? FacilityParsePavementPayload(object payload)
-    {
-        if (payload is IntPtr ptr && ptr != IntPtr.Zero)
-            return Marshal.PtrToStructure<FacilityPavementPayload>(ptr);
-
-        if (payload is byte[] bytes)
-        {
-            var handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
-            try { return Marshal.PtrToStructure<FacilityPavementPayload>(handle.AddrOfPinnedObject()); }
-            finally { handle.Free(); }
-        }
-
-        var enable = FacilityGetNullableInt32(payload, "Enable", "ENABLE");
-        var length = FacilityGetNullableDouble(payload, "Length", "LENGTH");
-        if (length is null && enable is null) return null;
-
-        return new FacilityPavementPayload { Length = (float)(length ?? 0), Enable = enable ?? 0 };
-    }
-
-    private static object FacilityGetPayload(object data)
-    {
-        var value = FacilityGetValue(data, "Data", "dwData");
-        if (value is null) return data;
-        return value switch
-        {
-            Array arr when arr.Length > 0 => arr.GetValue(0) ?? data,
-            _ => value,
-        };
-    }
-
-    private static uint FacilityGetUint(object instance, params string[] names)
-    {
-        var value = FacilityGetValue(instance, names);
-        return value is null ? 0u : Convert.ToUInt32(value);
-    }
-
-    private static string FacilityGetEnumName(object? value) => value?.ToString() ?? string.Empty;
-
-    private static double FacilityGetDouble(object instance, params string[] names) =>
-        FacilityGetNullableDouble(instance, names) ?? 0;
-
-    private static double? FacilityGetNullableDouble(object instance, params string[] names)
-    {
-        var value = FacilityGetValue(instance, names);
-        return value switch
-        {
-            null => null,
-            float f => f,
-            double d => d,
-            _ => Convert.ToDouble(value),
-        };
-    }
-
-    private static int FacilityGetInt32(object instance, params string[] names) =>
-        FacilityGetNullableInt32(instance, names) ?? 0;
-
-    private static int? FacilityGetNullableInt32(object instance, params string[] names)
-    {
-        var value = FacilityGetValue(instance, names);
-        return value is null ? null : Convert.ToInt32(value);
-    }
-
-    private static object? FacilityGetValue(object instance, params string[] memberNames)
-    {
-        var type = instance.GetType();
-        foreach (var name in memberNames)
-        {
-            var prop = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-            if (prop is not null) return prop.GetValue(instance);
-            var field = type.GetField(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-            if (field is not null) return field.GetValue(instance);
-        }
-
-        var normalized = memberNames.Select(n => n.Replace("_", string.Empty, StringComparison.Ordinal).Trim())
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            if (normalized.Contains(prop.Name.Replace("_", string.Empty, StringComparison.Ordinal).Trim()))
-                return prop.GetValue(instance);
-        }
-        foreach (var fld in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
-        {
-            if (normalized.Contains(fld.Name.Replace("_", string.Empty, StringComparison.Ordinal).Trim()))
-                return fld.GetValue(instance);
-        }
-        return null;
-    }
+        => Task.FromResult<SimConnectAirportFacilitySnapshot?>(null);
 
     private void RegisterDefinitions(Assembly managedAssembly, Type simConnectType)
     {
@@ -633,139 +313,6 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         }
     }
 
-    private void HandleSystemState(object? data)
-    {
-        if (data is null) return;
-        var requestId = Convert.ToUInt32(GetInstanceValue(data, "dwRequestID"));
-        if (requestId != AircraftStateRequestId) return;
-
-        // szString is the aircraft .air file path, e.g. "Community\fenix-a319\..."
-        var aircraftPath = GetInstanceValue(data, "szString")?.ToString() ?? string.Empty;
-        _detectedAircraftTitle = ReadTitleFromAircraftCfg(aircraftPath) ?? ParseAircraftTitle(aircraftPath);
-    }
-
-    private void RequestAircraftState(Type simConnectType)
-    {
-        try
-        {
-            var method = simConnectType.GetMethod("RequestSystemState",
-                BindingFlags.Public | BindingFlags.Instance);
-            method?.Invoke(_simConnect, [AircraftStateRequestId, "AircraftLoaded"]);
-        }
-        catch
-        {
-            // Non-fatal — aircraft title will remain null if unsupported.
-        }
-    }
-
-    private static string? ReadTitleFromAircraftCfg(string aircraftPath)
-    {
-        try
-        {
-            string cfgPath;
-            if (aircraftPath.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase))
-            {
-                cfgPath = aircraftPath;
-            }
-            else
-            {
-                var dir = Path.GetDirectoryName(aircraftPath);
-                if (string.IsNullOrEmpty(dir)) return null;
-                cfgPath = Path.Combine(dir, "aircraft.cfg");
-            }
-
-            if (!File.Exists(cfgPath)) return null;
-
-            string? generalTitle = null;
-            string? firstFltsimTitle = null;
-            var inGeneral = false;
-            var inFirstFltsim = false;
-            var fltsimSeen = false;
-            var lineCount = 0;
-
-            foreach (var rawLine in File.ReadLines(cfgPath))
-            {
-                if (++lineCount > 300) break;
-                var line = rawLine.Trim();
-                if (line.Length == 0 || line[0] == ';') continue;
-
-                if (line[0] == '[')
-                {
-                    inGeneral     = line.Equals("[GENERAL]",  StringComparison.OrdinalIgnoreCase);
-                    inFirstFltsim = !fltsimSeen &&
-                                    line.StartsWith("[FLTSIM.", StringComparison.OrdinalIgnoreCase);
-                    if (inFirstFltsim) fltsimSeen = true;
-                    continue;
-                }
-
-                if ((inGeneral || inFirstFltsim) && line.StartsWith("title", StringComparison.OrdinalIgnoreCase))
-                {
-                    var eq = line.IndexOf('=');
-                    if (eq < 0) continue;
-                    var value = line[(eq + 1)..].Trim().Trim('"');
-                    if (string.IsNullOrWhiteSpace(value)) continue;
-
-                    if (inGeneral)     { generalTitle     = value; break; }
-                    if (inFirstFltsim) { firstFltsimTitle = value; }
-                }
-
-                if (generalTitle is not null && firstFltsimTitle is not null) break;
-            }
-
-            return generalTitle ?? firstFltsimTitle;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static string? ParseAircraftTitle(string aircraftPath)
-    {
-        if (string.IsNullOrWhiteSpace(aircraftPath)) return null;
-
-        var parts = aircraftPath.Replace('/', '\\')
-            .Split('\\', StringSplitOptions.RemoveEmptyEntries);
-
-        // MSFS path layouts:
-        //   ...\Packages\Community\<package>\...          → parts[i+1] after "Community"
-        //   ...\Packages\Official\<channel>\<package>\... → parts[i+2] after "Official"
-        //     where <channel> is OneStore | Steam | Base | Marketplace | etc.
-        for (var i = 0; i < parts.Length - 1; i++)
-        {
-            if (string.Equals(parts[i], "Community", StringComparison.OrdinalIgnoreCase))
-                return parts[i + 1];
-
-            if (string.Equals(parts[i], "Official", StringComparison.OrdinalIgnoreCase)
-                && i + 2 < parts.Length)
-                return parts[i + 2];
-        }
-
-        // ── Secondary scan: SimObjects vehicle container ───────────────────────
-        var vehicleContainers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Airplanes", "Helicopters", "Rotorcraft", "Boats", "GroundVehicles" };
-
-        for (var i = 0; i < parts.Length - 1; i++)
-        {
-            if (vehicleContainers.Contains(parts[i]))
-                return parts[i + 1];
-        }
-
-        // ── Final fallback: walk from the end, skip files and generic folders ──
-        var genericFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "config", "data", "sounds", "texture", "model", "panel", "effects", "SimObjects" };
-
-        for (var i = parts.Length - 1; i >= 0; i--)
-        {
-            var seg = parts[i];
-            if (seg.Contains('.')) continue;
-            if (genericFolders.Contains(seg)) continue;
-            return seg;
-        }
-
-        return null;
-    }
-
     private void HandleSimConnectException(object? data)
     {
         var exceptionCode = data is null ? "unknown" : GetInstanceValue(data, "dwException")?.ToString() ?? "unknown";
@@ -795,6 +342,8 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             ParkingBrakePosition = snapshot.ParkingBrakePosition,
             OnGround = snapshot.OnGround,
             CrashFlag = snapshot.CrashFlag,
+            // VelocityWorldYFps and TouchdownNormalVelocityFps are unreliable in the managed
+            // bridge path due to pre-existing int/double misalignment in this struct. Leave at 0.
         };
 
         EnqueueFrame();
@@ -825,20 +374,8 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             StallWarning = snapshot.StallWarning,
             GpwsAlert = snapshot.GpwsAlert,
             OverspeedWarning = snapshot.OverspeedWarning,
-            Nav1GlideslopeErrorDegrees = snapshot.Nav1GlideslopeErrorDegrees,
-            Nav1RadialErrorDegrees = snapshot.Nav1RadialErrorDegrees,
-            AutopilotMaster = snapshot.AutopilotMaster,
-            FuelTotalLbs = snapshot.FuelTotalLbs,
-            AmbientWindSpeed = snapshot.AmbientWindSpeed,
-            AmbientWindDirection = snapshot.AmbientWindDirection,
-            AmbientTemperature = snapshot.AmbientTemperature,
-            SpoilerHandlePos = snapshot.SpoilerHandlePos,
-            SpoilersArmed = snapshot.SpoilersArmed,
-            Engine1N1Pct = snapshot.Engine1N1Pct,
-            Engine2N1Pct = snapshot.Engine2N1Pct,
-            Engine3N1Pct = snapshot.Engine3N1Pct,
-            Engine4N1Pct = snapshot.Engine4N1Pct,
-            Nav1IlsValid = snapshot.Nav1IlsValid,
+            WindSpeedKnots = snapshot.WindSpeedKnots,
+            WindDirectionDegrees = snapshot.WindDirectionDegrees,
         };
 
         EnqueueFrame();
@@ -887,22 +424,10 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
             Engine2Running = _latestState.Engine2Running,
             Engine3Running = _latestState.Engine3Running,
             Engine4Running = _latestState.Engine4Running,
-            AircraftTitle  = _detectedAircraftTitle,
-            Nav1GlideslopeErrorDegrees = _latestState.Nav1GlideslopeErrorDegrees,
-            Nav1RadialErrorDegrees   = _latestState.Nav1RadialErrorDegrees,
-            // Extended context
-            AutopilotMaster            = _latestState.AutopilotMaster,
-            FuelTotalLbs               = _latestState.FuelTotalLbs,
-            AmbientWindSpeedKnots      = _latestState.AmbientWindSpeed,
-            AmbientWindDirectionDegrees = _latestState.AmbientWindDirection,
-            AmbientTemperatureCelsius  = _latestState.AmbientTemperature,
-            SpoilerHandlePosition      = _latestState.SpoilerHandlePos,
-            SpoilersArmed              = _latestState.SpoilersArmed,
-            Engine1N1Pct               = _latestState.Engine1N1Pct,
-            Engine2N1Pct               = _latestState.Engine2N1Pct,
-            Engine3N1Pct               = _latestState.Engine3N1Pct,
-            Engine4N1Pct               = _latestState.Engine4N1Pct,
-            Nav1IlsSignalValid         = _latestState.Nav1IlsValid,
+            VelocityWorldYFps = _latestState.VelocityWorldYFps,
+            TouchdownNormalVelocityFps = _latestState.TouchdownNormalVelocityFps,
+            WindSpeedKnots = _latestState.WindSpeedKnots,
+            WindDirectionDegrees = _latestState.WindDirectionDegrees,
         });
     }
 
@@ -1016,6 +541,11 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         public readonly int ParkingBrakePosition;
         public readonly int OnGround;
         public readonly int CrashFlag;
+        // Padding to align with the native client's all-double layout (pre-existing int fields
+        // above leave a 12-byte gap vs the native struct; these fields will not read correctly
+        // but are included to prevent struct underrun when SimConnect copies the data definition).
+        public readonly double VelocityWorldYFps;
+        public readonly double TouchdownNormalVelocityFps;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -1040,23 +570,8 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         public readonly int StallWarning;
         public readonly int GpwsAlert;
         public readonly int OverspeedWarning;
-        // NAV1 approach — appended to preserve existing layout.
-        // (These correspond to the nav1_glideslope_error and nav1_radial_error catalog entries.)
-        public readonly double Nav1GlideslopeErrorDegrees;
-        public readonly double Nav1RadialErrorDegrees;
-        // ── Extended context — bool → int, float64 → double ───────────────────
-        public readonly int    AutopilotMaster;      // AUTOPILOT MASTER (bool)
-        public readonly double FuelTotalLbs;         // FUEL TOTAL QUANTITY WEIGHT
-        public readonly double AmbientWindSpeed;     // AMBIENT WIND VELOCITY
-        public readonly double AmbientWindDirection; // AMBIENT WIND DIRECTION
-        public readonly double AmbientTemperature;   // AMBIENT TEMPERATURE
-        public readonly double SpoilerHandlePos;     // SPOILERS HANDLE POSITION
-        public readonly int    SpoilersArmed;        // SPOILERS ARMED (bool)
-        public readonly double Engine1N1Pct;         // TURB ENG N1:1
-        public readonly double Engine2N1Pct;         // TURB ENG N1:2
-        public readonly double Engine3N1Pct;         // TURB ENG N1:3
-        public readonly double Engine4N1Pct;         // TURB ENG N1:4
-        public readonly int    Nav1IlsValid;         // NAV HAS GLIDE SLOPE:1 (bool)
+        public readonly double WindSpeedKnots;
+        public readonly double WindDirectionDegrees;
     }
 
     private sealed record LatestSimConnectState
@@ -1094,20 +609,9 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         public double Engine2Running { get; init; }
         public double Engine3Running { get; init; }
         public double Engine4Running { get; init; }
-        // Extended context
-        public double Nav1GlideslopeErrorDegrees { get; init; }
-        public double Nav1RadialErrorDegrees { get; init; }
-        public double AutopilotMaster { get; init; }
-        public double FuelTotalLbs { get; init; }
-        public double AmbientWindSpeed { get; init; }
-        public double AmbientWindDirection { get; init; }
-        public double AmbientTemperature { get; init; }
-        public double SpoilerHandlePos { get; init; }
-        public double SpoilersArmed { get; init; }
-        public double Engine1N1Pct { get; init; }
-        public double Engine2N1Pct { get; init; }
-        public double Engine3N1Pct { get; init; }
-        public double Engine4N1Pct { get; init; }
-        public double Nav1IlsValid { get; init; }
+        public double VelocityWorldYFps { get; init; }
+        public double TouchdownNormalVelocityFps { get; init; }
+        public double WindSpeedKnots { get; init; }
+        public double WindDirectionDegrees { get; init; }
     }
 }

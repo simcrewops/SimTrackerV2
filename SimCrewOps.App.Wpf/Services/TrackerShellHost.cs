@@ -1,12 +1,9 @@
-using System.IO;
 using SimCrewOps.App.Wpf.Models;
 using SimCrewOps.Hosting.Config;
 using SimCrewOps.Hosting.Hosting;
 using SimCrewOps.Hosting.Models;
 using SimCrewOps.Persistence.Models;
 using SimCrewOps.Persistence.Persistence;
-using SimCrewOps.Runways.Providers;
-using SimCrewOps.Runways.Services;
 using SimCrewOps.Runtime.Models;
 using SimCrewOps.Runtime.Runtime;
 using SimCrewOps.SimConnect.Models;
@@ -21,11 +18,10 @@ public sealed class TrackerShellHost : IAsyncDisposable
 {
     private readonly ITrackerAppSettingsStore _settingsStore;
     private readonly string _settingsFilePath;
-    private readonly TrackerServiceStack _serviceStack;
+    private TrackerServiceStack _serviceStack;
     private readonly TrackerServiceFactory _serviceFactory;
     private readonly MsfsSimConnectHost _simConnectHost;
     private readonly PersistentRuntimeCoordinator _persistentRuntimeCoordinator;
-    private readonly IRunwayDataProvider _runwayDataProvider;
 
     private TrackerAppSettings _settings;
     private SessionRecoverySnapshot _recoverySnapshot = new();
@@ -34,14 +30,15 @@ public sealed class TrackerShellHost : IAsyncDisposable
     private ActiveFlightResponse? _activeFlight;
     private DateTimeOffset _activeFlightFetchedUtc = DateTimeOffset.MinValue;
     private IActiveFlightFetcher? _activeFlightFetcher;
-    private IPreflightChecker? _preflightChecker;
     private PreflightStatusResponse? _preflightStatus;
-    private string? _lastDetectedAircraftTitle;
-    private string? _lastGpsDestinationIdent;
-    private DateTimeOffset? _lastKnownBlocksOffUtc;
+    private CareerResultDto? _serverCareerResult;
+    private PostFlightStatusDto? _postFlightStatus;
+    private DateTimeOffset? _lastUploadAttemptUtc;
+    private CompletedSessionUploadResult? _lastUploadResult;
+    private bool _sessionWasResumed;
 
-    // Refresh the active flight from the API every minute while the app is running.
-    private static readonly TimeSpan ActiveFlightRefreshInterval = TimeSpan.FromMinutes(1);
+    // Refresh the active flight from the API every 5 minutes while the app is running.
+    private static readonly TimeSpan ActiveFlightRefreshInterval = TimeSpan.FromMinutes(5);
 
     public TrackerShellHost(
         ITrackerAppSettingsStore settingsStore,
@@ -58,15 +55,11 @@ public sealed class TrackerShellHost : IAsyncDisposable
         _serviceFactory = new TrackerServiceFactory();
         _settings = serviceStack.Settings;
         _activeFlightFetcher = serviceStack.ActiveFlightFetcher;
-        _preflightChecker = serviceStack.PreflightChecker;
-        var managedSimConnectClient = new ManagedSimConnectClient();
         _simConnectHost = new MsfsSimConnectHost(
             new SimulatorProcessDetector(new SystemProcessListProvider()),
-            new AdaptiveSimConnectClient(new NativeSimConnectClient(), managedSimConnectClient));
-        _runwayDataProvider = CreateRunwayDataProvider(settingsFilePath, managedSimConnectClient);
+            new AdaptiveSimConnectClient());
         var runtimeCoordinator = new RuntimeCoordinator(
             new FlightSessionContext(),
-            new RunwayResolver(_runwayDataProvider),
             livePositionUploader: serviceStack.LivePositionUploader);
         _persistentRuntimeCoordinator = new PersistentRuntimeCoordinator(
             runtimeCoordinator,
@@ -83,10 +76,6 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
         if (_serviceStack.BackgroundSyncCoordinator is not null)
         {
-            // After any successful upload, immediately refresh the active flight so the
-            // tracker picks up the next assignment without waiting for the poll interval.
-            _serviceStack.BackgroundSyncCoordinator.OnSessionsUploadedAsync = RefreshActiveFlightAsync;
-
             _serviceStack.BackgroundSyncCoordinator.Start();
 
             try
@@ -105,8 +94,6 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
         // Fetch the pilot's next assigned flight from the web app to pre-populate
         // departure/arrival ICAO and flight number in the tracker UI.
-        // Also runs the preflight grounding check so any strike banner is visible
-        // immediately after startup.
         await RefreshActiveFlightAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -120,110 +107,108 @@ public sealed class TrackerShellHost : IAsyncDisposable
             await RefreshActiveFlightAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        DateTimeOffset? autoResetUtc = null;
+
         var simConnectPoll = await _simConnectHost.PollAsync(cancellationToken).ConfigureAwait(false);
-
-        // When SimConnect detects a new aircraft title (e.g. "fenix-a319"), push it into
-        // the session context so the live position beacon and session upload both record
-        // the actual aircraft being flown rather than the bid aircraft type.
-        var detectedTitle = simConnectPoll.Status.DetectedAircraftTitle;
-        if (!string.IsNullOrWhiteSpace(detectedTitle) && detectedTitle != _lastDetectedAircraftTitle)
-        {
-            _lastDetectedAircraftTitle = detectedTitle;
-            // Use UpdateAircraftType rather than UpdateContext so the SimConnect-detected
-            // type always wins — UpdateContext is blocked after blocks-off, but the ATC
-            // MODEL SimVar fires asynchronously and typically arrives a few seconds into
-            // pushback, after blocks-off has already fired.
-            _persistentRuntimeCoordinator.UpdateAircraftType(
-                detectedTitle,
-                ResolveAircraftCategory(detectedTitle));
-        }
-
-        // Auto-detect the arrival airport from the GPS flight plan destination.
-        // This fills in ArrivalAirportIcao for free-flight sessions where no bid context
-        // is set, enabling runway resolution and TDZ display after landing.
-        // Only applies when the context has no arrival set (career flights keep their value).
-        var gpsDest = simConnectPoll.RawFrame?.GpsDestinationIdent;
-        if (!string.IsNullOrWhiteSpace(gpsDest) && gpsDest != _lastGpsDestinationIdent)
-        {
-            _lastGpsDestinationIdent = gpsDest;
-            var ctx = _persistentRuntimeCoordinator.CurrentContext;
-            if (string.IsNullOrWhiteSpace(ctx.ArrivalAirportIcao))
-            {
-                _persistentRuntimeCoordinator.UpdateContext(ctx with
-                {
-                    ArrivalAirportIcao = gpsDest,
-                });
-            }
-        }
-
         if (simConnectPoll.HasTelemetry)
         {
-            // If the previous session is complete (e.g. the tracker sat idle at the
-            // gate, SimConnect disconnected, then reconnected for a new flight), reset
-            // the coordinator to Preflight so the new flight gets a fresh session.
-            // Without this, the forward-only phase engine stays stuck in Arrival and
-            // the UI keeps showing the previous completed flight.
-            if (_runtimeState?.IsComplete == true)
+            _lastRawTelemetryFrame = simConnectPoll.RawFrame;
+
+            // Grounded pilots must not accumulate a trackable session. Raw telemetry is
+            // still received (SimConnect stays live for display) but we do not feed frames
+            // into scoring or persistence while the grounded block is active.
+            if (_preflightStatus?.IsGrounded == true)
             {
-                await _persistentRuntimeCoordinator
-                    .ResetForNewSessionAsync(cancellationToken)
-                    .ConfigureAwait(false);
-                _runtimeState = null;
-                _lastKnownBlocksOffUtc = null;
+                return BuildSnapshot(simConnectPoll.Status, autoResetUtc);
             }
 
-            _lastRawTelemetryFrame = simConnectPoll.RawFrame;
             var runtimeFrame = await _persistentRuntimeCoordinator
                 .ProcessFrameAsync(simConnectPoll.TelemetryFrame!, cancellationToken)
                 .ConfigureAwait(false);
             _runtimeState = runtimeFrame.RuntimeFrame.State;
+
+            if (runtimeFrame.WasRepositionReset)
+            {
+                autoResetUtc = DateTimeOffset.UtcNow;
+                _runtimeState = null; // snapshot shows clean state after reset
+            }
+
             _recoverySnapshot = await _persistentRuntimeCoordinator
                 .GetRecoverySnapshotAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            // Trigger an immediate active-flight re-fetch the moment blocks-off fires.
-            // The first few position beacons of every leg go out right after pushback —
-            // without this they would carry the previous leg's context until the 1-minute
-            // timer ticks.
-            var newBlocksOff = _runtimeState.BlockTimes.BlocksOffUtc;
-            if (newBlocksOff is not null && newBlocksOff != _lastKnownBlocksOffUtc)
+            // Immediately upload on session completion; background sync handles retry on failure.
+            var queued = runtimeFrame.Persistence.QueuedCompletedSession;
+            if (queued is not null && _serviceStack.CompletedSessionUploader is not null)
             {
-                _lastKnownBlocksOffUtc = newBlocksOff;
-                _activeFlightFetchedUtc = DateTimeOffset.MinValue; // force refresh on next poll
+                try
+                {
+                    _lastUploadAttemptUtc = DateTimeOffset.UtcNow;
+                    var uploadResult = await _serviceStack.CompletedSessionUploader
+                        .UploadAsync(queued, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    _lastUploadResult = uploadResult;
+
+                    if (uploadResult.Status == SessionUploadStatus.Success)
+                    {
+                        await _serviceStack.FlightSessionStore
+                            .RemoveCompletedSessionAsync(queued.SessionId, cancellationToken)
+                            .ConfigureAwait(false);
+                        _serverCareerResult = uploadResult.CareerResult;
+                        _postFlightStatus = uploadResult.PostFlightStatus;
+                    }
+                }
+                catch
+                {
+                    // Leave in disk queue; BackgroundSyncCoordinator will retry.
+                }
             }
         }
 
-        return BuildSnapshot(simConnectPoll.Status);
+        return BuildSnapshot(simConnectPoll.Status, autoResetUtc);
+    }
+
+    /// <summary>
+    /// Calls the preflight API to check whether the pilot is grounded.
+    /// Returns null when no token is configured or the request fails.
+    /// IsGrounded == true blocks session start.
+    /// </summary>
+    public async Task<PreflightStatusResponse?> CheckPreflightAsync(CancellationToken cancellationToken = default)
+    {
+        if (_serviceStack.PreflightChecker is null)
+            return null;
+
+        var status = await _serviceStack.PreflightChecker
+            .CheckAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        _preflightStatus = status;
+        return status;
+    }
+
+    /// <summary>
+    /// Manually resets the current flight session to Preflight state, keeping the
+    /// flight context (departure, arrival, etc.) intact. Used by the Reset button.
+    /// </summary>
+    public async Task<TrackerShellSnapshot> ResetSessionAsync(CancellationToken cancellationToken = default)
+    {
+        await _persistentRuntimeCoordinator.ResetAsync(cancellationToken).ConfigureAwait(false);
+        _runtimeState = null;
+        _recoverySnapshot = await _persistentRuntimeCoordinator
+            .GetRecoverySnapshotAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return BuildSnapshot();
     }
 
     /// <summary>
     /// Fetches the pilot's next assigned flight from the API and pushes it into
     /// the runtime coordinator as the current session context.
     /// </summary>
-    /// <summary>
-    /// Immediately re-fetches the active flight from the API, bypassing the normal refresh interval.
-    /// Call this after the pilot clicks "Fly Next" on the web app so the tracker picks up the
-    /// new departure/arrival without waiting for the next scheduled refresh.
-    /// </summary>
-    public async Task ForceRefreshActiveFlightAsync(CancellationToken cancellationToken = default)
-    {
-        _activeFlightFetchedUtc = DateTimeOffset.MinValue;
-        await RefreshActiveFlightAsync(cancellationToken).ConfigureAwait(false);
-    }
-
     private async Task RefreshActiveFlightAsync(CancellationToken cancellationToken = default)
     {
-        // Run preflight grounding check in parallel with the active flight fetch so the
-        // banner appears immediately on startup and refreshes every polling cycle.
-        var preflightTask = _preflightChecker is not null
-            ? _preflightChecker.CheckAsync(cancellationToken)
-            : Task.FromResult<PreflightStatusResponse?>(null);
-
         if (_activeFlightFetcher is null)
-        {
-            _preflightStatus = await preflightTask.ConfigureAwait(false);
             return;
-        }
 
         try
         {
@@ -233,15 +218,6 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
             _activeFlight = flight;
             _activeFlightFetchedUtc = DateTimeOffset.UtcNow;
-
-            // Store the per-session tracker API key returned by the bootstrap endpoint.
-            // Both live-position and session-upload calls will then prefer this key over
-            // the static pilot token for /api/tracker/position and /api/sim-sessions.
-            if (!string.IsNullOrWhiteSpace(flight?.TrackerApiKey) &&
-                _serviceStack.TrackerApiKeyStore is not null)
-            {
-                _serviceStack.TrackerApiKeyStore.ApiKey = flight.TrackerApiKey;
-            }
 
             // Build a FlightSessionContext from the fetched data and push it into
             // the runtime coordinator so departure/arrival ICAO are used for runway
@@ -255,55 +231,15 @@ public sealed class TrackerShellHost : IAsyncDisposable
                     FlightNumber         = flight.FlightNumber,
                     AircraftType         = flight.AircraftType,
                     AircraftCategory     = ResolveAircraftCategory(flight.AircraftType),
-                    BidId                = string.IsNullOrWhiteSpace(flight.BidId) ? null : flight.BidId,
-                    ScheduledBlockHours  = flight.ScheduledBlockHours,
                 }
                 : new FlightSessionContext();
 
             _persistentRuntimeCoordinator.UpdateContext(context);
-
-            // UpdateContext just pushed the bid aircraft type ("E75L") into the coordinator,
-            // overwriting any SimConnect-confirmed type ("A319").  The poll loop will NOT
-            // re-call UpdateAircraftType because _lastDetectedAircraftTitle hasn't changed.
-            // Re-apply the SimConnect detection now so the live ping always uses what MSFS
-            // actually has loaded, not what the schedule says.
-            if (!string.IsNullOrWhiteSpace(_lastDetectedAircraftTitle))
-            {
-                _persistentRuntimeCoordinator.UpdateAircraftType(
-                    _lastDetectedAircraftTitle,
-                    ResolveAircraftCategory(_lastDetectedAircraftTitle));
-            }
-
-            if (flight is not null)
-            {
-                _ = PreWarmRunwayCacheAsync(flight.Departure, flight.Arrival, cancellationToken);
-            }
         }
         catch
         {
             // Swallow — active flight is optional; don't crash the tracker over it.
         }
-        finally
-        {
-            // Capture the preflight check result regardless of whether the flight fetch
-            // succeeded — errors in preflightTask are swallowed inside CheckAsync.
-            _preflightStatus = await preflightTask.ConfigureAwait(false);
-        }
-    }
-
-    private async Task PreWarmRunwayCacheAsync(
-        string? departureIcao,
-        string? arrivalIcao,
-        CancellationToken cancellationToken)
-    {
-        var tasks = new List<Task>(2);
-        if (!string.IsNullOrWhiteSpace(departureIcao))
-            tasks.Add(_runwayDataProvider.GetRunwaysAsync(departureIcao, cancellationToken));
-        if (!string.IsNullOrWhiteSpace(arrivalIcao))
-            tasks.Add(_runwayDataProvider.GetRunwaysAsync(arrivalIcao, cancellationToken));
-
-        try { await Task.WhenAll(tasks).ConfigureAwait(false); }
-        catch { /* pre-warm is best-effort */ }
     }
 
     public async Task SaveSettingsAsync(TrackerAppSettings settings, CancellationToken cancellationToken = default)
@@ -311,20 +247,27 @@ public sealed class TrackerShellHost : IAsyncDisposable
         await _settingsStore.SaveAsync(settings, cancellationToken).ConfigureAwait(false);
         _settings = settings;
 
-        // Hot-reload the live position uploader so a newly-entered API token takes effect
-        // immediately without requiring an app restart.  Pass the shared key store so any
-        // tracker API key received from the bootstrap endpoint is still honoured.
-        var newUploader = _serviceFactory.CreateLivePositionUploader(
-            settings.Api,
-            _serviceStack.TrackerApiKeyStore);
-        _persistentRuntimeCoordinator.UpdateLivePositionUploader(newUploader);
+        // Tear down the old background sync coordinator before replacing the stack.
+        if (_serviceStack.BackgroundSyncCoordinator is not null)
+            await _serviceStack.BackgroundSyncCoordinator.DisposeAsync().ConfigureAwait(false);
 
-        // Hot-reload the active flight fetcher and preflight checker so a newly-entered
-        // API token takes effect immediately.  The refresh below will run the preflight check.
-        _activeFlightFetcher = _serviceFactory.CreateActiveFlightFetcher(settings.Api);
-        _preflightChecker = _serviceFactory.CreatePreflightChecker(settings.Api);
-        _activeFlightFetchedUtc = DateTimeOffset.MinValue; // force refresh on next poll
+        // Build a fresh service stack so all HTTP clients and token references are up-to-date.
+        _serviceStack = _serviceFactory.Create(settings);
+
+        // Hot-swap the uploader on the coordinator (it holds a direct reference to the old one).
+        _persistentRuntimeCoordinator.UpdateLivePositionUploader(_serviceStack.LivePositionUploader);
+        _activeFlightFetcher = _serviceStack.ActiveFlightFetcher;
+
+        if (_serviceStack.BackgroundSyncCoordinator is not null)
+            _serviceStack.BackgroundSyncCoordinator.Start();
+
+        // Immediately fetch the pilot's flight so a newly-pasted API token shows data right away.
+        _activeFlightFetchedUtc = DateTimeOffset.MinValue;
         await RefreshActiveFlightAsync(cancellationToken).ConfigureAwait(false);
+
+        // Re-run preflight so a newly-entered token immediately populates identity and
+        // grounded state without requiring an app restart.
+        await CheckPreflightAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DiscardRecoveryAsync(CancellationToken cancellationToken = default)
@@ -346,6 +289,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
         _persistentRuntimeCoordinator.Restore(recoveredState);
         _runtimeState = recoveredState;
+        _sessionWasResumed = true;
         _recoverySnapshot = await _persistentRuntimeCoordinator
             .GetRecoverySnapshotAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -396,51 +340,15 @@ public sealed class TrackerShellHost : IAsyncDisposable
         // Regional jets and turboprops
         if (t.StartsWith("CRJ") || t.StartsWith("E17") || t.StartsWith("E19") ||
             t.StartsWith("AT") || t.StartsWith("DH8") || t.StartsWith("SF3") ||
-            t.StartsWith("E14") || t == "E145" || t == "E135" || t.StartsWith("RJ") ||
-            t == "E75L" || t == "E75S")  // Embraer 175 ICAO type codes
+            t.StartsWith("E14") || t == "E145" || t == "E135" || t.StartsWith("RJ"))
             return "regional";
 
         return "narrowbody";
     }
 
-    private static IRunwayDataProvider CreateRunwayDataProvider(
-        string settingsFilePath,
-        ManagedSimConnectClient managedSimConnectClient)
-    {
-        var providers = new List<IRunwayDataProvider>
-        {
-            SimConnectFacilityRunwayProvider.ForLiveConnection(managedSimConnectClient),
-        };
-
-        foreach (var csvPath in GetFallbackCsvPaths(settingsFilePath))
-        {
-            if (!File.Exists(csvPath))
-            {
-                continue;
-            }
-
-            providers.Add(OurAirportsCsvRunwayDataProvider.FromFile(csvPath));
-            break;
-        }
-
-        return providers.Count == 1
-            ? providers[0]
-            : new FallbackRunwayDataProvider(providers.ToArray());
-    }
-
-    private static IEnumerable<string> GetFallbackCsvPaths(string settingsFilePath)
-    {
-        var settingsDirectory = Path.GetDirectoryName(settingsFilePath);
-        if (!string.IsNullOrWhiteSpace(settingsDirectory))
-        {
-            yield return Path.Combine(settingsDirectory, "ourairports-runways.csv");
-            yield return Path.Combine(settingsDirectory, "data", "ourairports-runways.csv");
-        }
-
-        yield return Path.Combine(AppContext.BaseDirectory, "data", "ourairports-runways.csv");
-    }
-
-    private TrackerShellSnapshot BuildSnapshot(SimConnectHostStatus? simConnectStatus = null) =>
+    private TrackerShellSnapshot BuildSnapshot(
+        SimConnectHostStatus? simConnectStatus = null,
+        DateTimeOffset? autoResetOccurredUtc = null) =>
         new()
         {
             Settings = Settings,
@@ -453,7 +361,12 @@ public sealed class TrackerShellHost : IAsyncDisposable
             LivePositionEnabled = !string.IsNullOrWhiteSpace(Settings.Api.PilotApiToken),
             LivePositionLastUploadUtc = _persistentRuntimeCoordinator.LastSuccessfulUploadUtc,
             ActiveFlight = _activeFlight,
+            AutoResetOccurredUtc = autoResetOccurredUtc,
             PreflightStatus = _preflightStatus,
-            LastPostFlightStatus = _serviceStack.BackgroundSyncCoordinator?.Status.LastPostFlightStatus,
+            ServerCareerResult = _serverCareerResult,
+            PostFlightStatus = _postFlightStatus,
+            LastUploadAttemptUtc = _lastUploadAttemptUtc,
+            LastUploadResult = _lastUploadResult,
+            SessionWasResumed = _sessionWasResumed,
         };
 }

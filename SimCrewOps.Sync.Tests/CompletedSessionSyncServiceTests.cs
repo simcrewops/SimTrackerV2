@@ -23,7 +23,7 @@ public sealed class CompletedSessionSyncServiceTests
                 {
                     Status = SessionUploadStatus.Success,
                     StatusCode = 201,
-                    RemoteSessionId = "remote-1",
+                    ServerSessionId = "remote-1",
                 },
                 _ => new CompletedSessionUploadResult
                 {
@@ -96,7 +96,7 @@ public sealed class CompletedSessionSyncServiceTests
             {
                 Status = SessionUploadStatus.Success,
                 StatusCode = 201,
-                RemoteSessionId = $"remote-{session.SessionId}",
+                ServerSessionId = $"remote-{session.SessionId}",
             }));
 
         var service = new CompletedSessionSyncService(store, uploader);

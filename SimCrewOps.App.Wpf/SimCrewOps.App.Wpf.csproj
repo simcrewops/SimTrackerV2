@@ -16,12 +16,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Both SimConnect DLLs are embedded as managed resources so the single-file EXE
-         needs no sidecars. TrackerShellBootstrapper.ExtractBundledNativeDllsAsync()
-         extracts them to %LOCALAPPDATA%\SimCrewOps\SimTrackerV2\native\ at startup and
-         sets SIMCONNECT_NATIVE_DLL_PATH so NativeSimConnectLibraryLocator finds them.
-         Works for both single-file publish and regular dev builds (extraction still runs,
-         placing the DLLs in the app-data native dir rather than the bin dir). -->
+    <!-- WebView2 — embeds Chromium so the Live Map page loads simcrewops.com/tracker-map -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Bundle SimConnect DLLs into the app so single-file publish + installer
+         does not rely on users placing sidecar DLLs manually. -->
     <EmbeddedResource Include="..\lib\SimConnect.dll">
       <LogicalName>SimCrewOps.NativeSimConnect.dll</LogicalName>
     </EmbeddedResource>
@@ -31,17 +32,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Runway CSV is embedded in the assembly so the single-file EXE needs no sidecar.
-         TrackerShellBootstrapper extracts it to %LOCALAPPDATA%\SimCrewOps\SimTrackerV2\data\
-         on first launch, which matches the existing GetFallbackCsvPaths search order. -->
-    <EmbeddedResource Include="data\ourairports-runways.csv">
-      <LogicalName>SimCrewOps.RunwayData.csv</LogicalName>
-    </EmbeddedResource>
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- Logo badge as a WPF Resource — loaded via pack:// URI by AppIcon at runtime. -->
     <Resource Include="Resources\logo-badge.png" />
+    <Resource Include="Resources\logo-wordmark-transparent.png" />
   </ItemGroup>
 
   <ItemGroup>

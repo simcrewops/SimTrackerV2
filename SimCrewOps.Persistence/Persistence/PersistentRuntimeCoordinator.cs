@@ -31,6 +31,14 @@ public sealed class PersistentRuntimeCoordinator
             .ProcessFrameAsync(telemetryFrame, cancellationToken)
             .ConfigureAwait(false);
 
+        // When the runtime auto-reset due to a reposition, wipe the persisted session
+        // so the old (phantom) flight isn't recovered on restart.
+        if (runtimeFrame.WasRepositionReset)
+        {
+            _completedSessionQueued = false;
+            await _flightSessionStore.ClearCurrentSessionAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         var persistence = await PersistRuntimeStateAsync(runtimeFrame.State, cancellationToken).ConfigureAwait(false);
 
         return new PersistentRuntimeFrameResult
@@ -38,6 +46,18 @@ public sealed class PersistentRuntimeCoordinator
             RuntimeFrame = runtimeFrame,
             Persistence = persistence,
         };
+    }
+
+    /// <summary>
+    /// Manually resets the session to Preflight state without discarding the flight context
+    /// (departure/arrival ICAO etc.). Clears any persisted session so it won't be offered
+    /// for recovery on the next launch.
+    /// </summary>
+    public async Task ResetAsync(CancellationToken cancellationToken = default)
+    {
+        _runtimeCoordinator.Reset();
+        _completedSessionQueued = false;
+        await _flightSessionStore.ClearCurrentSessionAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<SessionRecoverySnapshot> GetRecoverySnapshotAsync(CancellationToken cancellationToken = default)

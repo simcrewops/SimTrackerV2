@@ -40,14 +40,14 @@ public sealed class FlightSessionScoringTrackerTests
         Assert.Equal(1.0, input.Takeoff.MaxGForce);
         Assert.True(input.Approach.GearDownBy1000Agl);
         Assert.Equal(3, input.Approach.FlapsHandleIndexAt500Agl);
-        Assert.Equal(-160, input.Landing.TouchdownVerticalSpeedFpm);
+        Assert.Equal(160, input.Landing.TouchdownVerticalSpeedFpm);
         Assert.Equal(0, input.Landing.TouchdownBankAngleDegrees);
         Assert.Equal(135, input.Landing.TouchdownIndicatedAirspeedKnots);
         Assert.Equal(0, input.Landing.TouchdownPitchAngleDegrees);
         Assert.Equal(1, input.Landing.BounceCount);
         Assert.Equal(120, input.Landing.TouchdownZoneExcessDistanceFeet);
         Assert.True(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
-        Assert.True(input.Arrival.AllEnginesOffBeforeParkingBrakeSet);
+        Assert.True(input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown);
         Assert.True(input.Arrival.AllEnginesOffByEndOfSession);
     }
 
@@ -98,109 +98,8 @@ public sealed class FlightSessionScoringTrackerTests
     }
 
     [Fact]
-    public void TrackerDoesNotPenaliseAltitudeDeviationDuringInitialLevelOff()
+    public void TrackerMarksArrivalViolationWhenAllEnginesShutdownBeforeParkingBrake()
     {
-        // Aircraft enters cruise while still climbing gently (VS 150 fpm).
-        // The target should float for 30 s and lock at the settled altitude,
-        // so the level-off overshoot never registers as a deviation.
-        var tracker = new FlightSessionScoringTracker();
-        var t0 = new DateTimeOffset(2026, 4, 13, 1, 0, 0, TimeSpan.Zero);
-
-        // Entering cruise at 34850 ft, still climbing at 150 fpm.
-        tracker.Ingest(Frame(t0.AddSeconds(0),  FlightPhase.Cruise, onGround: false, altitude: 34850, agl: 32850, ias: 280, mach: 0.76, vs: 150, heading: 90));
-        tracker.Ingest(Frame(t0.AddSeconds(5),  FlightPhase.Cruise, onGround: false, altitude: 34900, agl: 32900, ias: 280, mach: 0.76, vs: 100, heading: 90));
-        tracker.Ingest(Frame(t0.AddSeconds(10), FlightPhase.Cruise, onGround: false, altitude: 34950, agl: 32950, ias: 280, mach: 0.76, vs: 50,  heading: 90));
-        // Aircraft fully levels at 35000 ft from t=15 s onwards.
-        tracker.Ingest(Frame(t0.AddSeconds(15), FlightPhase.Cruise, onGround: false, altitude: 35000, agl: 33000, ias: 280, mach: 0.76, vs: 20,  heading: 90));
-        tracker.Ingest(Frame(t0.AddSeconds(30), FlightPhase.Cruise, onGround: false, altitude: 35000, agl: 33000, ias: 280, mach: 0.76, vs: 10,  heading: 90));
-        // t=45 s — 30 s after VS first dropped below 100 fpm at t=15 → now settled.
-        tracker.Ingest(Frame(t0.AddSeconds(46), FlightPhase.Cruise, onGround: false, altitude: 35000, agl: 33000, ias: 280, mach: 0.76, vs: 0,   heading: 90));
-
-        var input = tracker.BuildScoreInput();
-
-        // Zero deviation: target tracked the aircraft during level-off and locked at 35000.
-        Assert.Equal(0, input.Cruise.MaxAltitudeDeviationFeet);
-    }
-
-    [Fact]
-    public void TrackerDoesNotPenaliseAltitudeDeviationDuringStepClimb()
-    {
-        // Settled at FL200, then a step climb to FL300.
-        // Neither the climb itself nor the level-off at FL300 should register as
-        // altitude deviations; the target should re-settle at FL300.
-        var tracker = new FlightSessionScoringTracker();
-        var t0 = new DateTimeOffset(2026, 4, 13, 1, 30, 0, TimeSpan.Zero);
-
-        // Settle at FL200 — feed 35 s of low-VS frames so the target locks.
-        tracker.Ingest(Frame(t0.AddSeconds(0),  FlightPhase.Cruise, onGround: false, altitude: 20000, agl: 18000, ias: 280, mach: 0.72, vs: 0,    heading: 90));
-        tracker.Ingest(Frame(t0.AddSeconds(35), FlightPhase.Cruise, onGround: false, altitude: 20000, agl: 18000, ias: 280, mach: 0.72, vs: 0,    heading: 90));
-
-        // Step climb begins — VS 2000 fpm.
-        tracker.Ingest(Frame(t0.AddSeconds(40), FlightPhase.Cruise, onGround: false, altitude: 20500, agl: 18500, ias: 280, mach: 0.72, vs: 2000, heading: 90));
-        tracker.Ingest(Frame(t0.AddSeconds(80), FlightPhase.Cruise, onGround: false, altitude: 25000, agl: 23000, ias: 280, mach: 0.74, vs: 2000, heading: 90));
-        // Near FL300, leveling off — VS drops to 200 fpm.
-        tracker.Ingest(Frame(t0.AddSeconds(120), FlightPhase.Cruise, onGround: false, altitude: 29800, agl: 27800, ias: 280, mach: 0.76, vs: 200, heading: 90));
-        // FL300 reached, VS near zero from t=125.
-        tracker.Ingest(Frame(t0.AddSeconds(125), FlightPhase.Cruise, onGround: false, altitude: 30000, agl: 28000, ias: 280, mach: 0.76, vs: 50,  heading: 90));
-        // Settled at FL300 after 30 s of low VS (t=155+).
-        tracker.Ingest(Frame(t0.AddSeconds(156), FlightPhase.Cruise, onGround: false, altitude: 30000, agl: 28000, ias: 280, mach: 0.76, vs: 0,   heading: 90));
-        // A few more frames to confirm zero deviation at FL300.
-        tracker.Ingest(Frame(t0.AddSeconds(160), FlightPhase.Cruise, onGround: false, altitude: 30000, agl: 28000, ias: 280, mach: 0.76, vs: 0,   heading: 90));
-
-        var input = tracker.BuildScoreInput();
-
-        // Target re-settled at FL300 — no deviation from the step climb.
-        Assert.Equal(0, input.Cruise.MaxAltitudeDeviationFeet);
-    }
-
-    [Fact]
-    public void TaxiInTaxiLights_PassWhenOffDuringGraceWindow()
-    {
-        // Taxi lights off immediately after vacating — should pass because the
-        // 60-second grace window has not elapsed yet.
-        var tracker = new FlightSessionScoringTracker();
-        var t0 = new DateTimeOffset(2026, 4, 13, 2, 0, 0, TimeSpan.Zero);
-
-        // Vacate runway: taxi in starts at t=0 with lights off at speed > 8 kts.
-        tracker.Ingest(Frame(t0.AddSeconds(0),  FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 20, heading: 180));
-        tracker.Ingest(Frame(t0.AddSeconds(30), FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 15, heading: 180));
-        tracker.Ingest(Frame(t0.AddSeconds(59), FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 12, heading: 180));
-
-        var input = tracker.BuildScoreInput();
-
-        // Still within 60 s — no penalty.
-        Assert.True(input.TaxiIn.TaxiLightsOn);
-    }
-
-    [Fact]
-    public void TaxiInTaxiLights_FailWhenOffAfterGraceWindow()
-    {
-        // Taxi lights not turned on within 60 seconds of vacating — should fail.
-        var tracker = new FlightSessionScoringTracker();
-        var t0 = new DateTimeOffset(2026, 4, 13, 2, 30, 0, TimeSpan.Zero);
-
-        // The tracker starts with a 10-frame startup grace period (stale SimVar protection).
-        // Pre-warm with 10 Preflight frames so the grace period expires before the taxi-in
-        // scenario begins — otherwise the lights check is suppressed for all 3 test frames.
-        for (var i = 0; i < 10; i++)
-            tracker.Ingest(Frame(t0.AddSeconds(i - 10), FlightPhase.Preflight, onGround: true));
-
-        tracker.Ingest(Frame(t0.AddSeconds(0),  FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 20, heading: 180));
-        // 60 s gate opens here; the debounce clock starts now (t=64).
-        tracker.Ingest(Frame(t0.AddSeconds(64), FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 12, heading: 180));
-        // 3 s after the gate first opened → debounce completes, penalty latches.
-        tracker.Ingest(Frame(t0.AddSeconds(67), FlightPhase.TaxiIn, onGround: true, taxiLights: false, landingLights: false, strobes: false, groundSpeed: 12, heading: 180));
-
-        var input = tracker.BuildScoreInput();
-
-        Assert.False(input.TaxiIn.TaxiLightsOn);
-    }
-
-    [Fact]
-    public void TrackerPassesArrival_WhenAllEnginesOffBeforeParkingBrake()
-    {
-        // SOPs: engines must be shut down BEFORE setting the parking brake.
-        // Engines off first, then PB set → no violation.
         var tracker = new FlightSessionScoringTracker();
         var t0 = new DateTimeOffset(2026, 4, 12, 23, 45, 0, TimeSpan.Zero);
 
@@ -211,35 +110,13 @@ public sealed class FlightSessionScoringTrackerTests
         var input = tracker.BuildScoreInput();
 
         Assert.True(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
-        Assert.True(input.Arrival.AllEnginesOffBeforeParkingBrakeSet);
+        Assert.False(input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown);
         Assert.True(input.Arrival.AllEnginesOffByEndOfSession);
     }
 
     [Fact]
-    public void TrackerMarksArrivalViolation_WhenParkingBrakeSetWhileEngineStillRunning()
+    public void TrackerRequiresTaxiLightsOffBeforeParkingBrake_NotSameFrame()
     {
-        // SOPs: parking brake must NOT be set while any engine is still running.
-        var tracker = new FlightSessionScoringTracker();
-        var t0 = new DateTimeOffset(2026, 4, 13, 0, 15, 0, TimeSpan.Zero);
-
-        tracker.Ingest(Frame(t0.AddSeconds(0), FlightPhase.TaxiIn, onGround: true, taxiLights: true, landingLights: false, strobes: false, groundSpeed: 8, heading: 180));
-        // Parking brake set while engine1 is still running → violation
-        tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.Arrival, onGround: true, taxiLights: false, landingLights: false, strobes: false, parkingBrake: true, engine1: true, engine2: false));
-        tracker.Ingest(Frame(t0.AddSeconds(10), FlightPhase.Arrival, onGround: true, taxiLights: false, landingLights: false, strobes: false, parkingBrake: true, engine1: false, engine2: false));
-
-        var input = tracker.BuildScoreInput();
-
-        Assert.True(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
-        Assert.False(input.Arrival.AllEnginesOffBeforeParkingBrakeSet);
-        Assert.True(input.Arrival.AllEnginesOffByEndOfSession);
-    }
-
-    [Fact]
-    public void TrackerPassesTaxiLights_WhenOffOnSameFrameAsBrake()
-    {
-        // Taxi lights off on the exact frame the parking brake is set — counts as passing.
-        // The checklist order (brake → lights off) is satisfied even if both happen in the
-        // same telemetry frame.
         var tracker = new FlightSessionScoringTracker();
         var t0 = new DateTimeOffset(2026, 4, 13, 0, 0, 0, TimeSpan.Zero);
 
@@ -248,84 +125,71 @@ public sealed class FlightSessionScoringTrackerTests
 
         var input = tracker.BuildScoreInput();
 
-        Assert.True(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
-        Assert.True(input.Arrival.AllEnginesOffBeforeParkingBrakeSet);
+        Assert.False(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
+        Assert.True(input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown);
         Assert.True(input.Arrival.AllEnginesOffByEndOfSession);
     }
 
     [Fact]
-    public void TrackerFailsTaxiLights_WhenStillOnAfterParkingBrake()
+    public void TouchdownRateCandidates_NullBeforeTouchdown()
     {
-        // Taxi lights left on after parking brake is set — deduction stays until lights go off.
         var tracker = new FlightSessionScoringTracker();
-        var t0 = new DateTimeOffset(2026, 4, 13, 0, 0, 0, TimeSpan.Zero);
+        var t0 = new DateTimeOffset(2026, 4, 12, 22, 0, 0, TimeSpan.Zero);
 
-        tracker.Ingest(Frame(t0.AddSeconds(0), FlightPhase.TaxiIn, onGround: true, taxiLights: true, landingLights: false, strobes: false, groundSpeed: 5, heading: 270));
-        tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.Arrival, onGround: true, taxiLights: true, landingLights: false, strobes: false, parkingBrake: true, engine1: false, engine2: false));
+        tracker.Ingest(Frame(t0, FlightPhase.Preflight, onGround: true));
+        tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.Climb, onGround: false));
 
-        var input = tracker.BuildScoreInput();
-
-        Assert.False(input.Arrival.TaxiLightsOffBeforeParkingBrakeSet);
-        Assert.True(input.Arrival.AllEnginesOffBeforeParkingBrakeSet);
+        Assert.Null(tracker.BuildScoreInput().TouchdownRateCandidates);
     }
 
     [Fact]
-    public void BeaconGate_RepositioningWithoutBeacon_DoesNotRecordLanding()
+    public void TouchdownRateCandidates_CapturedAtFirstTouchdown()
     {
-        // Simulate a pilot who spawns at the gate and taxis to the runway
-        // WITHOUT ever turning on the beacon light.  The WOW transition that
-        // occurs when touching down must NOT be recorded as a flight landing.
         var tracker = new FlightSessionScoringTracker();
-        var t0 = new DateTimeOffset(2026, 4, 20, 10, 0, 0, TimeSpan.Zero);
+        var t0 = new DateTimeOffset(2026, 4, 12, 22, 0, 0, TimeSpan.Zero);
 
-        // Spawn / taxi on ground — beacon never on
-        tracker.Ingest(Frame(t0.AddSeconds(0), FlightPhase.Preflight, onGround: true, beacon: false, parkingBrake: true));
-        tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.TaxiOut,   onGround: true, beacon: false, taxiLights: true, groundSpeed: 15));
+        // Airborne frame — negative VelocityWorldY = descending at 3 ft/s = 180 fpm
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
+            velocityWorldY: -3.0, touchdownNormal: -2.5, vs: -210));
 
-        // Brief airborne (e.g. repositioning hop), still no beacon
-        tracker.Ingest(Frame(t0.AddSeconds(10), FlightPhase.Takeoff, onGround: false, beacon: false, agl: 50, vs: -200, ias: 80));
-
-        // WOW-on — without beacon gate this would be recorded as a landing
-        tracker.Ingest(Frame(t0.AddSeconds(12), FlightPhase.Landing, onGround: true, beacon: false, agl: 0, vs: -200, ias: 70));
+        // Touchdown frame — OnGround flips true
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -2.0, touchdownNormal: -1.8, vs: -180));
 
         var input = tracker.BuildScoreInput();
+        Assert.NotNull(input.TouchdownRateCandidates);
 
-        // No landing data should be recorded
-        Assert.Equal(0, input.Landing.TouchdownVerticalSpeedFpm);
-        Assert.Equal(0, input.Landing.TouchdownGForce);
-        Assert.Equal(0, input.Landing.BounceCount);
+        var c = input.TouchdownRateCandidates!;
+        Assert.Equal(120.0, c.FpmVelocityWorldY, precision: 1);    // 2.0 * 60
+        Assert.Equal(108.0, c.FpmTouchdownNormal, precision: 1);    // 1.8 * 60
+        Assert.Equal(180.0, c.FpmVerticalSpeed, precision: 1);      // abs(vs=-180)
+        Assert.True(c.FinalSelected > 0, "FinalSelected must be positive");
     }
 
     [Fact]
-    public void BeaconGate_NormalFlightWithBeacon_RecordsLanding()
+    public void TouchdownRateCandidates_RestoredFromFlightScoreInput()
     {
-        // A normal flight where the beacon is on before taxi must still record
-        // the landing correctly.
         var tracker = new FlightSessionScoringTracker();
-        var t0 = new DateTimeOffset(2026, 4, 20, 10, 0, 0, TimeSpan.Zero);
+        var t0 = new DateTimeOffset(2026, 4, 12, 22, 0, 0, TimeSpan.Zero);
 
-        // Beacon on during preflight — gate cleared
-        tracker.Ingest(Frame(t0.AddSeconds(0), FlightPhase.Preflight, onGround: true, beacon: true, parkingBrake: true));
-        tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.TaxiOut,   onGround: true, beacon: true, taxiLights: true, groundSpeed: 15));
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
+            velocityWorldY: -3.0, touchdownNormal: -2.5, vs: -200));
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -2.5, touchdownNormal: -2.0, vs: -180));
 
-        // Airborne
-        tracker.Ingest(Frame(t0.AddSeconds(10), FlightPhase.Takeoff, onGround: false, beacon: true, agl: 50, vs: 800, ias: 150));
+        var saved = tracker.BuildScoreInput();
+        Assert.NotNull(saved.TouchdownRateCandidates);
 
-        // Approach
-        tracker.Ingest(Frame(t0.AddSeconds(20), FlightPhase.Approach, onGround: false, beacon: true, gearDown: true,
-            flaps: 3, agl: 400, vs: -700, ias: 140));
+        // Restore into a fresh tracker
+        var tracker2 = new FlightSessionScoringTracker();
+        tracker2.Restore(saved, FlightPhase.Landing, lastTelemetryFrame: null, wheelsOnUtc: t0.AddSeconds(1));
+        var restored = tracker2.BuildScoreInput();
 
-        // WOW-on with beacon gate cleared
-        tracker.Ingest(Frame(t0.AddSeconds(25), FlightPhase.Landing, onGround: true, beacon: true, gearDown: true,
-            flaps: 3, agl: 0, vs: -300, ias: 135, g: 1.3));
-
-        var input = tracker.BuildScoreInput();
-
-        // Landing should be recorded (vs is supplied as baro in this test — will be negative)
-        Assert.NotEqual(0, input.Landing.TouchdownVerticalSpeedFpm);
-        Assert.True(input.Landing.TouchdownVerticalSpeedFpm < 0, "Touchdown FPM should be negative (descending)");
-        Assert.Equal(135, input.Landing.TouchdownIndicatedAirspeedKnots);
-        Assert.InRange(input.Landing.TouchdownGForce, 1.0, 2.0);
+        Assert.NotNull(restored.TouchdownRateCandidates);
+        Assert.Equal(saved.TouchdownRateCandidates!.FpmVelocityWorldY, restored.TouchdownRateCandidates!.FpmVelocityWorldY);
+        Assert.Equal(saved.TouchdownRateCandidates.FpmTouchdownNormal, restored.TouchdownRateCandidates.FpmTouchdownNormal);
+        Assert.Equal(saved.TouchdownRateCandidates.FpmVerticalSpeed, restored.TouchdownRateCandidates.FpmVerticalSpeed);
+        Assert.Equal(saved.TouchdownRateCandidates.FinalSelected, restored.TouchdownRateCandidates.FinalSelected);
     }
 
     private static TelemetryFrame Frame(
@@ -356,7 +220,9 @@ public sealed class FlightSessionScoringTrackerTests
         bool engine2 = true,
         bool engine3 = false,
         bool engine4 = false,
-        double? touchdownZoneExcess = null)
+        double? touchdownZoneExcess = null,
+        double velocityWorldY = 0,
+        double touchdownNormal = 0)
     {
         return new TelemetryFrame
         {
@@ -388,6 +254,8 @@ public sealed class FlightSessionScoringTrackerTests
             Engine3Running = engine3,
             Engine4Running = engine4,
             TouchdownZoneExcessDistanceFeet = touchdownZoneExcess,
+            VelocityWorldYFps = velocityWorldY,
+            TouchdownNormalVelocityFps = touchdownNormal,
         };
     }
 }

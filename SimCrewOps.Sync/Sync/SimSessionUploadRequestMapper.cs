@@ -1,4 +1,5 @@
 using SimCrewOps.Persistence.Models;
+using SimCrewOps.Runtime.Models;
 using SimCrewOps.Scoring.Models;
 using SimCrewOps.Sync.Models;
 
@@ -12,247 +13,137 @@ public sealed class SimSessionUploadRequestMapper
         ArgumentException.ThrowIfNullOrWhiteSpace(trackerVersion);
 
         var state = session.State;
+        var s = state.ScoreInput;
 
         return new SimSessionUploadRequest
         {
-            TrackerVersion   = trackerVersion,
-            FlightMode       = state.Context.FlightMode,
-            BidId            = string.IsNullOrWhiteSpace(state.Context.BidId)                ? null : state.Context.BidId,
-            Departure        = string.IsNullOrWhiteSpace(state.Context.DepartureAirportIcao) ? null : state.Context.DepartureAirportIcao,
-            Arrival          = string.IsNullOrWhiteSpace(state.Context.ArrivalAirportIcao)   ? null : state.Context.ArrivalAirportIcao,
-            AircraftType     = string.IsNullOrWhiteSpace(state.Context.AircraftType)          ? null : state.Context.AircraftType,
-            AircraftCategory = string.IsNullOrWhiteSpace(state.Context.AircraftCategory)      ? null : state.Context.AircraftCategory,
-            // Block times
-            ActualBlocksOff  = state.BlockTimes.BlocksOffUtc,
-            ActualWheelsOff  = state.BlockTimes.WheelsOffUtc,
-            ActualWheelsOn   = state.BlockTimes.WheelsOnUtc,
-            ActualBlocksOn   = state.BlockTimes.BlocksOnUtc,
-            BlockTimeActual  = CalculateActualBlockHours(state.BlockTimes),
+            TrackerVersion    = trackerVersion,
+            FlightMode        = state.Context.FlightMode,
+            BidId             = NullIfEmpty(state.Context.BidId),
+            Departure         = NullIfEmpty(state.Context.DepartureAirportIcao),
+            Arrival           = NullIfEmpty(state.Context.ArrivalAirportIcao),
+            Aircraft          = NullIfEmpty(state.Context.AircraftType),
+            AircraftCategory  = NullIfEmpty(state.Context.AircraftCategory),
+            ActualBlocksOff   = state.BlockTimes.BlocksOffUtc,
+            ActualWheelsOff   = state.BlockTimes.WheelsOffUtc,
+            ActualWheelsOn    = state.BlockTimes.WheelsOnUtc,
+            ActualBlocksOn    = state.BlockTimes.BlocksOnUtc,
+            BlockTimeActual   = CalculateActualBlockHours(state.BlockTimes),
             BlockTimeScheduled = state.Context.ScheduledBlockHours,
-            // Session timing
-            EnginesStartedAt = state.ScoreInput.Session.EnginesStartedAtUtc,
-            WheelsOffAt      = state.ScoreInput.Session.WheelsOffAtUtc,
-            WheelsOnAt       = state.ScoreInput.Session.WheelsOnAtUtc,
-            EnginesOffAt     = state.ScoreInput.Session.EnginesOffAtUtc,
-            // Fuel
-            FuelAtDepartureLbs = state.ScoreInput.Session.FuelAtDepartureLbs,
-            FuelAtLandingLbs   = state.ScoreInput.Session.FuelAtLandingLbs,
-            FuelBurnedLbs      = state.ScoreInput.Session.FuelBurnedLbs,
-            // Touchdown position
-            TouchdownLat     = state.ScoreInput.Landing.TouchdownLatitude,
-            TouchdownLon     = state.ScoreInput.Landing.TouchdownLongitude,
-            // Crash flag
-            CrashDetected    = state.ScoreInput.Safety.CrashDetected,
-            // GPS track (null when empty — avoids sending an empty JSON array)
-            GpsTrack = state.ScoreInput.GpsTrack.Count > 0
-                ? state.ScoreInput.GpsTrack
-                    .Select(p => new GpsTrackPointUpload
-                    {
-                        TimestampUtc     = p.TimestampUtc,
-                        Latitude         = p.Latitude,
-                        Longitude        = p.Longitude,
-                        AltitudeFeet     = p.AltitudeFeet,
-                        GroundSpeedKnots = p.GroundSpeedKnots,
-                        Phase            = p.Phase.ToString(),
-                    })
-                    .ToList()
-                : null,
-            // Structured raw phase metrics for webapp scoring
-            ScoreInputV5 = MapScoreInputV5(state.ScoreInput),
-            // Landing analysis — omit entirely when no approach path was recorded
-            LandingAnalysis = state.ScoreInput.ApproachPath.Count > 0
-                ? MapLandingAnalysis(state.ScoreInput.ApproachPath, state.ScoreInput.Landing, state.BlockTimes.BlocksOffUtc)
-                : null,
-            // Flight path — null when blocks-off was never set or no points were recorded
-            FlightPath = state.BlockTimes.BlocksOffUtc is not null && state.ScoreInput.FlightPath.Count > 0
-                ? MapFlightPath(state.ScoreInput.FlightPath, state.BlockTimes.BlocksOffUtc.Value)
-                : null,
-            // Flight events — null when empty
-            FlightEvents = state.ScoreInput.FlightEvents.Count > 0
-                ? state.ScoreInput.FlightEvents
-                    .Select(e => new FlightEventUpload
-                    {
-                        Type        = e.Type,
-                        EngineIndex = e.EngineIndex,
-                        Lat         = e.Latitude,
-                        Lon         = e.Longitude,
-                        AltFt       = e.AltitudeFeet,
-                        TMin        = state.BlockTimes.BlocksOffUtc is not null
-                            ? Math.Round((e.TimestampUtc - state.BlockTimes.BlocksOffUtc.Value).TotalMinutes, 1)
-                            : 0,
-                    })
-                    .ToList()
-                : null,
+            ScoringInput      = MapScoringInput(s),
+            LandingAnalysis   = MapLandingAnalysis(s),
+            FlightPath        = MapFlightPath(s.FlightPath),
         };
     }
 
-    private static double? CalculateActualBlockHours(SimCrewOps.Runtime.Models.FlightSessionBlockTimes blockTimes)
-    {
-        if (blockTimes.BlocksOffUtc is null || blockTimes.BlocksOnUtc is null)
-        {
-            return null;
-        }
-
-        return Math.Round((blockTimes.BlocksOnUtc.Value - blockTimes.BlocksOffUtc.Value).TotalHours, 4);
-    }
-
-    private static FlightScoreInputV5Upload MapScoreInputV5(FlightScoreInput s) =>
+    private static ScoringInputDto MapScoringInput(FlightScoreInput s) =>
         new()
         {
-            TaxiOut = new ScoreInputTaxiV5
+            Departure = new DepartureScoringDto
             {
-                MaxGroundSpeedKts      = s.TaxiOut.MaxGroundSpeedKnots,
-                MaxTurnSpeedKts        = s.TaxiOut.MaxTurnSpeedKnots,
-                NavLightsOn            = s.TaxiOut.TaxiLightsOn,
-                StrobeLightOnDuringTaxi = s.TaxiOut.StrobeLightOnDuringTaxi,
+                // V1/Vr/V2 are not observable from MSFS SimConnect telemetry — sent null.
+                TakeoffPitchDeg  = s.Takeoff.MaxPitchAngleDegrees,
+                FlapsAtTakeoff   = s.Takeoff.FlapsHandleIndexAtLiftoff,
+                InitialClimbFpm  = s.Takeoff.InitialClimbFpm,
             },
-            TaxiIn = new ScoreInputTaxiInV5
+            Climb = new ClimbScoringDto
             {
-                MaxGroundSpeedKts      = s.TaxiIn.MaxGroundSpeedKnots,
-                MaxTurnSpeedKts        = s.TaxiIn.MaxTurnSpeedKnots,
-                NavLightsOn            = s.TaxiIn.TaxiLightsOn,
-                StrobeLightOnDuringTaxi = s.TaxiIn.StrobeLightOnDuringTaxi,
-                SmoothDeceleration     = s.TaxiIn.SmoothDeceleration,
+                AvgClimbFpm      = s.Climb.AvgClimbFpm,
+                TimeToFL100Min   = s.Climb.TimeToFL100Minutes,
+                VsStabilityScore = s.Climb.VsStabilityScore,
             },
-            Takeoff = new ScoreInputTakeoffV5
+            Cruise = new CruiseScoringDto
             {
-                BounceOnRotation           = s.Takeoff.BounceCount > 0,
-                PositiveRateBeforeGearUp   = s.Takeoff.PositiveRateBeforeGearUp,
-                MaxBankBelow1000AglDeg     = s.Takeoff.MaxBankAngleDegrees,
-                MaxPitchWhileWowDeg        = s.Takeoff.MaxPitchAngleDegrees,
-                MaxPitchAglFt              = s.Takeoff.MaxPitchAglFeet,
-                StrobeLightsOn             = s.Takeoff.StrobesOnFromTakeoffToLanding,
-                LandingLightsOn            = s.Takeoff.LandingLightsOnBeforeTakeoff,
-                GForceAtRotation           = s.Takeoff.GForceAtRotation,
+                AltitudeDeviationFt = s.Cruise.MaxAltitudeDeviationFeet,
+                SpeedDeviationKts   = s.Cruise.MaxSpeedDeviationKts,
             },
-            Climb = new ScoreInputClimbV5
+            Descent = new DescentScoringDto
             {
-                IsHeavy                    = s.Climb.HeavyFourEngineAircraft,
-                MaxIasBelowFl100Kts        = s.Climb.MaxIasBelowFl100Knots,
-                MaxBankDeg                 = s.Climb.MaxBankAngleDegrees,
-                MinGForce                  = s.Climb.MinGForce,
-                MaxGForce                  = s.Climb.MaxGForce,
-                LandingLightsOffAboveFL180 = s.Climb.LandingLightsOffAboveFL180,
+                AvgDescentFpm   = s.Descent.AvgDescentFpm,
+                SpeedAtFL100Kts = s.Descent.SpeedAtFL100Kts,
             },
-            Cruise = new ScoreInputCruiseV5
+            Landing = new LandingScoringDto
             {
-                CruiseAltitudeFt       = s.Cruise.CruiseAltitudeFeet,
-                MaxAltitudeDeviationFt = s.Cruise.MaxAltitudeDeviationFeet,
-                MachTarget             = s.Cruise.MachTarget,
-                MaxMachDeviation       = s.Cruise.MaxMachDeviation,
-                IasTarget              = s.Cruise.IasTarget,
-                MaxIasDeviationKts     = s.Cruise.MaxIasDeviationKnots,
-                SpeedInstabilityEvents = s.Cruise.SpeedInstabilityEvents,
-                MaxBankDeg             = s.Cruise.MaxBankAngleDegrees,
-                MaxTurnBankDeg         = s.Cruise.MaxTurnBankAngleDegrees,
-                MinGForce              = s.Cruise.MinGForce,
-                MaxGForce              = s.Cruise.MaxGForce,
-            },
-            Descent = new ScoreInputDescentV5
-            {
-                IsHeavy                    = s.Climb.HeavyFourEngineAircraft,
-                MaxIasBelowFl100Kts        = s.Descent.MaxIasBelowFl100Knots,
-                MaxBankDeg                 = s.Descent.MaxBankAngleDegrees,
-                MinGForce                  = s.Descent.MinGForce,
-                MaxGForce                  = s.Descent.MaxGForce,
-                MaxDescentRateFpm          = s.Descent.MaxDescentRateFpm,
-                LandingLightsOnBeforeFL180 = s.Descent.LandingLightsOnBeforeFL180,
-                MaxNoseDownPitchDeg        = s.Descent.MaxNoseDownPitchDegrees,
-            },
-            Approach = new ScoreInputApproachV5
-            {
-                ApproachSpeedKts         = s.Approach.ApproachSpeedKnots,
-                MaxIasDeviationKts       = s.Approach.MaxIasDeviationKnots,
-                GearDownAglFt            = s.Approach.GearDownAglFeet,
-                FlapsConfiguredBy1000Agl = s.Approach.FlapsConfiguredBy1000Agl,
-                MaxBankDeg               = s.Approach.MaxBankAngleDegrees3000to500,
-                IlsDetected              = s.Approach.IlsApproachDetected,
-                IlsMaxGlideslopeDevDots  = s.Approach.MaxGlideslopeDeviationDots,
-                IlsAvgGlideslopeDevDots  = s.Approach.AvgGlideslopeDeviationDots,
-                IlsMaxLocalizerDevDots   = s.Approach.MaxLocalizerDeviationDots,
-                IlsAvgLocalizerDevDots   = s.Approach.AvgLocalizerDeviationDots,
-            },
-            StabilizedApproach = new ScoreInputStabilizedApproachV5
-            {
-                ApproachSpeedKts       = s.StabilizedApproach.ApproachSpeedKnots,
-                MaxIasDeviationKts     = s.StabilizedApproach.MaxIasDeviationKnots,
-                MaxDescentRateFpm      = s.StabilizedApproach.MaxDescentRateFpm,
-                ConfigChanged          = s.StabilizedApproach.ConfigChanged,
-                MaxHeadingDeviationDeg = s.StabilizedApproach.MaxHeadingDeviationDegrees,
-                IlsAvailable           = s.StabilizedApproach.IlsAvailable,
-                MaxGlideslopeDevDots   = s.StabilizedApproach.MaxGlideslopeDeviationDots,
-                PitchAtGateDeg             = s.StabilizedApproach.PitchAtGateDegrees,
-            },
-            Landing = new ScoreInputLandingV5
-            {
-                TouchdownRateFpm    = s.Landing.TouchdownVerticalSpeedFpm,
+                // Tracker stores positive magnitude; negate for payload convention (negative = descending).
+                TouchdownRateFpm    = -(s.Landing.TouchdownVerticalSpeedFpm),
+                TouchdownPitchDeg   = s.Landing.TouchdownPitchAngleDegrees,
+                MaxPitchWhileWowDeg = s.Landing.MaxPitchWhileWowDegrees,
+                TouchdownBankDeg    = s.Landing.TouchdownBankAngleDegrees,
                 TouchdownGForce     = s.Landing.TouchdownGForce,
                 BounceCount         = s.Landing.BounceCount,
-                TouchdownBankDeg    = s.Landing.TouchdownBankAngleDegrees,
                 GearUpAtTouchdown   = s.Landing.GearUpAtTouchdown,
-                MaxPitchWhileWowDeg = s.Landing.MaxPitchDuringRolloutDegrees,
-                TouchdownPitchDeg   = s.Landing.TouchdownPitchAngleDegrees,
             },
-            LightsSystems = new ScoreInputLightsSystemsV5
+            Safety = new SafetyScoringDto
             {
-                BeaconOnThroughoutFlight   = s.LightsSystems.BeaconOnThroughoutFlight,
-                NavLightsOnThroughoutFlight = s.LightsSystems.NavLightsOnThroughoutFlight,
-                StrobesCorrect             = s.LightsSystems.StrobesCorrect,
-                LandingLightsCompliance    = s.LightsSystems.LandingLightsCompliance,
-            },
-            Safety = new ScoreInputSafetyV5
-            {
-                CrashDetected            = s.Safety.CrashDetected,
-                OverspeedWarningCount    = s.Safety.OverspeedEvents,
-                SustainedOverspeedEvents = s.Safety.SustainedOverspeedEvents,
-                StallWarningCount        = s.Safety.StallEvents,
-                GpwsAlertCount           = s.Safety.GpwsEvents,
-                EngineShutdownsInFlight  = s.Safety.EngineShutdownsInFlight,
-                EngineShutdownInFlight   = s.Safety.EngineShutdownsInFlight > 0,
-            },
-            Arrival = new ScoreInputArrivalV5
-            {
-                EnginesOffAfterParkingBrake = s.Arrival.EnginesOffAfterParkingBrake,
-                BeaconOffAfterEngines       = s.Arrival.BeaconOffAfterEngines,
+                CrashDetected        = s.Safety.CrashDetected,
+                OverspeedWarningCount = s.Safety.OverspeedEvents,
+                StallWarningCount    = s.Safety.StallEvents,
+                GpwsAlertCount       = s.Safety.GpwsEvents,
             },
         };
 
-    private static LandingAnalysisUpload MapLandingAnalysis(
-        IReadOnlyList<SimCrewOps.Scoring.Models.ApproachSamplePoint> approachPath,
-        SimCrewOps.Scoring.Models.LandingMetrics landing,
-        DateTimeOffset? blocksOff) =>
-        new()
+    private static LandingAnalysisDto MapLandingAnalysis(FlightScoreInput s)
+    {
+        var tdLat = s.LandingAnalysis.TouchdownLat;
+        var tdLon = s.LandingAnalysis.TouchdownLon;
+        var hasTouch = tdLat.HasValue && tdLon.HasValue;
+
+        return new LandingAnalysisDto
         {
-            ApproachPath = approachPath
-                .Select(s => new ApproachSampleUpload
+            TouchdownLat                    = tdLat,
+            TouchdownLon                    = tdLon,
+            TouchdownHeadingDeg             = s.LandingAnalysis.TouchdownHeadingMagneticDeg,
+            TouchdownAltFt                  = s.LandingAnalysis.TouchdownAltFt,
+            TouchdownIAS                    = s.LandingAnalysis.TouchdownIAS,
+            WindSpeedAtTouchdownKnots       = s.LandingAnalysis.WindSpeedKnots,
+            WindDirectionAtTouchdownDegrees = s.LandingAnalysis.WindDirectionDegrees,
+            ApproachPath                    = s.ApproachPath
+                .Select(p => new ApproachPathPointDto
                 {
-                    DistanceToThresholdNm = s.DistanceToThresholdNm,
-                    AltitudeFt            = s.AltitudeFeet,
-                    IasKts                = s.IndicatedAirspeedKnots,
-                    VsFpm                 = s.VerticalSpeedFpm,
-                    Lat                   = s.Latitude,
-                    Lon                   = s.Longitude,
-                    TMin                  = blocksOff is not null
-                        ? Math.Round((s.TimestampUtc - blocksOff.Value).TotalMinutes, 1)
-                        : 0,
+                    Lat        = p.Lat,
+                    Lon        = p.Lon,
+                    AltitudeFt = p.AltFt,
+                    IasKts     = p.IasKts,
+                    VsFpm      = p.VsFpm,
+                    DistanceToThresholdNm = hasTouch
+                        ? HaversineNm(p.Lat, p.Lon, tdLat!.Value, tdLon!.Value)
+                        : null,
                 })
-                .ToList(),
-            TouchdownLat        = landing.TouchdownLatitude != 0 ? landing.TouchdownLatitude : null,
-            TouchdownLon        = landing.TouchdownLongitude != 0 ? landing.TouchdownLongitude : null,
-            TouchdownHeadingDeg = landing.TouchdownHeadingDegrees != 0 ? landing.TouchdownHeadingDegrees : null,
-            TouchdownAltFt      = landing.TouchdownAltitudeFeet != 0 ? landing.TouchdownAltitudeFeet : null,
+                .ToArray(),
         };
+    }
 
-    private static IReadOnlyList<FlightPathPointUpload> MapFlightPath(
-        IReadOnlyList<SimCrewOps.Scoring.Models.FlightPathPoint> flightPath,
-        DateTimeOffset blocksOff) =>
-        flightPath
-            .Select(p => new FlightPathPointUpload
+    private static double HaversineNm(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double EarthRadiusNm = 3440.065;
+        const double DegToRad = Math.PI / 180.0;
+        var dLat = (lat2 - lat1) * DegToRad;
+        var dLon = (lon2 - lon1) * DegToRad;
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2)
+              + Math.Cos(lat1 * DegToRad) * Math.Cos(lat2 * DegToRad)
+              * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        return EarthRadiusNm * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+    }
+
+    private static FlightPathPointDto[] MapFlightPath(IReadOnlyList<FlightPathPoint> points) =>
+        points
+            .Select(p => new FlightPathPointDto
             {
-                Lat   = p.Latitude,
-                Lon   = p.Longitude,
-                AltFt = (int)Math.Round(p.AltitudeFeet),
-                TMin  = Math.Round((p.TimestampUtc - blocksOff).TotalMinutes, 1),
+                Lat   = p.Lat,
+                Lon   = p.Lon,
+                AltFt = p.AltFt,
+                TMin  = p.TMin,
             })
-            .ToList();
+            .ToArray();
+
+    private static double? CalculateActualBlockHours(FlightSessionBlockTimes blockTimes)
+    {
+        if (blockTimes.BlocksOffUtc is null || blockTimes.BlocksOnUtc is null)
+            return null;
+
+        return Math.Round((blockTimes.BlocksOnUtc.Value - blockTimes.BlocksOffUtc.Value).TotalHours, 3);
+    }
+
+    private static string? NullIfEmpty(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
 }

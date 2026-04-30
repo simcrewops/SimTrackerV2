@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using SimCrewOps.SimConnect.Models;
 using SimCrewOps.SimConnect.Services.Aircraft;
@@ -94,7 +95,7 @@ public sealed class AdaptiveSimConnectClient : ISimConnectClient, ISimConnectCli
     {
     }
 
-    public AdaptiveSimConnectClient(ISimConnectClient primaryClient, ISimConnectClient fallbackClient)
+    internal AdaptiveSimConnectClient(ISimConnectClient primaryClient, ISimConnectClient fallbackClient)
     {
         ArgumentNullException.ThrowIfNull(primaryClient);
         ArgumentNullException.ThrowIfNull(fallbackClient);
@@ -192,52 +193,19 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private const uint FlightCriticalRequestId = 1;
     private const uint OperationalRequestId    = 2;
     private const uint AircraftStateRequestId  = 3;    // for RequestSystemState("AircraftLoaded")
-    private const uint AtcModelRequestId          = 4;    // for ATC MODEL string SimVar (once per aircraft load)
-    private const uint GpsDestinationRequestId    = 5;    // for GPS DESTINATION AIRPORT IDENT (polled each frame)
     private const uint FlightCriticalDefinitionId = 11;
     private const uint OperationalDefinitionId    = 12;
-    private const uint AtcModelDefinitionId       = 13;   // separate from numeric struct definitions
-    private const uint GpsDestinationDefinitionId = 14;   // separate string SimVar definition
     private const uint UserObjectId = 0;
-
-    // ── Phase-aware throttle constants ──────────────────────────────────────────
-    // Three tiers:
-    //   Ground   — on ground with IAS < TakeoffRollIasKnots (taxi / parked):
-    //              interval=GroundThrottleInterval (~2-4 Hz) — GPS barely moves.
-    //   Full     — takeoff roll (on ground, IAS ≥ 40 kts), approach, and any
-    //              airborne phase below ThrottleOnAglFeet: interval=0 (every SimFrame).
-    //   Cruise   — airborne above ThrottleOnAglFeet: interval=CruiseThrottleInterval
-    //              (~7-15 Hz).  A 1 000 ft dead-band between ThrottleOnAglFeet and
-    //              ThrottleOffAglFeet prevents rapid toggling on climb/descent.
-    private const uint   GroundThrottleInterval = 16;         // ~2-4 Hz while taxiing / parked
-    private const uint   CruiseThrottleInterval = 4;          // ~7-15 Hz in cruise
-    private const double TakeoffRollIasKnots    = 40.0;       // above this on ground → full rate
-    private const double ThrottleOnAglFeet      = 3_500.0;    // start cruise throttle above this
-    private const double ThrottleOffAglFeet     = 2_500.0;    // restore full rate below this
 
     private readonly nint _nativeLibraryHandle;
     private readonly SimConnectHostOptions _options;
     private readonly NativeSimConnectExports _exports;
-
-    // Latest frame produced after each drain pass — replaces the old ConcurrentQueue.
-    // All access is single-threaded (DispatcherTimer → ReadNextFrameAsync → Drain).
-    private SimConnectRawTelemetryFrame? _latestFrame;
-
-    // Set to true in UpdateFlightCritical each drain pass; checked in ReadNextFrameAsync
-    // so EnqueueFrame() is only called when new SimConnect data actually arrived.
-    // Preserves the original null-return semantics when MSFS sends nothing (e.g. paused sim).
-    private bool _flightCriticalReceivedThisDrain;
-
-    // Tracks the currently active server-side throttle interval so we only re-send
-    // RequestDataOnSimObject when the desired interval actually changes.
-    private uint _flightCriticalInterval = 0;
+    private readonly ConcurrentQueue<SimConnectRawTelemetryFrame> _frames = new();
 
     private nint _simConnectHandle;
     private LatestSimConnectState _latestState = new();
     private AircraftProfile _activeProfile = AircraftProfile.Default;
-    private string? _detectedAircraftTitle;   // file-based detection, used until SimVar arrives
-    private string? _atcModelSimVar;           // ATC MODEL SimVar — overrides file-based value when available
-    private string? _gpsDestinationIdent;      // GPS DESTINATION AIRPORT IDENT — destination from active GPS plan
+    private string? _detectedAircraftTitle;
     private readonly MobiFlightBridge _mobiFlightBridge = new();
     private bool _disposed;
 
@@ -266,28 +234,23 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Drain ALL available SimConnect messages in one pass, updating _latestState
-            // with each. SIMCONNECT_PERIOD_SIM_FRAME queues 30–60 messages per second;
-            // draining all at once keeps the snapshot current and avoids unbounded growth.
-            _flightCriticalReceivedThisDrain = false;
+            // Drain ALL available SimConnect messages in one pass.
+            // SIMCONNECT_PERIOD_SIM_FRAME queues 30–60 messages per second; if we only
+            // dequeue one message per poll the queue grows without bound and the data
+            // shown becomes increasingly stale (effectively "frozen" after ~30 seconds).
             DrainAllAvailableMessages();
 
-            // One snapshot per drain pass — only when new data actually arrived.
-            // Preserves null-return semantics when MSFS sends nothing (e.g. paused sim).
-            if (_flightCriticalReceivedThisDrain)
+            // Discard intermediate frames — keep only the most recent snapshot so the
+            // UI always reflects the current sim state, not data from seconds ago.
+            SimConnectRawTelemetryFrame? latest = null;
+            while (_frames.TryDequeue(out var f))
             {
-                EnqueueFrame();
+                latest = f;
             }
 
-            // Adjust server-side delivery rate based on altitude so MSFS sends fewer
-            // messages during cruise while preserving full fidelity near the ground.
-            UpdateFlightCriticalThrottle();
-
-            if (_latestFrame is not null)
+            if (latest is not null)
             {
-                var frame = _latestFrame;
-                _latestFrame = null;
-                return frame;
+                return latest;
             }
 
             await Task.Delay(15, cancellationToken).ConfigureAwait(false);
@@ -398,40 +361,6 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             OperationalRequestId,
             SimConnectDefinitionCatalog.ScoringAndOperationalVariables,
             SimConnectPeriod.Second);
-
-        // Register the ATC MODEL string SimVar definition.
-        // String SimVars must be in their own definition — they cannot share a
-        // definition with Float64 SimVars because the data layout is incompatible.
-        var result = _exports.AddToDataDefinition(
-            _simConnectHandle,
-            AtcModelDefinitionId,
-            "ATC MODEL",
-            null,  // string SimVars have no unit
-            SimConnectDataType.String256,
-            0.0f,
-            0);
-        if (result < 0)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"[SimConnect] AddToDataDefinition(ATC MODEL) failed: 0x{result:X8}");
-        }
-
-        // Register the GPS DESTINATION AIRPORT IDENT string SimVar.
-        // Returns the ICAO of the active GPS flight plan destination (e.g. "KLAX").
-        // Used to auto-detect arrival airport for runway resolution on free flights.
-        result = _exports.AddToDataDefinition(
-            _simConnectHandle,
-            GpsDestinationDefinitionId,
-            "GPS DESTINATION AIRPORT IDENT",
-            null,
-            SimConnectDataType.String256,
-            0.0f,
-            0);
-        if (result < 0)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"[SimConnect] AddToDataDefinition(GPS DESTINATION AIRPORT IDENT) failed: 0x{result:X8}");
-        }
     }
 
     private void RequestAircraftState()
@@ -498,37 +427,6 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             case OperationalRequestId:
                 UpdateOperational(Marshal.PtrToStructure<OperationalSnapshot>(payloadPointer));
                 break;
-            case AtcModelRequestId:
-                // ATC MODEL is a String256 SimVar — the payload starts immediately after
-                // the SimConnectRecvSimObjectData header (no intermediate struct needed).
-                var atcModel = Marshal.PtrToStructure<AtcModelSnapshot>(payloadPointer);
-                var rawAtcModel = atcModel.Value?.Trim();
-                if (!string.IsNullOrWhiteSpace(rawAtcModel))
-                {
-                    // MSFS 2024 returns an internal model key instead of a plain ICAO code, e.g.:
-                    //   "ATCCOM.AC_MODEL A319.0.text"  →  "A319"
-                    //   "ATCCOM.AC_MODEL B738.0.text"  →  "B738"
-                    // MSFS 2020 returns the clean ICAO code directly ("A319", "B738", …).
-                    // ParseAtcModelValue handles both formats.
-                    _atcModelSimVar = ParseAtcModelValue(rawAtcModel);
-                    System.Diagnostics.Debug.WriteLine($"[SimConnect] ATC MODEL raw     : {rawAtcModel}");
-                    System.Diagnostics.Debug.WriteLine($"[SimConnect] ATC MODEL parsed  : {_atcModelSimVar}");
-                }
-                break;
-            case GpsDestinationRequestId:
-                var gpsDest = Marshal.PtrToStructure<AtcModelSnapshot>(payloadPointer);
-                var rawGpsDest = gpsDest.Value?.Trim();
-                // Accept any non-empty string that looks like an ICAO ident (3–4 chars, starts with letter).
-                if (!string.IsNullOrWhiteSpace(rawGpsDest) && rawGpsDest.Length is >= 3 and <= 5
-                    && char.IsLetter(rawGpsDest[0]))
-                {
-                    _gpsDestinationIdent = rawGpsDest.ToUpperInvariant();
-                }
-                else
-                {
-                    _gpsDestinationIdent = null;
-                }
-                break;
         }
     }
 
@@ -544,26 +442,9 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         var aircraftPath = state.StringValue ?? string.Empty;
         _activeProfile = AircraftProfileCatalog.MatchOrDefault(aircraftPath);
 
-        // Detection priority (most → least accurate):
-        //   1. FLTSIM section match — parse aircraft.cfg to find the [FLTSIM.n] section
-        //                             whose "sim =" value matches the loaded .air filename;
-        //                             read that section's atc_model. This is the only
-        //                             approach that distinguishes variants inside a combined
-        //                             package (e.g. Fenix A32X with A319/A320/A321 in one
-        //                             folder sharing a single aircraft.cfg).
-        //   2. .air filename heuristic — "FNX_A319.air" encodes the variant in the name,
-        //                             so a simple pattern scan works for many addons even
-        //                             without FLTSIM match (e.g. if aircraft.cfg has no
-        //                             per-variant atc_model).
-        //   3. Profile IcaoType   — hardcoded for known addons, but catch-all profiles
-        //                           (e.g. generic "fnx" → A320) can be wrong for variants;
-        //                           used only after the two variant-specific checks above.
-        //   4. atc_model in cfg   — [GENERAL] section value; shared across all variants
-        //                           in combined packages, used as a broad fallback.
-        //   5. ParseAircraftTitle — community package folder name (last resort).
-        _detectedAircraftTitle = ReadVariantIcaoFromAircraftCfg(aircraftPath)
-            ?? ExtractIcaoFromAircraftPath(aircraftPath)
-            ?? _activeProfile.IcaoType
+        // Prefer the profile's declared ICAO type (e.g. "A319") when available —
+        // it's cleaner than anything we can parse from the raw file path or aircraft.cfg.
+        _detectedAircraftTitle = _activeProfile.IcaoType
             ?? ReadTitleFromAircraftCfg(aircraftPath)
             ?? ParseAircraftTitle(aircraftPath);
 
@@ -571,38 +452,6 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Detected title : {_detectedAircraftTitle}");
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Active profile : {_activeProfile.Name}" +
             (_activeProfile.RequiresLvarBridge ? " (LVAR bridge required)" : string.Empty));
-
-        // Clear any stale ATC MODEL value from the previously loaded aircraft, then
-        // request a fresh read. The response arrives asynchronously as SimObjectData
-        // and will override _detectedAircraftTitle in EnqueueFrame once received.
-        _atcModelSimVar = null;
-        var atcResult = _exports.RequestDataOnSimObject(
-            _simConnectHandle,
-            AtcModelRequestId,
-            AtcModelDefinitionId,
-            UserObjectId,
-            SimConnectPeriod.Once,
-            0, 0, 0, 0);
-        if (atcResult < 0)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"[SimConnect] RequestDataOnSimObject(ATC MODEL) failed: 0x{atcResult:X8}");
-        }
-
-        // Poll GPS destination once per second. The destination can change when the pilot
-        // modifies the flight plan mid-flight, so use Period.Second rather than Once.
-        var gpsResult = _exports.RequestDataOnSimObject(
-            _simConnectHandle,
-            GpsDestinationRequestId,
-            GpsDestinationDefinitionId,
-            UserObjectId,
-            SimConnectPeriod.Second,
-            0, 0, 0, 0);
-        if (gpsResult < 0)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"[SimConnect] RequestDataOnSimObject(GPS DESTINATION) failed: 0x{gpsResult:X8}");
-        }
 
         // Subscribe to profile LVARs via MobiFlight (deferred if bridge not yet Active).
         _mobiFlightBridge.SubscribeToProfile(_activeProfile);
@@ -620,26 +469,29 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         //   • Cruise / climb: AGL is thousands of feet              → false
         var onGroundSimVar = snapshot.OnGround >= 0.5;
         var onGroundHeuristic = snapshot.AltitudeAglFeet < 30.0 && snapshot.VerticalSpeedFpm > -500.0;
+        var onGround = onGroundSimVar || onGroundHeuristic ? 1 : 0;
 
-        // Mutate in-place — avoids allocating a new record instance on every
-        // SimFrame callback (30-60 allocations/s eliminated).
-        _flightCriticalReceivedThisDrain = true;
-        _latestState.HasFlightCritical  = true;
-        _latestState.Latitude           = snapshot.Latitude;
-        _latestState.Longitude          = snapshot.Longitude;
-        _latestState.AltitudeAglFeet    = snapshot.AltitudeAglFeet;
-        _latestState.AltitudeFeet       = snapshot.AltitudeFeet;
-        _latestState.IndicatedAltitudeFeet   = snapshot.IndicatedAltitudeFeet;
-        _latestState.IndicatedAirspeedKnots  = snapshot.IndicatedAirspeedKnots;
-        _latestState.GroundSpeedKnots   = snapshot.GroundSpeedKnots;
-        _latestState.VerticalSpeedFpm   = snapshot.VerticalSpeedFpm;
-        _latestState.BankAngleDegrees   = snapshot.BankAngleDegrees;
-        _latestState.PitchAngleDegrees  = snapshot.PitchAngleDegrees;
-        _latestState.ParkingBrakePosition = snapshot.ParkingBrakePosition;
-        _latestState.OnGround           = onGroundSimVar || onGroundHeuristic ? 1 : 0;
-        _latestState.CrashFlag          = snapshot.CrashFlag;
-        _latestState.VelocityWorldYFps  = snapshot.VelocityWorldYFps;
-        // EnqueueFrame() is called once per drain pass in ReadNextFrameAsync instead of here.
+        _latestState = _latestState with
+        {
+            HasFlightCritical = true,
+            Latitude = snapshot.Latitude,
+            Longitude = snapshot.Longitude,
+            AltitudeAglFeet = snapshot.AltitudeAglFeet,
+            AltitudeFeet = snapshot.AltitudeFeet,
+            IndicatedAltitudeFeet = snapshot.IndicatedAltitudeFeet,
+            IndicatedAirspeedKnots = snapshot.IndicatedAirspeedKnots,
+            GroundSpeedKnots = snapshot.GroundSpeedKnots,
+            VerticalSpeedFpm = snapshot.VerticalSpeedFpm,
+            BankAngleDegrees = snapshot.BankAngleDegrees,
+            PitchAngleDegrees = snapshot.PitchAngleDegrees,
+            ParkingBrakePosition = snapshot.ParkingBrakePosition,
+            OnGround = onGround,
+            CrashFlag = snapshot.CrashFlag,
+            VelocityWorldYFps = snapshot.VelocityWorldYFps,
+            TouchdownNormalVelocityFps = snapshot.TouchdownNormalVelocityFps,
+        };
+
+        EnqueueFrame();
     }
 
     private void UpdateOperational(OperationalSnapshot snapshot)
@@ -684,247 +536,51 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             strobe  = ResolveLvar(_activeProfile.StrobeLight,  strobe);
         }
 
-        // Mutate in-place — avoids a heap allocation on every Operational callback.
-        _latestState.HasOperational             = true;
-        _latestState.HeadingMagneticDegrees     = snapshot.HeadingMagneticDegrees;
-        _latestState.HeadingTrueDegrees         = snapshot.HeadingTrueDegrees;
-        _latestState.TrueAirspeedKnots          = snapshot.TrueAirspeedKnots;
-        _latestState.Mach                       = snapshot.Mach;
-        _latestState.GForce                     = snapshot.GForce;
-        _latestState.FlapsHandleIndex           = snapshot.FlapsHandleIndex;
-        _latestState.GearPosition               = snapshot.GearPosition;
-        _latestState.Engine1Running             = snapshot.Engine1Running;
-        _latestState.Engine2Running             = snapshot.Engine2Running;
-        _latestState.Engine3Running             = snapshot.Engine3Running;
-        _latestState.Engine4Running             = snapshot.Engine4Running;
-        _latestState.BeaconLightOn              = beacon;
-        _latestState.TaxiLightsOn               = taxi;
-        _latestState.LandingLightsOn            = landing;
-        _latestState.StrobesOn                  = strobe;
-        _latestState.LightStatesRaw             = bitmaskInt;
-        _latestState.LightBeaconRaw             = (int)rawBeacon;
-        _latestState.LightTaxiRaw               = (int)rawTaxi;
-        _latestState.LightLandingRaw            = (int)rawLanding;
-        _latestState.LightStrobeRaw             = (int)rawStrobe;
-        _latestState.LightSourceIsIndividual    = true;
-        _latestState.StallWarning               = snapshot.StallWarning;
-        _latestState.GpwsAlert                  = snapshot.GpwsAlert;
-        _latestState.OverspeedWarning           = snapshot.OverspeedWarning;
-        _latestState.Nav1GlideslopeErrorDegrees = snapshot.Nav1GlideslopeErrorDegrees;
-        _latestState.Nav1RadialErrorDegrees     = snapshot.Nav1RadialErrorDegrees;
-        _latestState.AutopilotMaster            = snapshot.AutopilotMaster;
-        _latestState.FuelTotalLbs               = snapshot.FuelTotalLbs;
-        _latestState.AmbientWindSpeed           = snapshot.AmbientWindSpeed;
-        _latestState.AmbientWindDirection       = snapshot.AmbientWindDirection;
-        _latestState.AmbientTemperature         = snapshot.AmbientTemperature;
-        _latestState.SpoilerHandlePos           = snapshot.SpoilerHandlePos;
-        _latestState.SpoilersArmed              = snapshot.SpoilersArmed;
-        _latestState.Engine1N1Pct               = snapshot.Engine1N1Pct;
-        _latestState.Engine2N1Pct               = snapshot.Engine2N1Pct;
-        _latestState.Engine3N1Pct               = snapshot.Engine3N1Pct;
-        _latestState.Engine4N1Pct               = snapshot.Engine4N1Pct;
-        _latestState.Nav1IlsValid               = snapshot.Nav1IlsValid;
-        // EnqueueFrame() is called once per drain pass in ReadNextFrameAsync instead of here.
+        var usedIndividual = true;
+
+        _latestState = _latestState with
+        {
+            HasOperational = true,
+            HeadingMagneticDegrees = snapshot.HeadingMagneticDegrees,
+            HeadingTrueDegrees = snapshot.HeadingTrueDegrees,
+            TrueAirspeedKnots = snapshot.TrueAirspeedKnots,
+            Mach = snapshot.Mach,
+            GForce = snapshot.GForce,
+            FlapsHandleIndex = snapshot.FlapsHandleIndex,
+            GearPosition = snapshot.GearPosition,
+            Engine1Running = snapshot.Engine1Running,
+            Engine2Running = snapshot.Engine2Running,
+            Engine3Running = snapshot.Engine3Running,
+            Engine4Running = snapshot.Engine4Running,
+            BeaconLightOn  = beacon,
+            TaxiLightsOn   = taxi,
+            LandingLightsOn = landing,
+            StrobesOn      = strobe,
+            LightStatesRaw = bitmaskInt,
+            LightBeaconRaw = (int)rawBeacon,
+            LightTaxiRaw   = (int)rawTaxi,
+            LightLandingRaw = (int)rawLanding,
+            LightStrobeRaw = (int)rawStrobe,
+            LightSourceIsIndividual = usedIndividual,
+            StallWarning = snapshot.StallWarning,
+            GpwsAlert = snapshot.GpwsAlert,
+            OverspeedWarning = snapshot.OverspeedWarning,
+            WindSpeedKnots = snapshot.WindSpeedKnots,
+            WindDirectionDegrees = snapshot.WindDirectionDegrees,
+        };
+
+        EnqueueFrame();
     }
 
     /// <summary>
-    /// Extracts a clean ICAO type code from the raw <c>ATC MODEL</c> SimVar value.
-    ///
-    /// MSFS 2020 returns the code directly ("A319", "B738").
-    /// MSFS 2024 returns an internal model key: "ATCCOM.AC_MODEL A319.0.text".
-    /// Both formats are handled:
-    /// <list type="bullet">
-    ///   <item>If "AC_MODEL " is present, the token immediately after it is extracted
-    ///         and everything from its first dot onward is stripped.</item>
-    ///   <item>Otherwise the value is returned as-is (already a plain ICAO code).</item>
-    /// </list>
-    /// </summary>
-    internal static string ParseAtcModelValue(string raw)
-    {
-        // Look for the "AC_MODEL " marker (case-insensitive).
-        const string marker = "AC_MODEL ";
-        var idx = raw.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-        if (idx >= 0)
-        {
-            var typeStart = idx + marker.Length;
-            // The type code ends at the first dot, e.g. "A319.0.text" → "A319".
-            var dotIdx = raw.IndexOf('.', typeStart);
-            return dotIdx > typeStart
-                ? raw[typeStart..dotIdx]
-                : raw[typeStart..];
-        }
-
-        // Already a clean ICAO code — return as-is.
-        return raw;
-    }
-
-    /// <summary>
-    /// Reads the ICAO type code for the specific variant that is currently loaded by
-    /// matching the loaded <c>.air</c> filename against the <c>sim =</c> key in each
-    /// <c>[FLTSIM.n]</c> section of the aircraft's <c>aircraft.cfg</c>, then returning
-    /// <c>atc_model</c> from that section.
-    ///
-    /// This is the most accurate approach for combined packages (e.g. Fenix A32X) where
-    /// A319/A320/A321 live in a single folder. MSFS loads a variant-specific <c>.air</c>
-    /// file (e.g. <c>FNX_A319.air</c>) even when the package is combined, and each
-    /// <c>[FLTSIM.n]</c> section carries its own <c>atc_model</c>.
-    ///
-    /// Returns <c>null</c> when:
-    /// – the path does not end in <c>.air</c> (e.g. MSFS reported a <c>.cfg</c> path),
-    /// – no matching section is found, or
-    /// – the matching section has no <c>atc_model</c> key.
-    /// </summary>
-    private static string? ReadVariantIcaoFromAircraftCfg(string aircraftPath)
-    {
-        if (!aircraftPath.EndsWith(".air", StringComparison.OrdinalIgnoreCase))
-            return null;
-
-        try
-        {
-            // The filename without extension is exactly the value of "sim =" in the
-            // matching [FLTSIM.n] section (e.g. "FNX_A319" for FNX_A319.air).
-            var simName = Path.GetFileNameWithoutExtension(aircraftPath);
-            if (string.IsNullOrEmpty(simName)) return null;
-
-            var dir = Path.GetDirectoryName(aircraftPath);
-            if (string.IsNullOrEmpty(dir)) return null;
-
-            var cfgPath = Path.Combine(dir, "aircraft.cfg");
-            if (!File.Exists(cfgPath)) return null;
-
-            // Buffer the current section's sim= and atc_model= values.
-            // When we move to the next section we can check if the buffered section matched.
-            string? sectionSim = null;
-            string? sectionAtcModel = null;
-            var inFltsim = false;
-            var lineCount = 0;
-
-            foreach (var rawLine in File.ReadLines(cfgPath))
-            {
-                // Safety cap — aircraft.cfg files can be large in big livery packs.
-                if (++lineCount > 4000) break;
-
-                var line = rawLine.Trim();
-                if (line.Length == 0 || line[0] == ';') continue;
-
-                if (line[0] == '[')
-                {
-                    // Leaving a FLTSIM section: check if it was the target.
-                    if (inFltsim
-                        && sectionSim?.Equals(simName, StringComparison.OrdinalIgnoreCase) == true
-                        && sectionAtcModel is not null)
-                    {
-                        return sectionAtcModel;
-                    }
-
-                    // Reset for the new section.
-                    sectionSim      = null;
-                    sectionAtcModel = null;
-                    inFltsim = line.StartsWith("[FLTSIM.", StringComparison.OrdinalIgnoreCase);
-                    continue;
-                }
-
-                if (!inFltsim) continue;
-
-                var eq = line.IndexOf('=');
-                if (eq < 0) continue;
-
-                var key   = line[..eq].Trim();
-                var value = line[(eq + 1)..].Trim().Trim('"');
-                if (string.IsNullOrWhiteSpace(value)) continue;
-
-                if (key.Equals("sim", StringComparison.OrdinalIgnoreCase))
-                    sectionSim = value;
-                else if (key.Equals("atc_model", StringComparison.OrdinalIgnoreCase))
-                    sectionAtcModel = value;
-            }
-
-            // Handle a matching section at end of file (no trailing section header).
-            if (inFltsim
-                && sectionSim?.Equals(simName, StringComparison.OrdinalIgnoreCase) == true
-                && sectionAtcModel is not null)
-            {
-                return sectionAtcModel;
-            }
-
-            return null;
-        }
-        catch
-        {
-            return null; // File locked, path invalid, etc.
-        }
-    }
-
-    /// <summary>
-    /// Extracts an ICAO type code from the aircraft .air filename and its immediate
-    /// parent folder name. MSFS always loads the variant-specific .air file, so the
-    /// filename is a reliable variant indicator even when the package bundles multiple
-    /// variants in one folder with a shared aircraft.cfg.
-    ///
-    /// Examples:
-    ///   "...FNX_32X\fnx_a319.air"  → "A319"
-    ///   "...FNX_32X\fnx_a320.air"  → "A320"
-    ///   "...pmdg-737-800\b738.air" → "B738"
-    /// </summary>
-    private static string? ExtractIcaoFromAircraftPath(string aircraftPath)
-    {
-        if (string.IsNullOrWhiteSpace(aircraftPath))
-            return null;
-
-        // Build a short candidate string from just the filename and its parent folder.
-        // Searching only these two segments avoids false matches from package root names.
-        var fileName     = Path.GetFileNameWithoutExtension(aircraftPath) ?? string.Empty;
-        var parentFolder = Path.GetFileName(Path.GetDirectoryName(aircraftPath)) ?? string.Empty;
-        var candidates   = $"{fileName} {parentFolder}";
-
-        // Ordered most-specific → least-specific so "a319" beats "a31x" style substrings.
-        // Each tuple: (search token, ICAO designator to return).
-        ReadOnlySpan<(string Token, string Icao)> patterns =
-        [
-            // Airbus narrow-body family
-            ("a318", "A318"), ("a319", "A319"), ("a320", "A320"), ("a321", "A321"),
-            // Airbus wide-body
-            ("a220", "A220"), ("a310", "A310"),
-            ("a330", "A330"), ("a340", "A340"), ("a350", "A350"), ("a380", "A380"),
-            // Boeing narrow-body
-            ("b737", "B737"), ("b738", "B738"), ("b739", "B739"),
-            ("b757", "B752"),
-            // Boeing wide-body
-            ("b767", "B763"), ("b777", "B77W"), ("b787", "B789"),
-            ("b747", "B744"), ("b748", "B748"),
-            // Regional jets
-            ("crj7", "CRJ7"), ("crj9", "CRJ9"), ("crj2", "CRJ2"),
-            ("e170", "E170"), ("e175", "E175"), ("e190", "E190"), ("e195", "E195"),
-            // Turboprops
-            ("q400", "DH8D"), ("atr72", "AT75"), ("atr42", "AT43"),
-        ];
-
-        foreach (var (token, icao) in patterns)
-        {
-            if (candidates.Contains(token, StringComparison.OrdinalIgnoreCase))
-                return icao;
-        }
-
-        return null;
-    }
-
-    /// <summary>
+    /// Parses a user-friendly aircraft name from the MSFS AircraftLoaded path.
+    /// The path is a relative .air file location, e.g.:
     /// Reads the human-readable aircraft title directly from the aircraft.cfg file
     /// that MSFS reports in the AircraftLoaded system state.
     ///
     /// Looks for <c>title =</c> under the <c>[GENERAL]</c> section first, then falls
     /// back to the first <c>[FLTSIM.x]</c> variant title. Returns null if the file
     /// cannot be found or read (e.g. path is a .air file, not a .cfg).
-    /// </summary>
-    /// <summary>
-    /// Reads the best available aircraft identifier from the aircraft.cfg file.
-    ///
-    /// Priority order:
-    ///   1. atc_model in [GENERAL] — ICAO type designator (e.g. "A320", "B738").
-    ///      This is the cleanest source: it is the standard ICAO code set by the
-    ///      aircraft developer and works regardless of livery package folder names.
-    ///   2. title in [GENERAL] — developer-level aircraft title.
-    ///   3. title in [FLTSIM.0] — first livery title (often verbose, last resort).
     /// </summary>
     private static string? ReadTitleFromAircraftCfg(string aircraftPath)
     {
@@ -946,7 +602,6 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
             if (!File.Exists(cfgPath)) return null;
 
-            string? generalAtcModel = null;
             string? generalTitle = null;
             string? firstFltsimTitle = null;
             var inGeneral = false;
@@ -964,9 +619,6 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
 
                 if (line[0] == '[')
                 {
-                    // Once we leave [GENERAL] and already have atc_model we're done.
-                    if (inGeneral && generalAtcModel is not null) break;
-
                     inGeneral     = line.Equals("[GENERAL]",  StringComparison.OrdinalIgnoreCase);
                     inFirstFltsim = !fltsimSeen &&
                                     line.StartsWith("[FLTSIM.", StringComparison.OrdinalIgnoreCase);
@@ -974,35 +626,23 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
                     continue;
                 }
 
-                var eq = line.IndexOf('=');
-                if (eq < 0) continue;
-                var value = line[(eq + 1)..].Trim().Trim('"');
-                if (string.IsNullOrWhiteSpace(value)) continue;
+                if ((inGeneral || inFirstFltsim) && line.StartsWith("title", StringComparison.OrdinalIgnoreCase))
+                {
+                    var eq = line.IndexOf('=');
+                    if (eq < 0) continue;
 
-                if (inGeneral)
-                {
-                    // atc_model is the ICAO type code — highest priority.
-                    if (line.StartsWith("atc_model", StringComparison.OrdinalIgnoreCase))
-                    {
-                        generalAtcModel = value;
-                    }
-                    else if (generalTitle is null &&
-                             line.StartsWith("title", StringComparison.OrdinalIgnoreCase))
-                    {
-                        generalTitle = value;
-                    }
-                }
-                else if (inFirstFltsim && firstFltsimTitle is null &&
-                         line.StartsWith("title", StringComparison.OrdinalIgnoreCase))
-                {
-                    firstFltsimTitle = value;
+                    var value = line[(eq + 1)..].Trim().Trim('"');
+                    if (string.IsNullOrWhiteSpace(value)) continue;
+
+                    if (inGeneral)       { generalTitle    = value; break; }
+                    if (inFirstFltsim)   { firstFltsimTitle = value; }
                 }
 
-                // Stop as soon as we have everything we need.
-                if (generalAtcModel is not null && firstFltsimTitle is not null) break;
+                // Once we have both candidates stop early.
+                if (generalTitle is not null && firstFltsimTitle is not null) break;
             }
 
-            return generalAtcModel ?? generalTitle ?? firstFltsimTitle;
+            return generalTitle ?? firstFltsimTitle;
         }
         catch
         {
@@ -1067,11 +707,6 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         return null;
     }
 
-    /// <summary>
-    /// Captures the current <see cref="_latestState"/> into <see cref="_latestFrame"/>.
-    /// Called once per drain pass (not once per SimConnect message) so only one
-    /// <see cref="SimConnectRawTelemetryFrame"/> is allocated per polling cycle.
-    /// </summary>
     private void EnqueueFrame()
     {
         if (!_latestState.HasFlightCritical)
@@ -1079,7 +714,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             return;
         }
 
-        _latestFrame = new SimConnectRawTelemetryFrame
+        _frames.Enqueue(new SimConnectRawTelemetryFrame
         {
             TimestampUtc = DateTimeOffset.UtcNow,
             HasFlightCriticalData = _latestState.HasFlightCritical,
@@ -1121,103 +756,16 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             Engine2Running = _latestState.Engine2Running,
             Engine3Running = _latestState.Engine3Running,
             Engine4Running = _latestState.Engine4Running,
-            VelocityWorldYFps   = _latestState.VelocityWorldYFps,
-            ActiveProfileName   = _activeProfile.Name,
+            VelocityWorldYFps           = _latestState.VelocityWorldYFps,
+            TouchdownNormalVelocityFps  = _latestState.TouchdownNormalVelocityFps,
+            WindSpeedKnots              = _latestState.WindSpeedKnots,
+            WindDirectionDegrees = _latestState.WindDirectionDegrees,
+            ActiveProfileName     = _activeProfile.Name,
+            ActiveProfileIcaoType = _activeProfile.IcaoType,
             LvarBridgeRequired  = _activeProfile.RequiresLvarBridge,
             LvarBridgeConnected = _mobiFlightBridge.IsActive,
-            // ATC MODEL SimVar is the authoritative source (same one vPilot / Volanta use).
-            // Fall back to the file-based detection until the SimVar response arrives.
-            AircraftTitle            = _atcModelSimVar ?? _detectedAircraftTitle,
-            Nav1GlideslopeErrorDegrees = _latestState.Nav1GlideslopeErrorDegrees,
-            Nav1RadialErrorDegrees   = _latestState.Nav1RadialErrorDegrees,
-            GpsDestinationIdent      = _gpsDestinationIdent,
-            // Extended context
-            AutopilotMaster            = _latestState.AutopilotMaster,
-            FuelTotalLbs               = _latestState.FuelTotalLbs,
-            AmbientWindSpeedKnots      = _latestState.AmbientWindSpeed,
-            AmbientWindDirectionDegrees = _latestState.AmbientWindDirection,
-            AmbientTemperatureCelsius  = _latestState.AmbientTemperature,
-            SpoilerHandlePosition      = _latestState.SpoilerHandlePos,
-            SpoilersArmed              = _latestState.SpoilersArmed,
-            Engine1N1Pct               = _latestState.Engine1N1Pct,
-            Engine2N1Pct               = _latestState.Engine2N1Pct,
-            Engine3N1Pct               = _latestState.Engine3N1Pct,
-            Engine4N1Pct               = _latestState.Engine4N1Pct,
-            Nav1IlsSignalValid         = _latestState.Nav1IlsValid,
-        };
-    }
-
-    /// <summary>
-    /// Adjusts the server-side FlightCritical delivery interval based on flight phase.
-    ///
-    /// Three tiers (priority order):
-    /// <list type="bullet">
-    ///   <item><b>Ground</b> — on ground with IAS &lt; <see cref="TakeoffRollIasKnots"/>:
-    ///         interval = <see cref="GroundThrottleInterval"/> (~2-4 Hz).
-    ///         GPS coordinates barely change while taxiing or parked.</item>
-    ///   <item><b>Full rate</b> — takeoff roll (on ground, IAS ≥ 40 kts), approach, or any
-    ///         airborne phase below <see cref="ThrottleOnAglFeet"/>: interval = 0 (every SimFrame).
-    ///         Preserves scoring accuracy through the critical takeoff and landing phases.</item>
-    ///   <item><b>Cruise</b> — airborne above <see cref="ThrottleOnAglFeet"/>:
-    ///         interval = <see cref="CruiseThrottleInterval"/> (~7-15 Hz).
-    ///         A 1 000 ft dead-band between the two AGL thresholds prevents oscillation.</item>
-    /// </list>
-    /// </summary>
-    private void UpdateFlightCriticalThrottle()
-    {
-        if (!_latestState.HasFlightCritical)
-        {
-            return;
-        }
-
-        var agl      = _latestState.AltitudeAglFeet;
-        var onGround = _latestState.OnGround >= 0.5;
-        var ias      = _latestState.IndicatedAirspeedKnots;
-
-        uint desired;
-
-        if (onGround && ias < TakeoffRollIasKnots)
-        {
-            // Taxiing or parked — GPS barely moves, throttle to save SimConnect overhead.
-            desired = GroundThrottleInterval;
-        }
-        else if (_flightCriticalInterval == GroundThrottleInterval)
-        {
-            // Just left ground state (airborne or accelerating for takeoff) → full rate.
-            desired = 0;
-        }
-        else if (_flightCriticalInterval == 0 && agl > ThrottleOnAglFeet)
-        {
-            // Climbing into cruise — start throttling.
-            desired = CruiseThrottleInterval;
-        }
-        else if (_flightCriticalInterval == CruiseThrottleInterval && agl < ThrottleOffAglFeet)
-        {
-            // Descending out of cruise — restore full rate for approach / landing.
-            desired = 0;
-        }
-        else
-        {
-            return; // no change needed (steady-state or within AGL dead-band)
-        }
-
-        var result = _exports.RequestDataOnSimObject(
-            _simConnectHandle,
-            FlightCriticalRequestId,
-            FlightCriticalDefinitionId,
-            UserObjectId,
-            SimConnectPeriod.SimFrame,
-            0,        // flags
-            0,        // origin
-            desired,
-            0);       // limit
-
-        if (result >= 0)
-        {
-            _flightCriticalInterval = desired;
-            System.Diagnostics.Debug.WriteLine(
-                $"[SimConnect] FlightCritical interval → {desired} (ground={onGround}, IAS={ias:F0} kt, AGL={agl:F0} ft)");
-        }
+            AircraftTitle       = _detectedAircraftTitle,
+        });
     }
 
     /// <summary>
@@ -1292,8 +840,10 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly double OnGround;              // SIM ON GROUND → 0.0 or 1.0
         public readonly double CrashFlag;             // bool SimVar → 0.0 or 1.0
         // Physics-engine vertical velocity (ft/s, negative = descending, no barometric lag).
-        // Must stay last to match velocity_world_y appended at the end of FlightCriticalVariables.
         public readonly double VelocityWorldYFps;
+        // PLANE TOUCHDOWN NORMAL VELOCITY — sticky SimVar holding normal-to-ground fps at last touchdown.
+        // Must stay last to match touchdown_normal appended at the end of FlightCriticalVariables.
+        public readonly double TouchdownNormalVelocityFps;
     }
 
     // All fields are double — uniform 8-byte layout, no mixed-type alignment issues.
@@ -1319,31 +869,8 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly double StallWarning;
         public readonly double GpwsAlert;
         public readonly double OverspeedWarning;
-        // NAV1 approach instruments — appended last to preserve existing layout.
-        public readonly double Nav1GlideslopeErrorDegrees;   // NAV GLIDE SLOPE ERROR:1
-        public readonly double Nav1RadialErrorDegrees;        // NAV RADIAL ERROR:1
-        // ── Extended context — must stay in catalog-definition order ──────────
-        public readonly double AutopilotMaster;      // AUTOPILOT MASTER → 0.0 or 1.0
-        public readonly double FuelTotalLbs;         // FUEL TOTAL QUANTITY WEIGHT in pounds
-        public readonly double AmbientWindSpeed;     // AMBIENT WIND VELOCITY in knots
-        public readonly double AmbientWindDirection; // AMBIENT WIND DIRECTION in degrees
-        public readonly double AmbientTemperature;   // AMBIENT TEMPERATURE in Celsius
-        public readonly double SpoilerHandlePos;     // SPOILERS HANDLE POSITION 0.0–1.0
-        public readonly double SpoilersArmed;        // SPOILERS ARMED → 0.0 or 1.0
-        public readonly double Engine1N1Pct;         // TURB ENG N1:1 in percent (0–110)
-        public readonly double Engine2N1Pct;         // TURB ENG N1:2
-        public readonly double Engine3N1Pct;         // TURB ENG N1:3
-        public readonly double Engine4N1Pct;         // TURB ENG N1:4
-        public readonly double Nav1IlsValid;         // NAV HAS GLIDE SLOPE:1 → 0.0 or 1.0
-    }
-
-    // SIMCONNECT_DATATYPE_STRING256 payload — 256 ANSI characters, null-terminated.
-    // Used to read string SimVars such as ATC MODEL and TITLE.
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-    private readonly struct AtcModelSnapshot
-    {
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
-        public readonly string Value;
+        public readonly double WindSpeedKnots;
+        public readonly double WindDirectionDegrees;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -1396,74 +923,51 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly uint DefineCount;
     }
 
-    /// <summary>
-    /// Mutable accumulator for the latest state from all SimConnect data groups.
-    /// Written by <see cref="UpdateFlightCritical"/> and <see cref="UpdateOperational"/>
-    /// on every incoming SimConnect message; read once per drain pass by
-    /// <see cref="EnqueueFrame"/> to produce a single <see cref="SimConnectRawTelemetryFrame"/>.
-    ///
-    /// Deliberately a mutable class rather than an immutable record so that each
-    /// SimConnect callback can update individual fields in-place instead of allocating
-    /// a new record instance via <c>with</c> (which would produce 30-60 heap objects/s).
-    /// All access is single-threaded (DispatcherTimer → ReadNextFrameAsync → DrainAllAvailableMessages).
-    /// </summary>
-    private sealed class LatestSimConnectState
+    private sealed record LatestSimConnectState
     {
-        public bool HasFlightCritical { get; set; }
-        public bool HasOperational { get; set; }
-        public double Latitude { get; set; }
-        public double Longitude { get; set; }
-        public double AltitudeAglFeet { get; set; }
-        public double AltitudeFeet { get; set; }
-        public double IndicatedAltitudeFeet { get; set; }
-        public double IndicatedAirspeedKnots { get; set; }
-        public double TrueAirspeedKnots { get; set; }
-        public double Mach { get; set; }
-        public double GroundSpeedKnots { get; set; }
-        public double VerticalSpeedFpm { get; set; }
-        public double BankAngleDegrees { get; set; }
-        public double PitchAngleDegrees { get; set; }
-        public double HeadingMagneticDegrees { get; set; }
-        public double HeadingTrueDegrees { get; set; }
-        public double GForce { get; set; }
-        public double ParkingBrakePosition { get; set; }
-        public double OnGround { get; set; }
-        public double CrashFlag { get; set; }
-        public double FlapsHandleIndex { get; set; }
-        public double GearPosition { get; set; }
-        public double BeaconLightOn { get; set; }
-        public double TaxiLightsOn { get; set; }
-        public double LandingLightsOn { get; set; }
-        public double StrobesOn { get; set; }
-        public int LightStatesRaw { get; set; }
-        public int LightBeaconRaw { get; set; }
-        public int LightTaxiRaw { get; set; }
-        public int LightLandingRaw { get; set; }
-        public int LightStrobeRaw { get; set; }
-        public bool LightSourceIsIndividual { get; set; }
-        public double StallWarning { get; set; }
-        public double GpwsAlert { get; set; }
-        public double OverspeedWarning { get; set; }
-        public double Engine1Running { get; set; }
-        public double Engine2Running { get; set; }
-        public double Engine3Running { get; set; }
-        public double Engine4Running { get; set; }
-        public double VelocityWorldYFps { get; set; }
-        public double Nav1GlideslopeErrorDegrees { get; set; }
-        public double Nav1RadialErrorDegrees { get; set; }
-        // Extended context
-        public double AutopilotMaster { get; set; }
-        public double FuelTotalLbs { get; set; }
-        public double AmbientWindSpeed { get; set; }
-        public double AmbientWindDirection { get; set; }
-        public double AmbientTemperature { get; set; }
-        public double SpoilerHandlePos { get; set; }
-        public double SpoilersArmed { get; set; }
-        public double Engine1N1Pct { get; set; }
-        public double Engine2N1Pct { get; set; }
-        public double Engine3N1Pct { get; set; }
-        public double Engine4N1Pct { get; set; }
-        public double Nav1IlsValid { get; set; }
+        public bool HasFlightCritical { get; init; }
+        public bool HasOperational { get; init; }
+        public double Latitude { get; init; }
+        public double Longitude { get; init; }
+        public double AltitudeAglFeet { get; init; }
+        public double AltitudeFeet { get; init; }
+        public double IndicatedAltitudeFeet { get; init; }
+        public double IndicatedAirspeedKnots { get; init; }
+        public double TrueAirspeedKnots { get; init; }
+        public double Mach { get; init; }
+        public double GroundSpeedKnots { get; init; }
+        public double VerticalSpeedFpm { get; init; }
+        public double BankAngleDegrees { get; init; }
+        public double PitchAngleDegrees { get; init; }
+        public double HeadingMagneticDegrees { get; init; }
+        public double HeadingTrueDegrees { get; init; }
+        public double GForce { get; init; }
+        public double ParkingBrakePosition { get; init; }
+        public double OnGround { get; init; }
+        public double CrashFlag { get; init; }
+        public double FlapsHandleIndex { get; init; }
+        public double GearPosition { get; init; }
+        public double BeaconLightOn { get; init; }
+        public double TaxiLightsOn { get; init; }
+        public double LandingLightsOn { get; init; }
+        public double StrobesOn { get; init; }
+        public int LightStatesRaw { get; init; }
+        public int LightBeaconRaw { get; init; }
+        public int LightTaxiRaw { get; init; }
+        public int LightLandingRaw { get; init; }
+        public int LightStrobeRaw { get; init; }
+        public bool LightSourceIsIndividual { get; init; }
+        public double StallWarning { get; init; }
+        public double GpwsAlert { get; init; }
+        public double OverspeedWarning { get; init; }
+        public double Engine1Running { get; init; }
+        public double Engine2Running { get; init; }
+        public double Engine3Running { get; init; }
+        public double Engine4Running { get; init; }
+        public double VelocityWorldYFps { get; init; }
+        public double TouchdownNormalVelocityFps { get; init; }
+        public double WindSpeedKnots { get; init; }
+        public double WindDirectionDegrees { get; init; }
     }
 }
 

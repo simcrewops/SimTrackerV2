@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.IO;
+using System.Net.Http;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Media;
@@ -35,9 +37,8 @@ public sealed class MainWindowViewModel : ObservableObject
             ?.InformationalVersion;
         if (!string.IsNullOrWhiteSpace(informational))
         {
-            // Strip the +commitsha suffix baked in by the CI (keep e.g. "2.1.0-beta.134")
-            var plusIdx = informational.IndexOf('+');
-            return plusIdx >= 0 ? informational[..plusIdx] : informational;
+            var plusIndex = informational.IndexOf('+', StringComparison.Ordinal);
+            return plusIndex >= 0 ? informational[..plusIndex] : informational;
         }
         return assembly.GetName().Version?.ToString(3) ?? "2.0.0-dev";
     }
@@ -47,7 +48,11 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly DispatcherTimer _updateCheckTimer;
     private readonly UpdateChecker _updateChecker;
     private readonly AppUpdater _appUpdater;
+    private readonly SimCrewOps.Hosting.Hosting.LiveMapService? _liveMapService;
     private UpdateInfo? _pendingUpdate;
+    private DateTimeOffset? _lastUpdateCheckUtc;
+    private string? _lastUpdateError;
+
     private TrackerShellSnapshot? _latestSnapshot;
     private bool _isRefreshing;
     private NavPage _selectedPage = NavPage.Dashboard;
@@ -57,7 +62,6 @@ public sealed class MainWindowViewModel : ObservableObject
     private Brush _syncStatusBrush = new SolidColorBrush(MediaColor.FromRgb(56, 91, 105));
     private string _headerFlightText = "Waiting for flight context • MSFS telemetry will populate here";
     private string _assignedFlightText = string.Empty;
-    private string _scheduledBlockText = string.Empty;
     private string _phaseTitle = "PREFLIGHT";
     private string _phaseSubtitle = "The live ops board stays blank until the tracker receives real telemetry.";
     private string _phaseStatusLine = "Waiting for telemetry";
@@ -108,6 +112,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _alertType = "APPROACH CHECK";
     private string _reviewSummary = "Landing metrics will populate after touchdown.";
     private string _reviewHeaderRoute = "POST-FLIGHT DEBRIEF";
+    private Uri? _liveMapUri;
     private string _reviewLandingMetrics = "VS --   G --   Bank --   Pitch --   TZ Excess --";
 
     // ── Landing card ─────────────────────────────────────────────────────
@@ -124,18 +129,18 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _landingPitchAngle = "--";
     private string _landingTzExcess = "--";
     private bool _autoFailBannerVisible;
-    private bool _groundingBannerVisible;
-    private string _groundingBannerText = string.Empty;
+    private bool _groundedBannerVisible;
+    private string _groundedBannerText = string.Empty;
     private bool _updateBannerVisible;
     private string _updateBannerText = string.Empty;
     private bool _isInstallingUpdate;
-    private int _updateDownloadProgress; // 0-100
+    private int _updateDownloadProgress;
+    private string _pilotIdentityText = string.Empty;
     private Brush _runwayMarkerBrush = new SolidColorBrush(MediaColor.FromRgb(63, 185, 80));
     private Thickness _runwayMarkerMargin = new Thickness(40, 2, 0, 2);
     private double _runwayTdzWidth = 60.0;
     private double _runwayMarkerLeft = 40.0;
     private string _diagnosticsSimState = "Waiting for simulator process";
-    private string _diagnosticsActiveFlight = "No flight assigned";
     private string _diagnosticsSyncState = "Background sync not yet initialized";
     private string _diagnosticsRecoveryState = "No recoverable session";
     private string _diagnosticsSettingsPath = string.Empty;
@@ -146,8 +151,16 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _diagnosticsTelemetryFlow = "Enable telemetry diagnostics to inspect raw SimConnect frame flow.";
     private string _diagnosticsTelemetryCounters = "Poll, null-frame, and mapping counters will appear here.";
     private string _diagnosticsRawTelemetry = "Raw SimConnect values will appear here when telemetry diagnostics are enabled.";
+    private string _diagnosticsTouchdownRates = "No touchdown recorded this session.";
+    // Structured diagnostics panels (always visible)
+    private string _diagnosticsConnection = "Waiting for simulator process…";
+    private string _diagnosticsPreflightPilot = "No preflight check performed yet.";
+    private string _diagnosticsFlightSession = "No active session.";
+    private string _diagnosticsUploadSync = "No upload attempted this run.";
+    private string _diagnosticsStorageBuild = string.Empty;
+    // Telemetry-gated additional section
+    private string _diagnosticsBeaconPath = "Beacon and path info appears when telemetry diagnostics are enabled.";
     private string _settingsSaveStatus = "Changes are saved for the next launch.";
-    private bool _isFlightRefreshEnabled = true;
 
     // Persistent instruments
     private string _liveIas = "---";
@@ -177,6 +190,9 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _liveSyncStatusText = "NOT CONNECTED";
     private Brush _liveSyncStatusBrush = new SolidColorBrush(MediaColor.FromRgb(90, 106, 112));
 
+    // Tracks the last auto-reset so the notification banner stays visible for a few seconds.
+    private DateTimeOffset? _lastAutoResetNotificationUtc;
+
     public MainWindowViewModel(TrackerShellBootstrapResult bootstrap)
     {
         ArgumentNullException.ThrowIfNull(bootstrap);
@@ -196,15 +212,22 @@ public sealed class MainWindowViewModel : ObservableObject
         AcarsMessages = new ObservableCollection<AcarsMessageModel>();
 
         ShowDashboardCommand = new RelayCommand(() => SelectedPage = NavPage.Dashboard);
+        ShowLiveMapCommand   = new RelayCommand(() => SelectedPage = NavPage.LiveMap);
         ShowAcarsCommand     = new RelayCommand(() => SelectedPage = NavPage.Acars);
         ShowReviewCommand = new RelayCommand(() => SelectedPage = NavPage.Review);
         ShowDiagnosticsCommand = new RelayCommand(() => SelectedPage = NavPage.Diagnostics);
         ShowSettingsCommand = new RelayCommand(() => SelectedPage = NavPage.Settings);
 
-        RetrySyncCommand        = new RelayCommand(() => _ = RetrySyncAsync());
-        RefreshFlightCommand    = new RelayCommand(() => _ = RefreshFlightAsync());
-        SaveSettingsCommand     = new RelayCommand(() => _ = SaveSettingsAsync());
-        InstallUpdateCommand    = new RelayCommand(() => _ = InstallUpdateAsync());
+        // Wire up the live map service if one was created for this service stack.
+        _liveMapService = bootstrap.LiveMapService;
+        if (_liveMapService is not null)
+        {
+            _liveMapService.PositionsUpdated += OnLiveMapPositionsUpdated;
+        }
+        RetrySyncCommand = new RelayCommand(() => _ = RetrySyncAsync());
+        SaveSettingsCommand = new RelayCommand(() => _ = SaveSettingsAsync());
+        ResetSessionCommand = new RelayCommand(() => _ = ResetSessionAsync());
+        InstallUpdateCommand = new RelayCommand(() => _ = InstallUpdateAsync());
 
         _pollingTimer = new DispatcherTimer
         {
@@ -212,9 +235,8 @@ public sealed class MainWindowViewModel : ObservableObject
         };
         _pollingTimer.Tick += async (_, _) => await RefreshAsync();
 
-        // Update checker — fires once on startup (from InitializeAsync) then every 4 hours.
-        _updateChecker = new UpdateChecker(new System.Net.Http.HttpClient());
-        _appUpdater    = new AppUpdater(new System.Net.Http.HttpClient());
+        _updateChecker = new UpdateChecker(new HttpClient());
+        _appUpdater = new AppUpdater(new HttpClient());
         _updateCheckTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromHours(4),
@@ -234,6 +256,7 @@ public sealed class MainWindowViewModel : ObservableObject
     public ObservableCollection<PhasePillModel> PhasePills { get; }
 
     public RelayCommand ShowDashboardCommand { get; }
+    public RelayCommand ShowLiveMapCommand   { get; }
     public RelayCommand ShowAcarsCommand     { get; }
     public RelayCommand ShowReviewCommand { get; }
     public RelayCommand ShowDiagnosticsCommand { get; }
@@ -244,6 +267,9 @@ public sealed class MainWindowViewModel : ObservableObject
 
     /// <summary>ACARS / Comms message thread (inbound dispatch + outbound pilot messages).</summary>
     public ObservableCollection<AcarsMessageModel> AcarsMessages { get; }
+
+    /// <summary>True when the live map service is running (API token configured).</summary>
+    public bool LiveMapAvailable => _liveMapService is not null;
 
     private IReadOnlyList<SimCrewOps.Hosting.Models.LiveFlight> _liveFlights = Array.Empty<SimCrewOps.Hosting.Models.LiveFlight>();
 
@@ -257,12 +283,14 @@ public sealed class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _liveFlights, value);
     }
     public RelayCommand RetrySyncCommand { get; }
-    public RelayCommand RefreshFlightCommand { get; }
     public RelayCommand SaveSettingsCommand { get; }
-
-    /// <summary>Downloads and applies the pending update, then exits the app.</summary>
     public RelayCommand InstallUpdateCommand { get; }
 
+    /// <summary>
+    /// Resets the current session to Preflight without losing departure/arrival context.
+    /// Bound to a "Reset Flight" button in the dashboard header.
+    /// </summary>
+    public RelayCommand ResetSessionCommand { get; }
     public RelayCommand OpenAccountSettingsCommand { get; } = new RelayCommand(() =>
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
@@ -273,7 +301,7 @@ public sealed class MainWindowViewModel : ObservableObject
     public RelayCommand OpenLogbookCommand { get; } = new RelayCommand(() =>
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
-            FileName = "https://www.simcrewops.com/my-flights",
+            FileName = "https://simcrewops.com/logbook",
             UseShellExecute = true,
         }));
 
@@ -333,16 +361,6 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         get => _assignedFlightText;
         private set => SetProperty(ref _assignedFlightText, value);
-    }
-
-    /// <summary>
-    /// Scheduled block time from the active assignment, e.g. "Scheduled 2.5h block".
-    /// Empty when no assignment or no block time is known.
-    /// </summary>
-    public string ScheduledBlockText
-    {
-        get => _scheduledBlockText;
-        private set => SetProperty(ref _scheduledBlockText, value);
     }
 
     public string PhaseSubtitle
@@ -495,6 +513,17 @@ public sealed class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _reviewHeaderRoute, value);
     }
 
+    /// <summary>
+    /// URL for the WebView2 embedded live map.
+    /// Points to simcrewops.com/tracker-map?token={trackerApiKey}.
+    /// Null until settings are loaded (WebView2 stays blank).
+    /// </summary>
+    public Uri? LiveMapUri
+    {
+        get => _liveMapUri;
+        private set => SetProperty(ref _liveMapUri, value);
+    }
+
     public string ReviewLandingMetrics
     {
         get => _reviewLandingMetrics;
@@ -580,53 +609,46 @@ public sealed class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _autoFailBannerVisible, value);
     }
 
-    /// <summary>
-    /// True when the pilot is currently grounded or in crew rest — shows the banner.
-    /// </summary>
-    public bool GroundingBannerVisible
+    public bool GroundedBannerVisible
     {
-        get => _groundingBannerVisible;
-        private set => SetProperty(ref _groundingBannerVisible, value);
+        get => _groundedBannerVisible;
+        private set => SetProperty(ref _groundedBannerVisible, value);
     }
 
-    /// <summary>
-    /// Human-readable grounding or crew-rest message shown in the banner.
-    /// </summary>
-    public string GroundingBannerText
+    public string GroundedBannerText
     {
-        get => _groundingBannerText;
-        private set => SetProperty(ref _groundingBannerText, value);
+        get => _groundedBannerText;
+        private set => SetProperty(ref _groundedBannerText, value);
     }
 
-    /// <summary>True when a new build is available and the update banner should be shown.</summary>
     public bool UpdateBannerVisible
     {
         get => _updateBannerVisible;
         private set => SetProperty(ref _updateBannerVisible, value);
     }
 
-    /// <summary>
-    /// Text shown in the update banner, e.g. "Update 3.0.0.55 available — click to install".
-    /// Changes to show download progress while the update is being applied.
-    /// </summary>
     public string UpdateBannerText
     {
         get => _updateBannerText;
         private set => SetProperty(ref _updateBannerText, value);
     }
 
-    /// <summary>True while the update ZIP is being downloaded / applied.</summary>
     public bool IsInstallingUpdate
     {
         get => _isInstallingUpdate;
         private set => SetProperty(ref _isInstallingUpdate, value);
     }
 
-    /// <summary>Download progress 0–100 while <see cref="IsInstallingUpdate"/> is true.</summary>
     public int UpdateDownloadProgress
     {
         get => _updateDownloadProgress;
         private set => SetProperty(ref _updateDownloadProgress, value);
+    }
+
+    public string PilotIdentityText
+    {
+        get => _pilotIdentityText;
+        private set => SetProperty(ref _pilotIdentityText, value);
     }
 
     public Brush RunwayMarkerBrush
@@ -670,12 +692,6 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         get => _diagnosticsRecoveryState;
         private set => SetProperty(ref _diagnosticsRecoveryState, value);
-    }
-
-    public string DiagnosticsActiveFlight
-    {
-        get => _diagnosticsActiveFlight;
-        private set => SetProperty(ref _diagnosticsActiveFlight, value);
     }
 
     public string DiagnosticsSettingsPath
@@ -726,17 +742,52 @@ public sealed class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _diagnosticsRawTelemetry, value);
     }
 
+    public string DiagnosticsTouchdownRates
+    {
+        get => _diagnosticsTouchdownRates;
+        private set => SetProperty(ref _diagnosticsTouchdownRates, value);
+    }
+
+    public string DiagnosticsConnection
+    {
+        get => _diagnosticsConnection;
+        private set => SetProperty(ref _diagnosticsConnection, value);
+    }
+
+    public string DiagnosticsPreflightPilot
+    {
+        get => _diagnosticsPreflightPilot;
+        private set => SetProperty(ref _diagnosticsPreflightPilot, value);
+    }
+
+    public string DiagnosticsFlightSession
+    {
+        get => _diagnosticsFlightSession;
+        private set => SetProperty(ref _diagnosticsFlightSession, value);
+    }
+
+    public string DiagnosticsUploadSync
+    {
+        get => _diagnosticsUploadSync;
+        private set => SetProperty(ref _diagnosticsUploadSync, value);
+    }
+
+    public string DiagnosticsStorageBuild
+    {
+        get => _diagnosticsStorageBuild;
+        private set => SetProperty(ref _diagnosticsStorageBuild, value);
+    }
+
+    public string DiagnosticsBeaconPath
+    {
+        get => _diagnosticsBeaconPath;
+        private set => SetProperty(ref _diagnosticsBeaconPath, value);
+    }
+
     public string SettingsSaveStatus
     {
         get => _settingsSaveStatus;
         private set => SetProperty(ref _settingsSaveStatus, value);
-    }
-
-    /// <summary>False while a Refresh Flight fetch is in progress, preventing double-clicks.</summary>
-    public bool IsFlightRefreshEnabled
-    {
-        get => _isFlightRefreshEnabled;
-        private set => SetProperty(ref _isFlightRefreshEnabled, value);
     }
 
     public string DepartureIcao
@@ -918,26 +969,38 @@ public sealed class MainWindowViewModel : ObservableObject
             }
 
             RaisePropertyChanged(nameof(IsDashboardVisible));
+            RaisePropertyChanged(nameof(IsLiveMapVisible));
             RaisePropertyChanged(nameof(IsAcarsVisible));
             RaisePropertyChanged(nameof(IsReviewVisible));
             RaisePropertyChanged(nameof(IsDiagnosticsVisible));
             RaisePropertyChanged(nameof(IsSettingsVisible));
             RaisePropertyChanged(nameof(DashboardNavUnderlineVisibility));
+            RaisePropertyChanged(nameof(LiveMapNavUnderlineVisibility));
             RaisePropertyChanged(nameof(AcarsNavUnderlineVisibility));
             RaisePropertyChanged(nameof(ReviewNavUnderlineVisibility));
             RaisePropertyChanged(nameof(DiagnosticsNavUnderlineVisibility));
             RaisePropertyChanged(nameof(SettingsNavUnderlineVisibility));
 
+            // Start/stop the map polling based on whether the Live Map tab is visible.
+            if (_liveMapService is not null)
+            {
+                if (value == NavPage.LiveMap)
+                    _liveMapService.Start();
+                else
+                    _ = _liveMapService.StopAsync();
+            }
         }
     }
 
     public bool IsDashboardVisible => SelectedPage == NavPage.Dashboard;
+    public bool IsLiveMapVisible   => SelectedPage == NavPage.LiveMap;
     public bool IsAcarsVisible     => SelectedPage == NavPage.Acars;
     public bool IsReviewVisible => SelectedPage == NavPage.Review;
     public bool IsDiagnosticsVisible => SelectedPage == NavPage.Diagnostics;
     public bool IsSettingsVisible => SelectedPage == NavPage.Settings;
 
     public Visibility DashboardNavUnderlineVisibility => IsDashboardVisible ? Visibility.Visible : Visibility.Hidden;
+    public Visibility LiveMapNavUnderlineVisibility   => IsLiveMapVisible   ? Visibility.Visible : Visibility.Hidden;
     public Visibility AcarsNavUnderlineVisibility     => IsAcarsVisible     ? Visibility.Visible : Visibility.Hidden;
     public Visibility ReviewNavUnderlineVisibility => IsReviewVisible ? Visibility.Visible : Visibility.Hidden;
     public Visibility DiagnosticsNavUnderlineVisibility => IsDiagnosticsVisible ? Visibility.Visible : Visibility.Hidden;
@@ -971,10 +1034,22 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         ApplySnapshot(snapshot);
+
+        // Fire preflight check on startup; gates session scoring if grounded.
+        _ = Task.Run(async () =>
+        {
+            var preflight = await _shellHost.CheckPreflightAsync();
+            if (preflight is not null)
+            {
+                App.Current.Dispatcher.Invoke(() =>
+                {
+                    ApplyPreflightStatus(preflight);
+                });
+            }
+        });
+
         await RefreshAsync();
         _pollingTimer.Start();
-
-        // Fire the first update check without blocking the UI startup path.
         _ = CheckForUpdateAsync();
         _updateCheckTimer.Start();
     }
@@ -1009,49 +1084,31 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private async Task RetrySyncAsync()
     {
-        SyncStatusText = "SYNCING…";
-        SyncStatusBrush = new SolidColorBrush(MediaColor.FromRgb(56, 91, 105));
-        try
-        {
-            await _shellHost.SyncNowAsync();
-        }
-        catch (Exception ex)
-        {
-            SyncStatusText  = "SYNC ERROR";
-            SyncStatusBrush = new SolidColorBrush(MediaColor.FromRgb(212, 98, 90));
-            DiagnosticsSyncState = $"Retry failed: {ex.Message}";
-            return;
-        }
-
+        await _shellHost.SyncNowAsync();
         if (_latestSnapshot is not null)
         {
             ApplySnapshot(await _shellHost.PollAsync());
         }
     }
 
-    private async Task RefreshFlightAsync()
+    private async Task ResetSessionAsync()
     {
-        IsFlightRefreshEnabled = false;
-        SettingsSaveStatus = "Refreshing flight assignment…";
+        var snapshot = await _shellHost.ResetSessionAsync();
+        _lastAutoResetNotificationUtc = DateTimeOffset.UtcNow;
+        ApplySnapshot(snapshot);
+    }
 
-        try
+    /// <summary>
+    /// Called on the thread-pool whenever LiveMapService delivers a new fleet snapshot.
+    /// Marshals the update onto the UI thread via LiveFlights; the view's canvas
+    /// code-behind listens for PropertyChanged and redraws using its own ActualWidth/Height.
+    /// </summary>
+    private void OnLiveMapPositionsUpdated(object? sender, IReadOnlyList<SimCrewOps.Hosting.Models.LiveFlight> flights)
+    {
+        System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
         {
-            await _shellHost.ForceRefreshActiveFlightAsync();
-            if (_latestSnapshot is not null)
-            {
-                ApplySnapshot(await _shellHost.PollAsync());
-            }
-
-            SettingsSaveStatus = "Flight refreshed — departure and arrival updated.";
-        }
-        catch
-        {
-            SettingsSaveStatus = "Could not reach SimCrewOps — check your connection and API token.";
-        }
-        finally
-        {
-            IsFlightRefreshEnabled = true;
-        }
+            LiveFlights = flights;
+        });
     }
 
     private async Task SaveSettingsAsync()
@@ -1086,7 +1143,7 @@ public sealed class MainWindowViewModel : ObservableObject
             }
             else
             {
-                SettingsSaveStatus = "Connected ✓  No scheduled flight found — check My Flights on www.simcrewops.com/my-flights.";
+                SettingsSaveStatus = "Connected ✓  No scheduled flight found — check your Logbook on simcrewops.com/logbook.";
             }
         }
         catch (Exception ex)
@@ -1095,59 +1152,60 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
 
-    // ── Auto-updater ─────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Checks the GitHub Releases API for a newer build and updates the banner
-    /// if one is found.  All failures are swallowed; this never throws.
-    /// </summary>
     private async Task CheckForUpdateAsync()
     {
         try
         {
             var info = await _updateChecker.CheckForUpdateAsync().ConfigureAwait(false);
+            _lastUpdateCheckUtc = DateTimeOffset.UtcNow;
+            _lastUpdateError = null;
+
             if (info?.IsUpdateAvailable != true)
+            {
                 return;
+            }
 
             _pendingUpdate = info;
-
-            // Marshal back to the UI thread (DispatcherTimer callbacks already are, but
-            // the initial fire from InitializeAsync runs on a thread-pool continuation).
             Application.Current.Dispatcher.Invoke(() =>
             {
                 UpdateBannerText = $"Update available: v{info.LatestVersion} — click to install";
                 UpdateBannerVisible = true;
             });
         }
-        catch
+        catch (Exception ex)
         {
-            // Update checks must never surface to the user.
+            _lastUpdateError = ex.Message;
+            // Update checks should never interrupt tracker use.
         }
     }
 
-    /// <summary>
-    /// Downloads the pending update, launches the PowerShell updater script, then
-    /// exits the application so the script can overwrite the executable.
-    /// </summary>
     private async Task InstallUpdateAsync()
     {
         var update = _pendingUpdate;
         if (update is null || IsInstallingUpdate)
+        {
             return;
+        }
 
         IsInstallingUpdate = true;
-        UpdateBannerText = "Downloading update… 0%";
         UpdateBannerVisible = true;
+        UpdateBannerText = "Downloading update… 0%";
+
+        void OnDownloadProgress(object? _, double fraction)
+        {
+            var percent = (int)(fraction * 100);
+            UpdateDownloadProgress = percent;
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                UpdateBannerText = $"Downloading update… {percent}%";
+            });
+        }
 
         try
         {
             _appUpdater.DownloadProgressChanged += OnDownloadProgress;
+            await _appUpdater.DownloadAndApplyAsync(update).ConfigureAwait(false);
 
-            await _appUpdater
-                .DownloadAndApplyAsync(update)
-                .ConfigureAwait(false);
-
-            // The PowerShell script has been launched and is waiting for us to exit.
             Application.Current.Dispatcher.Invoke(() =>
             {
                 UpdateBannerText = "Restarting…";
@@ -1156,18 +1214,13 @@ public sealed class MainWindowViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            _appUpdater.DownloadProgressChanged -= OnDownloadProgress;
             IsInstallingUpdate = false;
-            UpdateBannerText =
-                $"Update failed: {ex.Message} — check your connection and try again.";
+            _lastUpdateError = ex.Message;
+            UpdateBannerText = $"Update failed: {ex.Message}";
         }
-
-        void OnDownloadProgress(object? _, double fraction)
+        finally
         {
-            var pct = (int)(fraction * 100);
-            UpdateDownloadProgress = pct;
-            Application.Current.Dispatcher.Invoke(() =>
-                UpdateBannerText = $"Downloading update… {pct}%");
+            _appUpdater.DownloadProgressChanged -= OnDownloadProgress;
         }
     }
 
@@ -1188,22 +1241,17 @@ public sealed class MainWindowViewModel : ObservableObject
         };
         MsfsStatusBrush = snapshot.SimConnectStatus.ConnectionState switch
         {
-            SimConnectConnectionState.Connected    => new SolidColorBrush(MediaColor.FromRgb(52, 211, 153)),  // bright green
-            SimConnectConnectionState.Connecting   => new SolidColorBrush(MediaColor.FromRgb(251, 191, 36)),  // amber
-            SimConnectConnectionState.Faulted      => new SolidColorBrush(MediaColor.FromRgb(248, 113, 113)), // bright red
-            _                                      => new SolidColorBrush(MediaColor.FromRgb(148, 163, 184)), // light grey
+            SimConnectConnectionState.Connected => new SolidColorBrush(MediaColor.FromRgb(44, 122, 125)),
+            SimConnectConnectionState.Faulted => new SolidColorBrush(MediaColor.FromRgb(212, 98, 90)),
+            _ => new SolidColorBrush(MediaColor.FromRgb(56, 91, 105)),
         };
 
-        var syncEnabled = snapshot.BackgroundSyncStatus?.Enabled == true;
-        var syncError   = snapshot.BackgroundSyncStatus?.LastErrorMessage;
-        SyncStatusText = syncEnabled
-            ? (syncError is null ? "SYNCED" : "SYNC RETRY")
+        SyncStatusText = snapshot.BackgroundSyncStatus?.Enabled == true
+            ? (snapshot.BackgroundSyncStatus.LastErrorMessage is null ? "SYNCED" : "SYNC RETRY")
             : "SYNC READY";
-        SyncStatusBrush = syncEnabled && syncError is null
-            ? new SolidColorBrush(MediaColor.FromRgb(52, 211, 153))   // bright green — synced
-            : syncError is not null
-                ? new SolidColorBrush(MediaColor.FromRgb(248, 113, 113)) // bright red — error
-                : new SolidColorBrush(MediaColor.FromRgb(148, 163, 184)); // light grey — idle
+        SyncStatusBrush = snapshot.BackgroundSyncStatus?.LastErrorMessage is null
+            ? new SolidColorBrush(MediaColor.FromRgb(56, 91, 105))
+            : new SolidColorBrush(MediaColor.FromRgb(212, 98, 90));
 
         // Show actual last-upload time rather than just "token is configured".
         // Stale = no successful upload in the last 30 seconds while token is set.
@@ -1223,9 +1271,6 @@ public sealed class MainWindowViewModel : ObservableObject
         PhaseTitle = phase.ToString().ToUpperInvariant();
         HeaderFlightText = BuildHeaderFlightText(activeState, snapshot.ActiveFlight);
         AssignedFlightText = BuildAssignedFlightText(snapshot.ActiveFlight);
-        ScheduledBlockText = snapshot.ActiveFlight?.ScheduledBlockHours is { } h
-            ? $"Scheduled {h:0.0}h block"
-            : string.Empty;
         PhaseSubtitle = BuildPhaseSubtitle(phase);
         PhaseStatusLine = BuildPhaseStatusLine(telemetry, phase);
 
@@ -1237,11 +1282,7 @@ public sealed class MainWindowViewModel : ObservableObject
         DepartureName = string.Empty;
         ArrivalIcao = activeState?.Context.ArrivalAirportIcao?.ToUpperInvariant() ?? "----";
         ArrivalName = string.Empty;
-        // Prefer the aircraft title detected from MSFS (what's actually loaded in the sim).
-        // Fall back to the scheduled bid aircraft type if SimConnect hasn't reported one yet.
-        AircraftType = snapshot.SimConnectStatus.DetectedAircraftTitle
-            ?? activeState?.Context.AircraftType
-            ?? "—";
+        AircraftType = BuildAircraftTypeDisplay(activeState, snapshot.LastRawTelemetryFrame);
 
         BeaconLightOn = telemetry?.BeaconLightOn == true;
         TaxiLightOn = telemetry?.TaxiLightsOn == true;
@@ -1260,22 +1301,13 @@ public sealed class MainWindowViewModel : ObservableObject
         TouchdownGForce = landingMetrics is not null ? $"{landingMetrics.TouchdownGForce:0.00}" : "--";
         TouchdownBounces = landingMetrics is not null ? $"{landingMetrics.BounceCount}" : "--";
 
-        var runway = activeState?.LandingRunwayResolution;
-        var postLanding = activeState?.CurrentPhase is FlightPhase.Landing
-            or FlightPhase.TaxiIn or FlightPhase.Arrival;
-        LandingRunway = runway is not null
-            ? $"{runway.AirportIcao} {runway.Runway.RunwayIdentifier}"
-            : postLanding ? "No arrival airport set" : string.Empty;
-        TdzDistanceFt   = runway is not null ? $"{runway.Projection.DistanceFromThresholdFeet:0}" : "--";
-        TdzCrossTrackFt = runway is not null ? $"{Math.Abs(runway.Projection.CrossTrackDistanceFeet):0}" : "--";
-        TdzExcessFt     = runway is not null && runway.Projection.TouchdownZoneExcessDistanceFeet > 0
-            ? $"{runway.Projection.TouchdownZoneExcessDistanceFeet:0}"
-            : runway is not null ? "0" : "--";
+        LandingRunway = string.Empty;
+        TdzDistanceFt = "--";
+        TdzCrossTrackFt = "--";
+        TdzExcessFt = "0";
 
-        var score    = activeState?.ScoreResult.FinalScore    ?? 88;
-        var maxScore = activeState?.ScoreResult.MaximumScore  ?? 120.0;
-        // Normalize to a 0–100 percentage so the bar width is independent of the raw maximum.
-        ScoreBarWidth = Math.Clamp(score / maxScore * 200.0, 0, 200);
+        var score = activeState?.ScoreResult.FinalScore ?? 88;
+        ScoreBarWidth = Math.Clamp(score / 100.0 * 200.0, 0, 200);
 
         AlertType = phase switch
         {
@@ -1291,57 +1323,57 @@ public sealed class MainWindowViewModel : ObservableObject
         InTime  = FormatTimeUtc(activeState?.BlockTimes.BlocksOnUtc,  "--:--z");
         BlockTime = FormatBlockElapsed(activeState?.BlockTimes.BlocksOffUtc, activeState?.BlockTimes.BlocksOnUtc);
 
-        // ── Grounding / crew-rest banner ──────────────────────────────────────
-        // Preflight check takes priority; post-flight status is used as fallback.
-        var preflightStatus  = snapshot.PreflightStatus;
-        var postFlightStatus = snapshot.LastPostFlightStatus;
-
-        if (preflightStatus?.IsGrounded == true)
-        {
-            GroundingBannerVisible = true;
-            GroundingBannerText = preflightStatus.GroundingReason is { Length: > 0 } reason
-                ? $"⚠ You are grounded: {reason}. {preflightStatus.GroundingAction}".Trim(' ', '.')  + "."
-                : "⚠ You are grounded. Check SimCrewOps for details.";
-        }
-        else if (preflightStatus?.InCrewRest == true)
-        {
-            GroundingBannerVisible = true;
-            var endsAt = preflightStatus.CrewRestEndsAt?.ToLocalTime().ToString("HH:mm") ?? "soon";
-            GroundingBannerText = $"✈ Crew rest active — you may fly again after {endsAt}.";
-        }
-        else if (postFlightStatus?.IsGrounded == true)
-        {
-            GroundingBannerVisible = true;
-            GroundingBannerText = postFlightStatus.StrikeAction is { Length: > 0 } action
-                ? $"⚠ Strike issued for this flight. {action}".Trim()
-                : "⚠ A strike was issued for your last flight. Check SimCrewOps for details.";
-        }
-        else
-        {
-            GroundingBannerVisible = false;
-            GroundingBannerText = string.Empty;
-        }
-
         UpdatePersistentInstruments(telemetry);
         PopulatePhasePills(phase);
-        PopulateMetricTiles(phase, telemetry, activeState);
+        PopulateMetricTiles(phase, telemetry);
         PopulateStatusChips(phase, telemetry);
         PopulateScoreRows(activeState?.ScoreResult);
 
-        // Display score as a normalised 0–100 integer so the number is always in the familiar range
-        // regardless of whether the session had runway data (max=120) or not (max=100).
-        ScoreText = activeState?.ScoreResult is { } sr
-            ? Math.Round(sr.FinalScore / sr.MaximumScore * 100.0).ToString("0", CultureInfo.InvariantCulture)
-            : "--";
-        GradeText = activeState?.ScoreResult.Grade is { Length: > 0 } grade ? $"Grade {grade}" : "Grade --";
-        ScoreSummary = activeState is null
-            ? "No score available until a live session is in progress."
-            : $"Phase subtotal {activeState.ScoreResult.PhaseSubtotal:0.#} with global deductions {activeState.ScoreResult.GlobalDeductions:0.#}.";
+        if (snapshot.ServerCareerResult is { } career)
+        {
+            // Server is authoritative once the session is uploaded.
+            ScoreText = career.Score.ToString("0", CultureInfo.InvariantCulture);
+            GradeText = string.IsNullOrWhiteSpace(career.Grade) ? "Grade --" : $"Grade {career.Grade}";
+            ScoreSummary = $"Server score: {career.Score:0.#}  |  +{career.HoursAdded:0.##} hrs  |  +${career.Pay:0}";
+        }
+        else
+        {
+            ScoreText = activeState?.ScoreResult.FinalScore.ToString("0", CultureInfo.InvariantCulture) ?? "--";
+            GradeText = activeState?.ScoreResult.Grade is { Length: > 0 } grade ? $"Grade {grade} (est)" : "Grade --";
+            ScoreSummary = activeState is null
+                ? "No score available until a live session is in progress."
+                : $"Estimated — phase subtotal {activeState.ScoreResult.PhaseSubtotal:0.#} with global deductions {activeState.ScoreResult.GlobalDeductions:0.#}.";
+        }
 
-        AlertPrimaryTitle = activeState is null
+        // Keep grounded/identity state live from the latest preflight result.
+        if (snapshot.PreflightStatus is { } pf)
+        {
+            ApplyPreflightStatus(pf);
+        }
+
+        // Post-flight grounded banner overrides preflight banner if a new strike just landed.
+        if (snapshot.PostFlightStatus?.IsGrounded == true)
+        {
+            GroundedBannerVisible = true;
+            GroundedBannerText = $"Grounded — {snapshot.PostFlightStatus.StrikeAction ?? "Check simcrewops.com for details."}";
+        }
+
+        // Surface auto-reset notification for 5 seconds after a reposition or manual reset.
+        if (snapshot.AutoResetOccurredUtc is not null)
+        {
+            _lastAutoResetNotificationUtc = snapshot.AutoResetOccurredUtc;
+        }
+        var showResetNotification = _lastAutoResetNotificationUtc is not null
+            && DateTimeOffset.UtcNow - _lastAutoResetNotificationUtc < TimeSpan.FromSeconds(5);
+
+        AlertPrimaryTitle = showResetNotification
+            ? "SESSION RESET"
+            : activeState is null
             ? "Waiting for telemetry"
             : phase == FlightPhase.Approach ? "Stable by 500 AGL" : "Live phase monitoring";
-        AlertPrimaryBody = activeState is null
+        AlertPrimaryBody = showResetNotification
+            ? "Reposition detected — recording cleared. You're back to Preflight."
+            : activeState is null
             ? "The tracker will populate live alerts once SimConnect data is flowing."
             : phase == FlightPhase.Approach
             ? "VS, gear, and flap state actively monitored."
@@ -1393,27 +1425,36 @@ public sealed class MainWindowViewModel : ObservableObject
         ReviewLandingMetrics = BuildLandingMetrics(activeState);
         ApplyLandingCard(activeState);
 
-        var simAircraft = snapshot.SimConnectStatus.DetectedAircraftTitle is { Length: > 0 } t ? $" • {t}" : string.Empty;
-        DiagnosticsSimState = $"{snapshot.SimConnectStatus.ConnectionState}{simAircraft} {(snapshot.SimConnectStatus.LastErrorMessage is { Length: > 0 } err ? $"• {err}" : string.Empty)}".Trim();
+        DiagnosticsSimState = $"{snapshot.SimConnectStatus.ConnectionState} {(snapshot.SimConnectStatus.LastErrorMessage is { Length: > 0 } err ? $"• {err}" : string.Empty)}".Trim();
         DiagnosticsSyncState = snapshot.BackgroundSyncStatus is null
             ? "Background sync disabled"
             : $"{snapshot.BackgroundSyncStatus.LastTrigger ?? "idle"} • failures {snapshot.BackgroundSyncStatus.ConsecutiveFailureCount}";
-        var pendingCount = snapshot.RecoverySnapshot.PendingCompletedSessions.Count;
         DiagnosticsRecoveryState = activeState is not null && snapshot.RecoverySnapshot.HasRecoverableCurrentSession
-            ? $"Resumed session active • autosave {snapshot.RecoverySnapshot.CurrentSession!.SavedUtc.ToLocalTime():HH:mm:ss}{(pendingCount > 0 ? $" • {pendingCount} pending upload" : string.Empty)}"
+            ? $"Resumed session active • last autosave {snapshot.RecoverySnapshot.CurrentSession!.SavedUtc.ToLocalTime():g}"
             : snapshot.RecoverySnapshot.HasRecoverableCurrentSession
-            ? $"Recoverable session saved {snapshot.RecoverySnapshot.CurrentSession!.SavedUtc.ToLocalTime():HH:mm:ss}{(pendingCount > 0 ? $" • {pendingCount} pending upload" : string.Empty)}"
-            : pendingCount > 0 ? $"{pendingCount} session(s) pending upload"
+            ? $"Recoverable current session saved {snapshot.RecoverySnapshot.CurrentSession!.SavedUtc.ToLocalTime():g}"
             : "No recoverable session";
         DiagnosticsSettingsPath = snapshot.SettingsFilePath;
         DiagnosticsStoragePath = snapshot.Settings.Storage.RootDirectory;
-        DiagnosticsActiveFlight = snapshot.ActiveFlight is { } af
-            ? BuildAssignedFlightText(af)
-            : "None assigned — departure/arrival airports will not auto-populate";
 
+        // Structured diagnostics panels
+        DiagnosticsConnection = BuildConnectionDiagnostics(snapshot.SimConnectStatus, snapshot.LastRawTelemetryFrame);
+        DiagnosticsPreflightPilot = BuildPreflightPilotDiagnostics(snapshot.PreflightStatus);
+        DiagnosticsFlightSession = BuildFlightSessionDiagnostics(activeState, snapshot.RecoverySnapshot, snapshot.ActiveFlight, snapshot.SessionWasResumed);
+        DiagnosticsUploadSync = BuildUploadSyncDiagnostics(snapshot.BackgroundSyncStatus, snapshot.RecoverySnapshot, snapshot.LastUploadAttemptUtc, snapshot.LastUploadResult, snapshot.ServerCareerResult, snapshot.PostFlightStatus);
+        DiagnosticsStorageBuild = BuildStorageBuildDiagnostics(snapshot.SettingsFilePath, snapshot.Settings);
+
+        // Build the embedded map URL from base URL + tracker API token.
+        // Keep null when no token is configured — WebView2 shows a "configure your token" message
+        // rather than navigating to /tracker-map with no auth (which returns 404).
+        var mapToken = snapshot.Settings.Api.PilotApiToken;
+        var mapBase  = snapshot.Settings.Api.BaseUri.ToString().TrimEnd('/');
+        LiveMapUri = string.IsNullOrWhiteSpace(mapToken)
+            ? null
+            : new Uri($"{mapBase}/tracker-map?token={Uri.EscapeDataString(mapToken)}");
         DiagnosticsLastTelemetry = telemetry is null
             ? "No telemetry received yet"
-            : $"{telemetry.Phase} • IAS {telemetry.IndicatedAirspeedKnots:0} kts • VS {telemetry.VerticalSpeedFpm:0} fpm • AGL {telemetry.AltitudeAglFeet:0} ft • HDG {telemetry.HeadingMagneticDegrees:0}° • {telemetry.Latitude:F4},{telemetry.Longitude:F4}";
+            : $"IAS {telemetry.IndicatedAirspeedKnots:0} • VS {telemetry.VerticalSpeedFpm:0} • AGL {telemetry.AltitudeAglFeet:0}";
 
         TelemetryDiagnosticsEnabled = snapshot.Settings.Debug.EnableTelemetryDiagnostics;
         if (TelemetryDiagnosticsEnabled)
@@ -1425,6 +1466,8 @@ public sealed class MainWindowViewModel : ObservableObject
             DiagnosticsTelemetryCounters =
                 $"Polls {snapshot.SimConnectStatus.PollCount} • Null polls {snapshot.SimConnectStatus.NullPollCount} • Raw frames {snapshot.SimConnectStatus.RawFrameCount} • Mapped frames {snapshot.SimConnectStatus.TelemetryFrameCount}";
             DiagnosticsRawTelemetry = BuildRawTelemetryDebug(snapshot.LastRawTelemetryFrame);
+            DiagnosticsTouchdownRates = BuildTouchdownDiagnostics(snapshot.RuntimeState);
+            DiagnosticsBeaconPath = BuildBeaconPathDiagnostics(snapshot.LivePositionEnabled, snapshot.LivePositionLastUploadUtc, snapshot.RuntimeState);
         }
         else
         {
@@ -1432,13 +1475,37 @@ public sealed class MainWindowViewModel : ObservableObject
             DiagnosticsTelemetryFlow = "Enable telemetry diagnostics to inspect raw SimConnect frame flow.";
             DiagnosticsTelemetryCounters = "Poll, null-frame, and mapping counters will appear here.";
             DiagnosticsRawTelemetry = "Raw SimConnect values will appear here when telemetry diagnostics are enabled.";
+            DiagnosticsTouchdownRates = "Enable telemetry diagnostics to see touchdown detail.";
+            DiagnosticsBeaconPath = "Beacon and path info appears when telemetry diagnostics are enabled.";
+        }
+    }
+
+    private void ApplyPreflightStatus(SimCrewOps.Sync.Models.PreflightStatusResponse status)
+    {
+        var displayName = status.PilotDisplayName ?? status.PilotUsername;
+        var rank = status.Rank;
+        PilotIdentityText = !string.IsNullOrWhiteSpace(displayName)
+            ? (string.IsNullOrWhiteSpace(rank) ? displayName : $"{displayName} · {rank}")
+            : string.Empty;
+
+        if (status.IsGrounded)
+        {
+            GroundedBannerVisible = true;
+            GroundedBannerText = string.IsNullOrWhiteSpace(status.GroundingAction)
+                ? $"Grounded: {status.GroundingReason ?? "See simcrewops.com for details."}"
+                : $"Grounded: {status.GroundingReason}  •  {status.GroundingAction}";
+        }
+        else
+        {
+            GroundedBannerVisible = false;
+            GroundedBannerText = string.Empty;
         }
     }
 
     private void ApplySampleState()
     {
         PopulatePhasePills(FlightPhase.Preflight);
-        PopulateMetricTiles(FlightPhase.Preflight, null, null);
+        PopulateMetricTiles(FlightPhase.Preflight, null);
         PopulateStatusChips(FlightPhase.Preflight, null);
         PopulateScoreRows(null);
         PopulateSampleAcarsMessages();
@@ -1452,17 +1519,17 @@ public sealed class MainWindowViewModel : ObservableObject
         AcarsMessages.Add(new AcarsMessageModel("DISPATCH", "Winds updated: 270/18G24 at destination. Expect ILS 28R arrival. ATIS Kilo.", "22:43 UTC", IsOutbound: false));
     }
 
-    private void PopulateMetricTiles(FlightPhase phase, TelemetryFrame? telemetry, FlightSessionRuntimeState? activeState)
+    private void PopulateMetricTiles(FlightPhase phase, TelemetryFrame? telemetry)
     {
         MetricTiles.Clear();
 
-        foreach (var tile in BuildMetricTiles(phase, telemetry, activeState))
+        foreach (var tile in BuildMetricTiles(phase, telemetry))
         {
             MetricTiles.Add(tile);
         }
     }
 
-    private IReadOnlyList<MetricTileModel> BuildMetricTiles(FlightPhase phase, TelemetryFrame? telemetry, FlightSessionRuntimeState? activeState) => phase switch
+    private IReadOnlyList<MetricTileModel> BuildMetricTiles(FlightPhase phase, TelemetryFrame? telemetry) => phase switch
     {
         FlightPhase.Preflight or FlightPhase.TaxiOut or FlightPhase.TaxiIn => new[]
         {
@@ -1500,36 +1567,14 @@ public sealed class MainWindowViewModel : ObservableObject
             new MetricTileModel("ENG 2", telemetry is null ? "--" : telemetry.Engine2Running ? "ON" : "OFF"),
             new MetricTileModel("TAXI LT", telemetry is null ? "--" : telemetry.TaxiLightsOn ? "ON" : "OFF"),
         },
-        FlightPhase.Approach => new[]
-        {
-            new MetricTileModel("IAS", telemetry is null ? "-- kt" : $"{telemetry.IndicatedAirspeedKnots:0} kt"),
-            new MetricTileModel("VS",  telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm", telemetry is { VerticalSpeedFpm: < -1000 }),
-            new MetricTileModel("ALT AGL", telemetry is null ? "-- ft" : $"{telemetry.AltitudeAglFeet:0} ft"),
-            // G/S: ILS glideslope deviation in CDI dots from NAV1 (positive = above, negative = below).
-            // Alert when deviation exceeds 1 dot — well outside the stable approach envelope.
-            new MetricTileModel("G/S",
-                telemetry is null ? "-- dot" : $"{telemetry.Nav1GlideslopeErrorDots:+0.0;-0.0;0.0} dot",
-                telemetry is not null && Math.Abs(telemetry.Nav1GlideslopeErrorDots) > 1.0),
-            // DIST THR: haversine distance to the pre-resolved runway threshold.
-            // Populated once an arrival airport and heading-matched runway are known.
-            new MetricTileModel("DIST THR",
-                activeState?.ApproachDistanceNm is { } dist ? $"{dist:0.0} nm" : "-- nm"),
-            // LOC: ILS localizer deviation in CDI dots from NAV1 (positive = right, negative = left).
-            new MetricTileModel("LOC",
-                telemetry is null ? "-- dot" : $"{telemetry.Nav1LocalizerErrorDots:+0.0;-0.0;0.0} dot",
-                telemetry is not null && Math.Abs(telemetry.Nav1LocalizerErrorDots) > 1.0),
-            // G/PATH: geometric 3° glidepath deviation in feet (positive = above path, negative = below).
-            // Independent of ILS — computed from AGL vs ideal altitude at this distance from threshold.
-            // Alert when ±200 ft off the ideal 3° path.
-            new MetricTileModel("G/PATH",
-                activeState?.GlidepathDeviationFeet is { } gDev ? $"{gDev:+0;-0;0} ft" : "-- ft",
-                activeState?.GlidepathDeviationFeet is { } gDevAlert && Math.Abs(gDevAlert) > 200),
-        },
         _ => new[]
         {
             new MetricTileModel("IAS", telemetry is null ? "-- kt" : $"{telemetry.IndicatedAirspeedKnots:0} kt"),
-            new MetricTileModel("VS",  telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm"),
+            new MetricTileModel("VS", telemetry is null ? "-- fpm" : $"{telemetry.VerticalSpeedFpm:0} fpm", telemetry is { VerticalSpeedFpm: < -1000 }),
             new MetricTileModel("ALT AGL", telemetry is null ? "-- ft" : $"{telemetry.AltitudeAglFeet:0} ft"),
+            new MetricTileModel("G/S", "-- dot"),
+            new MetricTileModel("DIST THR", "-- nm"),
+            new MetricTileModel("LOC", "-- dot"),
         },
     };
 
@@ -1612,16 +1657,8 @@ public sealed class MainWindowViewModel : ObservableObject
         // Bar fills a 200 px track (used in both the phase-bar column and the review right panel)
         var fillWidth = phaseScore.MaxPoints <= 0 ? 0.0 : 200.0 * pct;
 
-        // Build the full findings list for the review page.
-        // Automatic-fail findings are shown as-is; point deductions include the amount.
-        var findings = phaseScore.Findings
-            .Where(f => f.PointsDeducted > 0 || f.IsAutomaticFail)
-            .Select(f => new FindingRowModel(
-                f.IsAutomaticFail
-                    ? $"↳ {f.Description}"
-                    : $"↳ {f.Description}  −{f.PointsDeducted:0.#} pts",
-                f.IsAutomaticFail))
-            .ToList();
+        // Surface the first non-trivial finding as a single line under the bar
+        var finding = phaseScore.Findings.FirstOrDefault(f => f.PointsDeducted > 0 || f.IsAutomaticFail);
 
         return new ScoreRowModel(
             phaseScore.Phase switch
@@ -1635,7 +1672,9 @@ public sealed class MainWindowViewModel : ObservableObject
                 : $"{phaseScore.AwardedPoints:0.#} / {phaseScore.MaxPoints:0.#}",
             fillWidth,
             fillBrush,
-            findings);
+            finding is not null
+                ? [new FindingRowModel($"↳ {finding.Description}", finding.IsAutomaticFail)]
+                : []);
     }
 
     private static List<ScoreRowModel> CreateSampleScoreRows()
@@ -1854,7 +1893,6 @@ public sealed class MainWindowViewModel : ObservableObject
     private static string BuildAssignedFlightText(ActiveFlightResponse? activeFlight)
     {
         if (activeFlight is null) return string.Empty;
-        var airline = string.IsNullOrWhiteSpace(activeFlight.Airline) ? "" : $"{activeFlight.Airline} ";
         var dep = (activeFlight.Departure ?? "----").ToUpperInvariant();
         var arr = (activeFlight.Arrival ?? "----").ToUpperInvariant();
         var fn  = string.IsNullOrWhiteSpace(activeFlight.FlightNumber) ? "" : $" • {activeFlight.FlightNumber.ToUpperInvariant()}";
@@ -1868,7 +1906,7 @@ public sealed class MainWindowViewModel : ObservableObject
             "premium_time" => "premium",
             _              => "booked",
         };
-        return $"{airline}{dep} → {arr}{fn}{ac}  ({src})";
+        return $"{dep} → {arr}{fn}{ac}  ({src})";
     }
 
     private static string BuildBidDisplay(
@@ -1910,8 +1948,16 @@ public sealed class MainWindowViewModel : ObservableObject
             : "Free Flight";
     }
 
-    private static string BuildAircraftTypeDisplay(FlightSessionRuntimeState? activeState)
+    private static string BuildAircraftTypeDisplay(
+        FlightSessionRuntimeState? activeState,
+        SimConnectRawTelemetryFrame? rawFrame)
     {
+        // Prefer the ICAO type detected from the loaded aircraft file path.
+        if (!string.IsNullOrWhiteSpace(rawFrame?.ActiveProfileIcaoType))
+        {
+            return rawFrame.ActiveProfileIcaoType;
+        }
+
         if (activeState is null)
         {
             return "—";
@@ -1944,29 +1990,6 @@ public sealed class MainWindowViewModel : ObservableObject
         return $"{(int)elapsed.TotalHours}:{elapsed.Minutes:D2}";
     }
 
-    private static string BuildSyncDiagnosticLine(SimCrewOps.Hosting.Models.BackgroundSyncStatus? sync)
-    {
-        if (sync is null) return "Background sync disabled";
-        if (sync.IsRunning) return "Running…";
-
-        var parts = new System.Collections.Generic.List<string>();
-
-        parts.Add(sync.LastRunCompletedUtc is { } completed
-            ? $"Last run {completed.ToLocalTime():HH:mm:ss}"
-            : "Never run");
-
-        if (sync.LastSummary is { SucceededCount: > 0 } s)
-            parts.Add($"{s.SucceededCount} uploaded");
-
-        if (sync.ConsecutiveFailureCount > 0)
-            parts.Add($"{sync.ConsecutiveFailureCount} consecutive failure(s)");
-
-        if (sync.LastErrorMessage is { Length: > 0 } err)
-            parts.Add($"Error: {err}");
-
-        return string.Join(" • ", parts);
-    }
-
     private static string ToYesNo(bool value) => value ? "yes" : "no";
 
     private static string FormatTimeAgo(DateTimeOffset? value) =>
@@ -1977,23 +2000,245 @@ public sealed class MainWindowViewModel : ObservableObject
     private static string BuildRawTelemetryDebug(SimConnectRawTelemetryFrame? rawFrame)
     {
         if (rawFrame is null)
-        {
             return "No raw SimConnect frame received yet.";
-        }
 
-        var lightSource = rawFrame.LightSourceIsIndividual ? "individual SimVars" : "LIGHT STATES bitmask fallback";
-        var bridgeStatus = rawFrame.LvarBridgeRequired
-            ? rawFrame.LvarBridgeConnected ? "LVAR bridge: connected ✓" : "LVAR bridge: NOT connected — install MobiFlight WASM"
-            : "LVAR bridge: not needed";
+        var lightSource = rawFrame.LightSourceIsIndividual ? "individual" : "LIGHT STATES bitmask";
+        var bridge = rawFrame.LvarBridgeRequired
+            ? rawFrame.LvarBridgeConnected ? "LVAR ✓" : "LVAR NOT connected (MobiFlight WASM needed)"
+            : "LVAR not needed";
         return
-            $"Aircraft profile: {rawFrame.ActiveProfileName}  •  {bridgeStatus}\n" +
-            $"HDG MAG {rawFrame.HeadingMagneticDegrees:0.##} • HDG TRUE {rawFrame.HeadingTrueDegrees:0.##} • AGL {rawFrame.AltitudeAglFeet:0.##} • ALT {rawFrame.AltitudeFeet:0.##} • ON GND {rawFrame.OnGround:0} • PB pos={rawFrame.ParkingBrakePosition:0}%\n" +
-            $"GEAR HANDLE raw={rawFrame.GearPosition:0.000}  (0.000=up  1.000=down)  FLAPS idx={rawFrame.FlapsHandleIndex:0}\n" +
-            $"LIGHT source: {lightSource}\n" +
-            $"  individual  => BCN {rawFrame.LightBeaconRaw} • TAXI {rawFrame.LightTaxiRaw} • LDG {rawFrame.LightLandingRaw} • STB {rawFrame.LightStrobeRaw}\n" +
-            $"  bitmask raw => 0x{rawFrame.LightStatesRaw:X4}  (BCN=0x0002 LAND=0x0004 TAXI=0x0008 STB=0x0010)\n" +
-            $"  final used  => BCN {rawFrame.BeaconLightOn:0} • TAXI {rawFrame.TaxiLightsOn:0} • LDG {rawFrame.LandingLightsOn:0} • STB {rawFrame.StrobesOn:0}\n" +
-            $"IAS {rawFrame.IndicatedAirspeedKnots:0.##} • GS {rawFrame.GroundSpeedKnots:0.##} • VS {rawFrame.VerticalSpeedFpm:0.##}";
+            $"Aircraft : {rawFrame.ActiveProfileName}  •  {bridge}\n" +
+            $"IAS      : {rawFrame.IndicatedAirspeedKnots:0.#} kts   GS {rawFrame.GroundSpeedKnots:0.#} kts   Mach {rawFrame.Mach:0.000}\n" +
+            $"ALT      : {rawFrame.AltitudeFeet:0} ft   AGL {rawFrame.AltitudeAglFeet:0} ft   IALT {rawFrame.IndicatedAltitudeFeet:0} ft\n" +
+            $"VS (baro): {rawFrame.VerticalSpeedFpm:+0;-0} fpm   WorldY {rawFrame.VelocityWorldYFps:+0.00;-0.00} fps   TDNorm {rawFrame.TouchdownNormalVelocityFps:+0.00;-0.00} fps\n" +
+            $"HDG MAG  : {rawFrame.HeadingMagneticDegrees:0.#}°   TRUE {rawFrame.HeadingTrueDegrees:0.#}°\n" +
+            $"Wind     : {rawFrame.WindDirectionDegrees:0}° / {rawFrame.WindSpeedKnots:0.#} kts\n" +
+            $"On ground: {rawFrame.OnGround:0}   PB {rawFrame.ParkingBrakePosition:0}%   Gear raw={rawFrame.GearPosition:0.000}   Flaps idx={rawFrame.FlapsHandleIndex:0}\n" +
+            $"Lights ({lightSource}): BCN {rawFrame.BeaconLightOn:0}  STB {rawFrame.StrobesOn:0}  LDG {rawFrame.LandingLightsOn:0}  TAXI {rawFrame.TaxiLightsOn:0}\n" +
+            $"  indiv => BCN {rawFrame.LightBeaconRaw} TAXI {rawFrame.LightTaxiRaw} LDG {rawFrame.LightLandingRaw} STB {rawFrame.LightStrobeRaw}   bitmask 0x{rawFrame.LightStatesRaw:X4}\n" +
+            $"Crash    : {rawFrame.CrashFlag:0}   Stall {rawFrame.StallWarning:0}   GPWS {rawFrame.GpwsAlert:0}   Overspeed {rawFrame.OverspeedWarning:0}";
+    }
+
+    private static string BuildTouchdownRatesDebug(TouchdownRateCandidates? c)
+    {
+        if (c is null)
+            return "No touchdown recorded this session.";
+
+        return
+            $"VELOCITY WORLD Y  : {c.FpmVelocityWorldY:0} fpm\n" +
+            $"TOUCHDOWN NORMAL  : {c.FpmTouchdownNormal:0} fpm\n" +
+            $"VERTICAL SPEED    : {c.FpmVerticalSpeed:0} fpm\n" +
+            $"SELECTED (final)  : {c.FinalSelected:0} fpm";
+    }
+
+    private static string BuildConnectionDiagnostics(SimConnectHostStatus status, SimConnectRawTelemetryFrame? rawFrame)
+    {
+        var procInfo = status.SimulatorProcess is { } proc
+            ? $"{proc.ProcessName} (PID {proc.ProcessId})"
+            : "—";
+        var aircraft = rawFrame?.ActiveProfileName ?? "—";
+        var bridge = rawFrame is null ? "—"
+            : rawFrame.LvarBridgeRequired
+                ? rawFrame.LvarBridgeConnected ? "LVAR bridge: connected ✓" : "LVAR bridge: required, NOT connected"
+                : "LVAR bridge: not needed";
+        var connected = status.ConnectedUtc is { } c ? c.ToLocalTime().ToString("HH:mm:ss") : "—";
+        return
+            $"State    : {status.ConnectionState}" +
+            (status.LastErrorMessage is { Length: > 0 } e ? $"  [{e}]" : string.Empty) + "\n" +
+            $"Client   : {status.ClientPath}\n" +
+            $"Process  : {procInfo}\n" +
+            $"Connected: {connected}\n" +
+            $"FC data  : {ToYesNo(status.HasReceivedFlightCriticalData)}   Operational: {ToYesNo(status.HasReceivedOperationalData)}\n" +
+            $"Raw frame: {FormatTimeAgo(status.LastRawFrameUtc)}   Telemetry: {FormatTimeAgo(status.LastTelemetryUtc)}\n" +
+            $"Aircraft : {aircraft}   {bridge}";
+    }
+
+    private static string BuildPreflightPilotDiagnostics(SimCrewOps.Sync.Models.PreflightStatusResponse? p)
+    {
+        if (p is null)
+            return "No preflight check performed yet.";
+
+        var identity = string.IsNullOrWhiteSpace(p.PilotDisplayName) ? p.PilotUsername ?? "—" : p.PilotDisplayName;
+        var rank = string.IsNullOrWhiteSpace(p.Rank) ? string.Empty : $"  ({p.Rank})";
+        var grounded = p.IsGrounded
+            ? $"YES — {p.GroundingReason ?? "see simcrewops.com"}" +
+              (string.IsNullOrWhiteSpace(p.GroundingAction) ? string.Empty : $"  ·  {p.GroundingAction}")
+            : "No";
+        var crewRest = p.InCrewRest
+            ? $"Yes — ends {(p.CrewRestEndsAt?.ToLocalTime().ToString("HH:mm") ?? "—")}"
+            : "No";
+        return
+            $"Pilot    : {identity}{rank}\n" +
+            $"Username : {p.PilotUsername ?? "—"}\n" +
+            $"Checked  : {p.CheckedAt.ToLocalTime():HH:mm:ss} local\n" +
+            $"Grounded : {grounded}\n" +
+            $"Crew rest: {crewRest}";
+    }
+
+    private static string BuildFlightSessionDiagnostics(
+        FlightSessionRuntimeState? state,
+        SimCrewOps.Persistence.Models.SessionRecoverySnapshot recovery,
+        SimCrewOps.Sync.Models.ActiveFlightResponse? activeFlight,
+        bool sessionWasResumed)
+    {
+        var phase = state is not null ? state.CurrentPhase.ToString() : "—";
+        var sessionState = state is null
+            ? (recovery.HasRecoverableCurrentSession ? "Recovery available" : "Idle")
+            : state.IsComplete ? "Complete" : sessionWasResumed ? "Active (resumed)" : "Active";
+
+        var ctx = state?.Context;
+        var dep = ctx?.DepartureAirportIcao ?? activeFlight?.Departure ?? "——";
+        var arr = ctx?.ArrivalAirportIcao   ?? activeFlight?.Arrival   ?? "——";
+        var flt = ctx?.FlightNumber ?? activeFlight?.FlightNumber ?? string.Empty;
+        var acft = ctx?.AircraftType ?? activeFlight?.AircraftType ?? "—";
+        var mode = ctx?.FlightMode ?? "—";
+        var route = $"{dep} → {arr}" + (string.IsNullOrWhiteSpace(flt) ? string.Empty : $"  {flt}") + $"  {acft}";
+
+        var bt = state?.BlockTimes;
+        var fmtT = (DateTimeOffset? t) => t?.ToLocalTime().ToString("HH:mm") ?? "--:--";
+        var oooi = $"Out {fmtT(bt?.BlocksOffUtc)}  Off {fmtT(bt?.WheelsOffUtc)}  On {fmtT(bt?.WheelsOnUtc)}  In {fmtT(bt?.BlocksOnUtc)}";
+
+        var autosave = recovery.CurrentSession is { } cs
+            ? $"autosave {cs.SavedUtc.ToLocalTime():HH:mm:ss}"
+            : "no autosave";
+
+        return
+            $"Phase    : {phase}\n" +
+            $"State    : {sessionState}\n" +
+            $"Route    : {route}\n" +
+            $"Mode     : {mode}\n" +
+            $"OOOI     : {oooi}\n" +
+            $"Recovery : {autosave}   Resumed: {ToYesNo(sessionWasResumed)}";
+    }
+
+    private static string BuildUploadSyncDiagnostics(
+        SimCrewOps.Hosting.Models.BackgroundSyncStatus? sync,
+        SimCrewOps.Persistence.Models.SessionRecoverySnapshot recovery,
+        DateTimeOffset? lastAttemptUtc,
+        SimCrewOps.Sync.Models.CompletedSessionUploadResult? lastResult,
+        SimCrewOps.Sync.Models.CareerResultDto? career,
+        SimCrewOps.Sync.Models.PostFlightStatusDto? postFlight)
+    {
+        var syncLine = sync is null
+            ? "Disabled"
+            : $"{(sync.Enabled ? "Enabled" : "Disabled")}  •  " +
+              $"last run {(sync.LastRunCompletedUtc?.ToLocalTime().ToString("HH:mm:ss") ?? "—")}  •  " +
+              $"{sync.ConsecutiveFailureCount} failure(s)";
+
+        var pending = recovery.PendingCompletedSessions.Count;
+        var oldestAge = pending > 0 && recovery.PendingCompletedSessions[0] is { } oldest
+            ? $"oldest: {FormatTimeAgo(oldest.SavedUtc)}"
+            : string.Empty;
+
+        var uploadLine = lastAttemptUtc is null
+            ? "No upload attempted this run"
+            : $"{lastAttemptUtc.Value.ToLocalTime():HH:mm:ss}  —  " +
+              (lastResult is null ? "pending"
+               : lastResult.Status == SimCrewOps.Sync.Models.SessionUploadStatus.Success
+                   ? $"Success (HTTP {lastResult.StatusCode})"
+                   : $"{lastResult.Status} (HTTP {lastResult.StatusCode?.ToString() ?? "—"})  {lastResult.ErrorMessage}");
+
+        var serverLine = career is not null
+            ? $"Grade {career.Grade}  Score {career.Score:0.##}  +{career.HoursAdded:0.##}h  Pay ${career.Pay:0.##}"
+            : "—";
+        var sessionId = lastResult?.ServerSessionId ?? "—";
+        var postFlightLine = postFlight is null ? "—"
+            : postFlight.IsGrounded ? $"GROUNDED — {postFlight.StrikeType}  {postFlight.StrikeAction}"
+            : $"Not grounded  ({postFlight.StrikeType ?? "no strike"})";
+
+        return
+            $"Sync     : {syncLine}\n" +
+            $"Pending  : {pending} session(s){(string.IsNullOrEmpty(oldestAge) ? string.Empty : $"  {oldestAge}")}\n" +
+            $"Upload   : {uploadLine}\n" +
+            $"Server ID: {sessionId}\n" +
+            $"Career   : {serverLine}\n" +
+            $"PostFlt  : {postFlightLine}";
+    }
+
+    private string BuildStorageBuildDiagnostics(string settingsPath, SimCrewOps.Hosting.Models.TrackerAppSettings settings)
+    {
+        var updateLine = _pendingUpdate is { } update
+            ? $"Update   : v{update.LatestVersion} available"
+            : "Update   : up to date";
+        var currentSessionPath = Path.Combine(settings.Storage.RootDirectory, settings.Storage.CurrentSessionFileName);
+        var completedSessionsPath = Path.Combine(settings.Storage.RootDirectory, settings.Storage.CompletedSessionsDirectoryName);
+        var errorLine = string.IsNullOrWhiteSpace(_lastUpdateError)
+            ? "Upd Err  : none"
+            : $"Upd Err  : {_lastUpdateError}";
+
+        return
+            $"Version  : {AppVersion}\n" +
+            $"Channel  : beta-latest\n" +
+            $"Checked  : {FormatTimeAgo(_lastUpdateCheckUtc)}\n" +
+            $"{updateLine}\n" +
+            $"{errorLine}\n" +
+            $"Settings : {settingsPath}\n" +
+            $"Storage  : {settings.Storage.RootDirectory}\n" +
+            $"Current  : {currentSessionPath}\n" +
+            $"Done Dir : {completedSessionsPath}";
+    }
+
+    private static string BuildBeaconPathDiagnostics(bool beaconEnabled, DateTimeOffset? lastSuccessUtc, FlightSessionRuntimeState? state)
+    {
+        var beaconLine = beaconEnabled
+            ? lastSuccessUtc is { } t ? $"Active  •  last OK {t.ToLocalTime():HH:mm:ss} ({FormatTimeAgo(t)})" : "Active  •  no successful send yet"
+            : "Inactive (no API token configured)";
+
+        var flightPathCount = state?.ScoreInput.FlightPath.Count ?? 0;
+        var approachPathCount = state?.ScoreInput.ApproachPath.Count ?? 0;
+
+        return
+            $"LIVE BEACON\n" +
+            $"State    : {beaconLine}\n\n" +
+            $"PATH SAMPLING\n" +
+            $"FlightPath  : {flightPathCount} pts\n" +
+            $"ApproachPath: {approachPathCount} pts";
+    }
+
+    private static string BuildTouchdownDiagnostics(FlightSessionRuntimeState? state)
+    {
+        if (state is null)
+            return "No active session.";
+
+        var landing = state.ScoreInput.Landing;
+        var analysis = state.ScoreInput.LandingAnalysis;
+        var candidates = state.ScoreInput.TouchdownRateCandidates;
+
+        if (candidates is null && !analysis.TouchdownLat.HasValue)
+            return "No touchdown recorded this session.";
+
+        var bt = state.BlockTimes;
+        var tdTime = bt.WheelsOnUtc?.ToLocalTime().ToString("HH:mm:ss") ?? "—";
+
+        var selectedFpm = candidates?.FinalSelected ?? landing.TouchdownVerticalSpeedFpm;
+
+        // Mark which candidate matched the final selection
+        static string Mark(double candidate, double final) =>
+            Math.Abs(candidate - final) < 1.0 ? " ★" : string.Empty;
+
+        var candBlock = candidates is null ? "—"
+            : $"  VELOCITY WORLD Y  : {candidates.FpmVelocityWorldY:0} fpm{Mark(candidates.FpmVelocityWorldY, selectedFpm)}\n" +
+              $"  TOUCHDOWN NORMAL  : {candidates.FpmTouchdownNormal:0} fpm{Mark(candidates.FpmTouchdownNormal, selectedFpm)}\n" +
+              $"  VERTICAL SPEED    : {candidates.FpmVerticalSpeed:0} fpm{Mark(candidates.FpmVerticalSpeed, selectedFpm)}";
+
+        var latLon = analysis.TouchdownLat.HasValue && analysis.TouchdownLon.HasValue
+            ? $"{analysis.TouchdownLat.Value:0.0000}° / {analysis.TouchdownLon.Value:0.0000}°"
+            : "—";
+
+        return
+            $"Touchdown: {tdTime} local\n" +
+            $"Bounces  : {landing.BounceCount}\n" +
+            $"FPM sel  : {selectedFpm:0} fpm  (★ = selected source)\n" +
+            $"Candidates:\n{candBlock}\n\n" +
+            $"IAS      : {landing.TouchdownIndicatedAirspeedKnots:0} kts\n" +
+            $"Pitch    : {landing.TouchdownPitchAngleDegrees:0.#}°  MaxWoW: {landing.MaxPitchWhileWowDegrees:0.#}°\n" +
+            $"Bank     : {landing.TouchdownBankAngleDegrees:0.#}°\n" +
+            $"G-force  : {landing.TouchdownGForce:0.00}\n" +
+            $"Lat/Lon  : {latLon}\n" +
+            $"Hdg MAG  : {(analysis.TouchdownHeadingMagneticDeg.HasValue ? $"{analysis.TouchdownHeadingMagneticDeg.Value:0}°" : "—")}\n" +
+            $"Alt      : {(analysis.TouchdownAltFt.HasValue ? $"{analysis.TouchdownAltFt.Value:0} ft" : "—")}\n" +
+            $"Wind     : {(analysis.WindDirectionDegrees.HasValue ? $"{analysis.WindDirectionDegrees.Value:0}° / {analysis.WindSpeedKnots ?? 0:0.#} kts" : "—")}\n" +
+            $"Gear up  : {ToYesNo(landing.GearUpAtTouchdown)}";
     }
 
     private void UpdatePersistentInstruments(TelemetryFrame? telemetry)
