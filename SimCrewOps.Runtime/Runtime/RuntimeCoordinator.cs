@@ -80,6 +80,32 @@ public sealed class RuntimeCoordinator
         }
     }
 
+    public FlightSessionContext CurrentContext => _context;
+
+    /// <summary>
+    /// Updates the aircraft type and category from a SimConnect detection event.
+    /// Unlike <see cref="UpdateContext"/>, this is intentionally NOT gated on blocks-off —
+    /// the ATC MODEL SimVar fires asynchronously and typically arrives a few seconds into
+    /// pushback, after blocks-off has already fired.
+    /// </summary>
+    public void UpdateAircraftType(string aircraftType, string aircraftCategory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(aircraftType);
+
+        _context = _context with
+        {
+            AircraftType     = aircraftType,
+            AircraftCategory = aircraftCategory,
+        };
+    }
+
+    /// <summary>
+    /// Resets all flight-tracking state to a clean Preflight baseline while preserving
+    /// the current context. Called when a completed session is detected at the start of a
+    /// new SimConnect connection so the new flight gets a fresh tracker.
+    /// </summary>
+    public void ResetForNewSession() => Reset();
+
     /// <summary>
     /// Resets the session to a clean Preflight state without losing the current flight context
     /// (departure/arrival ICAO, flight number, etc.).  Called automatically when a sim

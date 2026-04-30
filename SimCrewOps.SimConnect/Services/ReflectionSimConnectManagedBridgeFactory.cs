@@ -126,6 +126,11 @@ internal sealed class ReflectionSimConnectManagedBridge : ISimConnectManagedBrid
         return Task.CompletedTask;
     }
 
+    public Task<SimConnectAirportFacilitySnapshot?> RequestFacilityDataAsync(
+        string airportIcao,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<SimConnectAirportFacilitySnapshot?>(null);
+
     private void RegisterDefinitions(Assembly managedAssembly, Type simConnectType)
     {
         var dataTypeEnum = managedAssembly.GetType("Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE")
