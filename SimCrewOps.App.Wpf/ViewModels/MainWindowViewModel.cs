@@ -2209,36 +2209,67 @@ public sealed class MainWindowViewModel : ObservableObject
 
         var bt = state.BlockTimes;
         var tdTime = bt.WheelsOnUtc?.ToLocalTime().ToString("HH:mm:ss") ?? "—";
-
         var selectedFpm = candidates?.FinalSelected ?? landing.TouchdownVerticalSpeedFpm;
+        var sourceLabel = candidates?.SelectedSourceLabel is { Length: > 0 } lbl ? lbl : "—";
 
-        // Mark which candidate matched the final selection
+        // Display FPM as negative (descending = negative, aviation convention).
+        static string Fpm(double mag) => mag > 0 ? $"-{mag:0}" : "0";
+        // Mark which TD-frame candidate matches FinalSelected (compare positive magnitudes).
         static string Mark(double candidate, double final) =>
             Math.Abs(candidate - final) < 1.0 ? " ★" : string.Empty;
 
-        var candBlock = candidates is null ? "—"
-            : $"  VELOCITY WORLD Y  : {candidates.FpmVelocityWorldY:0} fpm{Mark(candidates.FpmVelocityWorldY, selectedFpm)}\n" +
-              $"  TOUCHDOWN NORMAL  : {candidates.FpmTouchdownNormal:0} fpm{Mark(candidates.FpmTouchdownNormal, selectedFpm)}\n" +
-              $"  VERTICAL SPEED    : {candidates.FpmVerticalSpeed:0} fpm{Mark(candidates.FpmVerticalSpeed, selectedFpm)}";
+        // ── A. Selected Touchdown Rate ──────────────────────────────────
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("── A. Selected Touchdown Rate ──────────────────");
+        sb.AppendLine($"Touchdown  : {tdTime} local");
+        sb.AppendLine($"Rate (sel) : {Fpm(selectedFpm)} fpm  [{sourceLabel}]");
+        sb.AppendLine($"Bounces    : {landing.BounceCount}");
+        sb.AppendLine();
 
+        // ── B. Candidate Comparison ─────────────────────────────────────
+        sb.AppendLine("── B. Candidate Comparison ──────────────────────");
+        if (candidates is null)
+        {
+            sb.AppendLine("  —");
+        }
+        else
+        {
+            sb.AppendLine("                         TD frame    Last airborne");
+            sb.AppendLine($"  VELOCITY WORLD Y  : {Fpm(candidates.FpmVelocityWorldY),9} fpm{Mark(candidates.FpmVelocityWorldY, selectedFpm),-2}  {Fpm(candidates.FpmVelocityWorldYLastAirborne),8} fpm");
+            sb.AppendLine($"  VERTICAL SPEED    : {Fpm(candidates.FpmVerticalSpeed),9} fpm{Mark(candidates.FpmVerticalSpeed, selectedFpm),-2}  {Fpm(candidates.FpmVerticalSpeedLastAirborne),8} fpm");
+            sb.AppendLine($"  TOUCHDOWN NORMAL  : {Fpm(candidates.FpmTouchdownNormal),9} fpm{Mark(candidates.FpmTouchdownNormal, selectedFpm),-2}  {"(n/a)",8}");
+            sb.AppendLine($"  Raw TN fps (TD)   : {candidates.RawTouchdownNormalVelocityFpsTouchdownFrame,9:0.00} fps");
+            var firstNz = candidates.RawTouchdownNormalVelocityFpsFirstNonZero;
+            sb.AppendLine($"  Raw TN fps (1st≠0): {(firstNz.HasValue ? $"{firstNz.Value,9:0.00} fps" : "        —")}");
+        }
+        sb.AppendLine();
+
+        // ── C. Raw Landing Contract Fields ──────────────────────────────
+        sb.AppendLine("── C. Raw Landing Contract Fields ───────────────");
+        sb.AppendLine("[scoringInput.landing]");
+        sb.AppendLine($"  touchdownRateFpm    : {Fpm(landing.TouchdownVerticalSpeedFpm)}  ← payload value");
+        sb.AppendLine($"  touchdownPitchDeg   : {landing.TouchdownPitchAngleDegrees:0.#}°");
+        sb.AppendLine($"  maxPitchWhileWowDeg : {landing.MaxPitchWhileWowDegrees:0.#}°");
+        sb.AppendLine($"  touchdownBankDeg    : {landing.TouchdownBankAngleDegrees:0.#}°");
+        sb.AppendLine($"  touchdownGForce     : {landing.TouchdownGForce:0.00}");
+        sb.AppendLine($"  bounceCount         : {landing.BounceCount}");
+        sb.AppendLine($"  gearUpAtTouchdown   : {ToYesNo(landing.GearUpAtTouchdown)}");
+        sb.AppendLine();
+        sb.AppendLine("[landingAnalysis]");
         var latLon = analysis.TouchdownLat.HasValue && analysis.TouchdownLon.HasValue
             ? $"{analysis.TouchdownLat.Value:0.0000}° / {analysis.TouchdownLon.Value:0.0000}°"
             : "—";
+        sb.AppendLine($"  lat/lon             : {latLon}");
+        sb.AppendLine($"  hdg MAG             : {(analysis.TouchdownHeadingMagneticDeg.HasValue ? $"{analysis.TouchdownHeadingMagneticDeg.Value:0}°" : "—")}");
+        sb.AppendLine($"  alt                 : {(analysis.TouchdownAltFt.HasValue ? $"{analysis.TouchdownAltFt.Value:0} ft" : "—")}");
+        sb.AppendLine($"  touchdownIAS        : {(analysis.TouchdownIAS.HasValue ? $"{analysis.TouchdownIAS.Value:0} kts" : "—")}");
+        sb.AppendLine($"  wind                : {(analysis.WindDirectionDegrees.HasValue ? $"{analysis.WindDirectionDegrees.Value:0}° / {analysis.WindSpeedKnots ?? 0:0.#} kts" : "—")}");
+        sb.AppendLine();
+        sb.AppendLine("[paths]");
+        sb.AppendLine($"  approachPath        : {state.ScoreInput.ApproachPath.Count} pts");
+        sb.Append($"  flightPath          : {state.ScoreInput.FlightPath.Count} pts");
 
-        return
-            $"Touchdown: {tdTime} local\n" +
-            $"Bounces  : {landing.BounceCount}\n" +
-            $"FPM sel  : {selectedFpm:0} fpm  (★ = selected source)\n" +
-            $"Candidates:\n{candBlock}\n\n" +
-            $"IAS      : {landing.TouchdownIndicatedAirspeedKnots:0} kts\n" +
-            $"Pitch    : {landing.TouchdownPitchAngleDegrees:0.#}°  MaxWoW: {landing.MaxPitchWhileWowDegrees:0.#}°\n" +
-            $"Bank     : {landing.TouchdownBankAngleDegrees:0.#}°\n" +
-            $"G-force  : {landing.TouchdownGForce:0.00}\n" +
-            $"Lat/Lon  : {latLon}\n" +
-            $"Hdg MAG  : {(analysis.TouchdownHeadingMagneticDeg.HasValue ? $"{analysis.TouchdownHeadingMagneticDeg.Value:0}°" : "—")}\n" +
-            $"Alt      : {(analysis.TouchdownAltFt.HasValue ? $"{analysis.TouchdownAltFt.Value:0} ft" : "—")}\n" +
-            $"Wind     : {(analysis.WindDirectionDegrees.HasValue ? $"{analysis.WindDirectionDegrees.Value:0}° / {analysis.WindSpeedKnots ?? 0:0.#} kts" : "—")}\n" +
-            $"Gear up  : {ToYesNo(landing.GearUpAtTouchdown)}";
+        return sb.ToString();
     }
 
     private void UpdatePersistentInstruments(TelemetryFrame? telemetry)
