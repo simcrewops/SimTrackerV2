@@ -67,12 +67,20 @@
                 Padding="22,14">
             <Grid>
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
+                <!-- Logo badge -->
+                <Image Source="pack://application:,,,/SimTrackerV2;component/Resources/logo-badge.png"
+                       Width="36" Height="36"
+                       VerticalAlignment="Center"
+                       Margin="0,0,18,0"
+                       RenderOptions.BitmapScalingMode="HighQuality" />
+
                 <!-- Left: flight number + route + aircraft -->
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,0">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,0">
 
                     <!-- Flight number -->
                     <TextBlock Text="{Binding HeaderFlightText}"
@@ -159,7 +167,7 @@
                 </StackPanel>
 
                 <!-- Right: status pills -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <Border Background="{StaticResource BgElevatedBrush}"
                             BorderBrush="{StaticResource BorderDefaultBrush}"
                             BorderThickness="1"
@@ -200,7 +208,52 @@
         <!-- ═══════════════════════════════════════════════════════
              ROW 2 — MAIN CONTENT
         ═══════════════════════════════════════════════════════ -->
-        <Grid Grid.Row="2">
+        <DockPanel Grid.Row="2">
+
+            <!-- Grounding / crew-rest banner (docks to top, always on top of content) -->
+            <Border DockPanel.Dock="Top"
+                    Background="#7B2C00"
+                    CornerRadius="10"
+                    Padding="18,10"
+                    Margin="0,0,0,10"
+                    Visibility="{Binding GroundingBannerVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <TextBlock Text="{Binding GroundingBannerText}"
+                           FontSize="13" FontWeight="SemiBold"
+                           Foreground="#FFF" TextWrapping="Wrap" />
+            </Border>
+
+            <!-- Update-available banner (docks to top) -->
+            <Border DockPanel.Dock="Top"
+                    Background="#1E3A52"
+                    BorderBrush="#2D6A9F"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    Padding="18,10"
+                    Margin="0,0,0,10"
+                    Visibility="{Binding UpdateBannerVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding UpdateBannerText}"
+                               FontSize="13" FontWeight="SemiBold"
+                               Foreground="#B3D9FF"
+                               VerticalAlignment="Center"
+                               TextWrapping="Wrap" />
+                    <Button Grid.Column="1"
+                            Content="Install Update"
+                            Command="{Binding InstallUpdateCommand}"
+                            IsEnabled="{Binding IsInstallingUpdate, Converter={StaticResource InverseBooleanConverter}}"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Padding="14,6"
+                            Margin="14,0,0,0"
+                            VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <!-- Page content fills remaining space -->
+            <Grid>
             <Grid Visibility="{Binding IsDashboardVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -1239,7 +1292,8 @@
                 </Grid>
             </Border>
 
-        </Grid>
+            </Grid>  <!-- /DockPanel fill Grid (page content) -->
+        </DockPanel>
 
 
         <!-- ═══════════════════════════════════════════════════════

@@ -48,6 +48,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly UpdateChecker _updateChecker;
     private readonly AppUpdater _appUpdater;
     private UpdateInfo? _pendingUpdate;
+    private DateTimeOffset? _lastUpdateCheckUtc;
     private TrackerShellSnapshot? _latestSnapshot;
     private bool _isRefreshing;
     private NavPage _selectedPage = NavPage.Dashboard;
@@ -1155,6 +1156,8 @@ public sealed class MainWindowViewModel : ObservableObject
         try
         {
             var info = await _updateChecker.CheckForUpdateAsync().ConfigureAwait(false);
+            _lastUpdateCheckUtc = DateTimeOffset.UtcNow;
+
             if (info?.IsUpdateAvailable != true)
                 return;
 
@@ -2189,13 +2192,19 @@ public sealed class MainWindowViewModel : ObservableObject
         return sb.ToString().TrimEnd();
     }
 
-    private static string BuildStorageBuildDiagnostics(string settingsFilePath, SimCrewOps.Hosting.Models.TrackerAppSettings settings)
+    private string BuildStorageBuildDiagnostics(string settingsFilePath, SimCrewOps.Hosting.Models.TrackerAppSettings settings)
     {
-        var version = AppVersion;
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"Build      : {version}");
+        sb.AppendLine($"Build      : {AppVersion}  (beta channel)");
         sb.AppendLine($"Settings   : {settingsFilePath}");
-        sb.Append($"Storage    : {settings.Storage.RootDirectory}");
+        sb.AppendLine($"Storage    : {settings.Storage.RootDirectory}");
+        sb.AppendLine();
+        sb.AppendLine($"Updater    : beta-latest");
+        sb.AppendLine($"Last check : {FormatTimeAgo(_lastUpdateCheckUtc)}");
+        if (_pendingUpdate is { } u)
+            sb.Append($"Available  : v{u.LatestVersion}  ← click update banner to install");
+        else
+            sb.Append("Available  : up to date");
         return sb.ToString();
     }
 

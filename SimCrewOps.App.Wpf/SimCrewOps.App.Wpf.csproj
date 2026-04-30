@@ -40,8 +40,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Logo badge as a WPF Resource — loaded via pack:// URI by AppIcon at runtime. -->
+    <!-- Logo assets — loaded via pack:// URI at runtime. -->
     <Resource Include="Resources\logo-badge.png" />
+    <Resource Include="Resources\logo-wordmark-transparent.png" />
   </ItemGroup>
 
   <ItemGroup>
