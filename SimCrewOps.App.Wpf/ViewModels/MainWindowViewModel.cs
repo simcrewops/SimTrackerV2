@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.IO;
+using System.Net.Http;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Media;
@@ -2123,7 +2125,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
         var pending = recovery.PendingCompletedSessions.Count;
         var oldestAge = pending > 0 && recovery.PendingCompletedSessions[0] is { } oldest
-            ? $"oldest: {FormatTimeAgo(oldest.QueuedUtc)}"
+            ? $"oldest: {FormatTimeAgo(oldest.SavedUtc)}"
             : string.Empty;
 
         var uploadLine = lastAttemptUtc is null
