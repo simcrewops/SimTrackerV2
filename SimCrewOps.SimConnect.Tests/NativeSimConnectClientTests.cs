@@ -7,6 +7,21 @@ namespace SimCrewOps.SimConnect.Tests;
 public sealed class NativeSimConnectClientTests
 {
     [Fact]
+    public void ParseAtcModelValue_ExtractsIcaoFromMsfs2024InternalKey()
+    {
+        Assert.Equal("A319", NativeSimConnectBridge.ParseAtcModelValue("ATCCOM.AC_MODEL A319.0.text"));
+        Assert.Equal("B738", NativeSimConnectBridge.ParseAtcModelValue("ATCCOM.AC_MODEL B738.0.text"));
+        Assert.Equal("C700", NativeSimConnectBridge.ParseAtcModelValue("ATCCOM.AC_MODEL C700.0.text"));
+    }
+
+    [Fact]
+    public void ParseAtcModelValue_PassesThroughBareIcaoUnchanged()
+    {
+        Assert.Equal("A320", NativeSimConnectBridge.ParseAtcModelValue("A320"));
+        Assert.Equal("B77W", NativeSimConnectBridge.ParseAtcModelValue("B77W"));
+    }
+
+    [Fact]
     public void IsNoDispatchAvailable_TreatsEFailAsEmptyQueue()
     {
         Assert.True(NativeSimConnectBridge.IsNoDispatchAvailable(unchecked((int)0x80004005)));

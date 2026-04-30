@@ -193,8 +193,10 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private const uint FlightCriticalRequestId = 1;
     private const uint OperationalRequestId    = 2;
     private const uint AircraftStateRequestId  = 3;    // for RequestSystemState("AircraftLoaded")
+    private const uint AtcModelRequestId       = 4;    // one-time per aircraft load
     private const uint FlightCriticalDefinitionId = 11;
     private const uint OperationalDefinitionId    = 12;
+    private const uint AtcModelDefinitionId       = 13; // separate String256 definition
     private const uint UserObjectId = 0;
 
     private readonly nint _nativeLibraryHandle;
@@ -206,6 +208,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private LatestSimConnectState _latestState = new();
     private AircraftProfile _activeProfile = AircraftProfile.Default;
     private string? _detectedAircraftTitle;
+    private string? _atcModelSimVar;   // ATC MODEL SimVar override; null until response arrives
     private readonly MobiFlightBridge _mobiFlightBridge = new();
     private bool _disposed;
 
@@ -361,6 +364,21 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             OperationalRequestId,
             SimConnectDefinitionCatalog.ScoringAndOperationalVariables,
             SimConnectPeriod.Second);
+
+        // ATC MODEL is a String256 SimVar — cannot use RegisterDefinition() which is Float64-only
+        // and fires a periodic poll. Register the definition here once; the one-time request fires
+        // per aircraft load in HandleSystemState().
+        var atcDefResult = _exports.AddToDataDefinition(
+            _simConnectHandle,
+            AtcModelDefinitionId,
+            "ATC MODEL",
+            null,
+            SimConnectDataType.String256,
+            0.0f,
+            0);
+        if (atcDefResult < 0)
+            System.Diagnostics.Debug.WriteLine(
+                $"[SimConnect] AddToDataDefinition(ATC MODEL) failed: 0x{atcDefResult:X8}");
     }
 
     private void RequestAircraftState()
@@ -427,6 +445,16 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             case OperationalRequestId:
                 UpdateOperational(Marshal.PtrToStructure<OperationalSnapshot>(payloadPointer));
                 break;
+            case AtcModelRequestId:
+                var atcData = Marshal.PtrToStructure<AtcModelSnapshot>(payloadPointer);
+                var rawAtcModel = atcData.Value?.Trim();
+                if (!string.IsNullOrWhiteSpace(rawAtcModel))
+                {
+                    _atcModelSimVar = ParseAtcModelValue(rawAtcModel);
+                    System.Diagnostics.Debug.WriteLine($"[SimConnect] ATC MODEL raw    : {rawAtcModel}");
+                    System.Diagnostics.Debug.WriteLine($"[SimConnect] ATC MODEL parsed : {_atcModelSimVar}");
+                }
+                break;
         }
     }
 
@@ -452,6 +480,21 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Detected title : {_detectedAircraftTitle}");
         System.Diagnostics.Debug.WriteLine($"[SimConnect] Active profile : {_activeProfile.Name}" +
             (_activeProfile.RequiresLvarBridge ? " (LVAR bridge required)" : string.Empty));
+
+        // Clear any stale ATC MODEL value from the previous aircraft, then request a fresh
+        // one-time read. The response arrives asynchronously and will override _detectedAircraftTitle
+        // in EnqueueFrame() once it lands.
+        _atcModelSimVar = null;
+        var atcResult = _exports.RequestDataOnSimObject(
+            _simConnectHandle,
+            AtcModelRequestId,
+            AtcModelDefinitionId,
+            UserObjectId,
+            SimConnectPeriod.Once,
+            0, 0, 0, 0);
+        if (atcResult < 0)
+            System.Diagnostics.Debug.WriteLine(
+                $"[SimConnect] RequestDataOnSimObject(ATC MODEL) failed: 0x{atcResult:X8}");
 
         // Subscribe to profile LVARs via MobiFlight (deferred if bridge not yet Active).
         _mobiFlightBridge.SubscribeToProfile(_activeProfile);
@@ -570,6 +613,24 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         };
 
         EnqueueFrame();
+    }
+
+    /// <summary>
+    /// Extracts a clean ICAO type code from the raw ATC MODEL SimVar value.
+    /// MSFS 2024 returns an internal model key: "ATCCOM.AC_MODEL A319.0.text".
+    /// MSFS 2020 may return a bare ICAO code: "A319".
+    /// </summary>
+    internal static string ParseAtcModelValue(string raw)
+    {
+        const string marker = "AC_MODEL ";
+        var idx = raw.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            var after = raw[(idx + marker.Length)..];
+            var dot = after.IndexOf('.');
+            return dot > 0 ? after[..dot] : after;
+        }
+        return raw;  // already a bare ICAO code or unrecognised format — return as-is
     }
 
     /// <summary>
@@ -764,7 +825,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             ActiveProfileIcaoType = _activeProfile.IcaoType,
             LvarBridgeRequired  = _activeProfile.RequiresLvarBridge,
             LvarBridgeConnected = _mobiFlightBridge.IsActive,
-            AircraftTitle       = _detectedAircraftTitle,
+            AircraftTitle       = _atcModelSimVar ?? _detectedAircraftTitle,
         });
     }
 
@@ -890,6 +951,16 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly uint ExceptionCode;
         public readonly uint SendId;
         public readonly uint Index;
+    }
+
+    // ATC MODEL SimVar response — String256 payload returned by RequestDataOnSimObject.
+    // MSFS 2024 returns an internal key such as "ATCCOM.AC_MODEL A319.0.text";
+    // MSFS 2020 may return a bare ICAO code. ParseAtcModelValue() handles both.
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    private readonly struct AtcModelSnapshot
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public readonly string? Value;
     }
 
     // SIMCONNECT_RECV_SYSTEM_STATE — returned by SimConnect_RequestSystemState.

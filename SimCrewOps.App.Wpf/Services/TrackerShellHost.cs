@@ -36,6 +36,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
     private DateTimeOffset? _lastUploadAttemptUtc;
     private CompletedSessionUploadResult? _lastUploadResult;
     private bool _sessionWasResumed;
+    private string? _lastDetectedAircraftTitle;
 
     // Refresh the active flight from the API every 5 minutes while the app is running.
     private static readonly TimeSpan ActiveFlightRefreshInterval = TimeSpan.FromMinutes(5);
@@ -113,6 +114,23 @@ public sealed class TrackerShellHost : IAsyncDisposable
         if (simConnectPoll.HasTelemetry)
         {
             _lastRawTelemetryFrame = simConnectPoll.RawFrame;
+
+            // Detected sim aircraft wins over bid aircraft from the webapp.
+            // ActiveProfileIcaoType (profile catalog) is checked first; DetectedAircraftTitle
+            // already contains the ATC MODEL > cfg > path priority chain from NativeSimConnectClient.
+            // Cache the value and push it into the runtime coordinator whenever it changes so
+            // live beacons and session uploads both reflect the actual loaded aircraft.
+            var detectedAircraft = simConnectPoll.RawFrame?.ActiveProfileIcaoType
+                ?? simConnectPoll.Status.DetectedAircraftTitle;
+
+            if (!string.IsNullOrWhiteSpace(detectedAircraft)
+                && detectedAircraft != _lastDetectedAircraftTitle)
+            {
+                _lastDetectedAircraftTitle = detectedAircraft;
+                _persistentRuntimeCoordinator.UpdateAircraftType(
+                    detectedAircraft,
+                    ResolveAircraftCategory(detectedAircraft));
+            }
 
             // Grounded pilots must not accumulate a trackable session. Raw telemetry is
             // still received (SimConnect stays live for display) but we do not feed frames
@@ -235,6 +253,15 @@ public sealed class TrackerShellHost : IAsyncDisposable
                 : new FlightSessionContext();
 
             _persistentRuntimeCoordinator.UpdateContext(context);
+
+            // Re-apply the sim-detected aircraft so the 5-minute API refresh cannot overwrite
+            // a detected aircraft with the bid aircraft from the webapp.
+            if (_lastDetectedAircraftTitle is not null)
+            {
+                _persistentRuntimeCoordinator.UpdateAircraftType(
+                    _lastDetectedAircraftTitle,
+                    ResolveAircraftCategory(_lastDetectedAircraftTitle));
+            }
         }
         catch
         {

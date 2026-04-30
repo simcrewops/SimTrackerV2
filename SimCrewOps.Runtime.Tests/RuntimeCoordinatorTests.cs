@@ -9,6 +9,36 @@ namespace SimCrewOps.Runtime.Tests;
 
 public sealed class RuntimeCoordinatorTests
 {
+    // ── Aircraft detection ────────────────────────────────────────────────────
+
+    [Fact]
+    public void UpdateAircraftType_OverridesBidAircraftInContext()
+    {
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext { AircraftType = "B738", AircraftCategory = "narrowbody" });
+
+        coordinator.UpdateAircraftType("A319", "narrowbody");
+
+        Assert.Equal("A319", coordinator.CurrentContext.AircraftType);
+    }
+
+    [Fact]
+    public void UpdateAircraftType_WinsOverSubsequentUpdateContext_PreBlocksOff()
+    {
+        // Guards the re-apply pattern in TrackerShellHost.RefreshActiveFlightAsync():
+        // after UpdateContext() pushes the bid aircraft, UpdateAircraftType() must win.
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext { AircraftType = "B738" });
+
+        coordinator.UpdateAircraftType("A319", "narrowbody");
+        // Simulate 5-minute refresh pushing bid aircraft back (no blocks-off yet):
+        coordinator.UpdateContext(new FlightSessionContext { AircraftType = "B738" });
+        // Re-apply detected aircraft (the TrackerShellHost fix):
+        coordinator.UpdateAircraftType("A319", "narrowbody");
+
+        Assert.Equal("A319", coordinator.CurrentContext.AircraftType);
+    }
+
     // ── Block times ───────────────────────────────────────────────────────────
 
     [Fact]
