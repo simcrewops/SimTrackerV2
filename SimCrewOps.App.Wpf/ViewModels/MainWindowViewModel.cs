@@ -2108,7 +2108,7 @@ public sealed class MainWindowViewModel : ObservableObject
     }
 
     private static string BuildUploadSyncDiagnostics(
-        SimCrewOps.Sync.Models.BackgroundSyncStatus? sync,
+        SimCrewOps.Hosting.Models.BackgroundSyncStatus? sync,
         SimCrewOps.Persistence.Models.SessionRecoverySnapshot recovery,
         DateTimeOffset? lastAttemptUtc,
         SimCrewOps.Sync.Models.CompletedSessionUploadResult? lastResult,
