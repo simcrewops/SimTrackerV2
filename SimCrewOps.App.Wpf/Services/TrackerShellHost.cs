@@ -116,12 +116,12 @@ public sealed class TrackerShellHost : IAsyncDisposable
             _lastRawTelemetryFrame = simConnectPoll.RawFrame;
 
             // Detected sim aircraft wins over bid aircraft from the webapp.
-            // ActiveProfileIcaoType (profile catalog) is checked first; DetectedAircraftTitle
-            // already contains the ATC MODEL > cfg > path priority chain from NativeSimConnectClient.
-            // Cache the value and push it into the runtime coordinator whenever it changes so
-            // live beacons and session uploads both reflect the actual loaded aircraft.
-            var detectedAircraft = simConnectPoll.RawFrame?.ActiveProfileIcaoType
-                ?? simConnectPoll.Status.DetectedAircraftTitle;
+            // DetectedAircraftTitle is used first because NativeSimConnectClient already
+            // resolves it as ATC MODEL > profile IcaoType > aircraft.cfg > path. Falling back
+            // to ActiveProfileIcaoType only when DetectedAircraftTitle is absent ensures the
+            // authoritative ATC MODEL result is never displaced by the profile catalog entry.
+            var detectedAircraft = simConnectPoll.Status.DetectedAircraftTitle
+                ?? simConnectPoll.RawFrame?.ActiveProfileIcaoType;
 
             if (!string.IsNullOrWhiteSpace(detectedAircraft)
                 && detectedAircraft != _lastDetectedAircraftTitle)

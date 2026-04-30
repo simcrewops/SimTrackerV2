@@ -76,6 +76,37 @@ public sealed class MsfsSimConnectHostTests
     }
 
     [Fact]
+    public async Task PollAsync_SetsDetectedAircraftTitleFromAircraftTitle_NotProfileIcaoType()
+    {
+        // Regression guard for the TrackerShellHost priority fix:
+        // Status.DetectedAircraftTitle must come from rawFrame.AircraftTitle (which
+        // NativeSimConnectBridge resolves as ATC MODEL > cfg > path). TrackerShellHost
+        // uses Status.DetectedAircraftTitle as its first-priority source so the ATC MODEL
+        // result is never displaced by the profile catalog's ActiveProfileIcaoType.
+        var client = new StubSimConnectClient
+        {
+            NextFrame = new SimConnectRawTelemetryFrame
+            {
+                HasFlightCriticalData = true,
+                AircraftTitle       = "A319",   // ATC MODEL-resolved value
+                ActiveProfileIcaoType = "A32NX", // profile catalog — different, lower priority
+            },
+        };
+
+        var host = new MsfsSimConnectHost(
+            new StubProcessDetector(new SimulatorProcessInfo
+            {
+                ProcessId = 1,
+                ProcessName = "FlightSimulator.exe",
+            }),
+            client);
+
+        var result = await host.PollAsync();
+
+        Assert.Equal("A319", result.Status.DetectedAircraftTitle);
+    }
+
+    [Fact]
     public async Task PollAsync_FaultsAndClosesWhenClientReadFails()
     {
         var client = new StubSimConnectClient
