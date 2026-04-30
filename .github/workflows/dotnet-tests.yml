@@ -12,6 +12,8 @@ on:
       - "**/*.ps1"
       - "**/*.sln"
       - "**/*.xaml"
+      - "**/*.png"
+      - "**/*.ico"
       - "**/*.json"
       - "**/*.props"
       - "**/*.targets"
@@ -29,6 +31,8 @@ on:
       - "**/*.ps1"
       - "**/*.sln"
       - "**/*.xaml"
+      - "**/*.png"
+      - "**/*.ico"
       - "**/*.json"
       - "**/*.props"
       - "**/*.targets"
@@ -165,6 +169,23 @@ jobs:
           -DestinationPath "artifacts/package/SimTrackerV2-preview-win-x64.zip"
           -Force
 
+      - name: Build preview installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "artifacts/installer" | Out-Null
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            Write-Warning "Inno Setup not found at $iscc — skipping installer build."
+            exit 0
+          }
+          & $iscc `
+            /DMyAppVersion="${{ env.PACKAGE_VERSION }}" `
+            /DMyAppSourceDir="artifacts\package\SimTrackerV2-preview-win-x64" `
+            "packaging\windows\installer\SimTrackerV2.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Rename-Item "artifacts/installer/SimTrackerV2-Setup.exe" `
+            "SimTrackerV2-Setup-${{ env.PACKAGE_VERSION }}.exe" -ErrorAction SilentlyContinue
+
       - name: Upload preview artifact
         uses: actions/upload-artifact@v7
         with:
@@ -172,6 +193,7 @@ jobs:
           path: |
             artifacts/package/SimTrackerV2-preview-win-x64.zip
             artifacts/package/SimTrackerV2-preview-win-x64/**
+            artifacts/installer/SimTrackerV2-Setup*.exe
           if-no-files-found: error
 
   publish-windows-beta:
@@ -224,6 +246,23 @@ jobs:
           -DestinationPath "artifacts/package/SimTrackerV2-beta-win-x64.zip"
           -Force
 
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "artifacts/installer" | Out-Null
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            Write-Warning "Inno Setup not found at $iscc — skipping installer build."
+            exit 0
+          }
+          & $iscc `
+            /DMyAppVersion="${{ env.PACKAGE_VERSION }}" `
+            /DMyAppSourceDir="artifacts\package\SimTrackerV2-beta-win-x64" `
+            "packaging\windows\installer\SimTrackerV2.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Rename-Item "artifacts/installer/SimTrackerV2-Setup.exe" `
+            "SimTrackerV2-Setup-${{ env.PACKAGE_VERSION }}.exe" -ErrorAction SilentlyContinue
+
       - name: Upload beta package
         uses: actions/upload-artifact@v7
         with:
@@ -231,6 +270,7 @@ jobs:
           path: |
             artifacts/package/SimTrackerV2-beta-win-x64.zip
             artifacts/package/SimTrackerV2-beta-win-x64/**
+            artifacts/installer/SimTrackerV2-Setup*.exe
           if-no-files-found: error
 
       - name: Publish GitHub Release (rolling beta)
@@ -244,14 +284,20 @@ jobs:
             **Version:** `${{ env.PACKAGE_VERSION }}`
             **Commit:** `${{ github.sha }}`
 
-            ### Install
-            1. Download `SimCrewOps-Tracker-beta-win-x64.zip` below
-            2. Extract anywhere and run `SimCrewOps.App.Wpf.exe`
+            ### Install (recommended)
+            Download **SimTrackerV2-Setup.exe** and run it — no manual extraction required.
+            The installer places the app in your user profile and creates a Start Menu entry.
+
+            ### Portable / fallback
+            Download `SimTrackerV2-beta-win-x64.zip`, extract anywhere, and run `SimTrackerV2.exe`.
+            All runtime dependencies are bundled — no DLLs to manage manually.
 
             ### Connect your account
             - Open **Settings** tab → click the `simcrewops.com/settings` link → copy your **API Token** → paste it in and Save
             - The **LIVE SYNC ON** badge in the nav bar confirms you're connected
           prerelease: true
           make_latest: false
-          files: artifacts/package/SimTrackerV2-beta-win-x64.zip
+          files: |
+            artifacts/package/SimTrackerV2-beta-win-x64.zip
+            artifacts/installer/SimTrackerV2-Setup*.exe
           token: ${{ secrets.GITHUB_TOKEN }}

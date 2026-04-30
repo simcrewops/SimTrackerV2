@@ -33,7 +33,7 @@ if (Test-Path -LiteralPath $packageRoot) {
 Ensure-Directory -Path $packageRoot
 
 # Single-file publish: the only output file is SimTrackerV2.exe.
-# SimConnect native DLLs and the runway CSV are all bundled inside it.
+# SimConnect native DLLs and the .NET runtime are bundled inside it.
 $exeSource = Join-Path $publishRoot "SimTrackerV2.exe"
 if (Test-Path -LiteralPath $exeSource) {
     Copy-Item -LiteralPath $exeSource -Destination (Join-Path $packageRoot "SimTrackerV2.exe") -Force
@@ -49,7 +49,7 @@ $versionFile = Join-Path $packageRoot "BUILD_INFO.txt"
     "Commit:  $CommitSha"
     "Built UTC: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
     ""
-    "SimConnect DLLs, runway data, and the .NET runtime are all bundled inside SimTrackerV2.exe."
+    "SimConnect DLLs and the .NET runtime are bundled inside SimTrackerV2.exe."
     "No additional files are required — just run SimTrackerV2.exe."
     ""
     "Settings are stored under %LOCALAPPDATA%\SimCrewOps\SimTrackerV2 on first launch."

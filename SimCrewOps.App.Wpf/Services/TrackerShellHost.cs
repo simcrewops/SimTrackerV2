@@ -33,6 +33,9 @@ public sealed class TrackerShellHost : IAsyncDisposable
     private PreflightStatusResponse? _preflightStatus;
     private CareerResultDto? _serverCareerResult;
     private PostFlightStatusDto? _postFlightStatus;
+    private DateTimeOffset? _lastUploadAttemptUtc;
+    private CompletedSessionUploadResult? _lastUploadResult;
+    private bool _sessionWasResumed;
 
     // Refresh the active flight from the API every 5 minutes while the app is running.
     private static readonly TimeSpan ActiveFlightRefreshInterval = TimeSpan.FromMinutes(5);
@@ -140,9 +143,12 @@ public sealed class TrackerShellHost : IAsyncDisposable
             {
                 try
                 {
+                    _lastUploadAttemptUtc = DateTimeOffset.UtcNow;
                     var uploadResult = await _serviceStack.CompletedSessionUploader
                         .UploadAsync(queued, cancellationToken)
                         .ConfigureAwait(false);
+
+                    _lastUploadResult = uploadResult;
 
                     if (uploadResult.Status == SessionUploadStatus.Success)
                     {
@@ -283,6 +289,7 @@ public sealed class TrackerShellHost : IAsyncDisposable
 
         _persistentRuntimeCoordinator.Restore(recoveredState);
         _runtimeState = recoveredState;
+        _sessionWasResumed = true;
         _recoverySnapshot = await _persistentRuntimeCoordinator
             .GetRecoverySnapshotAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -358,5 +365,8 @@ public sealed class TrackerShellHost : IAsyncDisposable
             PreflightStatus = _preflightStatus,
             ServerCareerResult = _serverCareerResult,
             PostFlightStatus = _postFlightStatus,
+            LastUploadAttemptUtc = _lastUploadAttemptUtc,
+            LastUploadResult = _lastUploadResult,
+            SessionWasResumed = _sessionWasResumed,
         };
 }

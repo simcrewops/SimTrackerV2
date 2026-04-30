@@ -13,6 +13,7 @@ using SimCrewOps.Scoring.Models;
 using SimCrewOps.SimConnect.Models;
 using SimCrewOps.Sync.Models;
 using SimCrewOps.Tracking.Models;
+using Application = System.Windows.Application;
 using Brush = System.Windows.Media.Brush;
 using MediaColor = System.Windows.Media.Color;
 
@@ -33,13 +34,22 @@ public sealed class MainWindowViewModel : ObservableObject
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion;
         if (!string.IsNullOrWhiteSpace(informational))
-            return informational;
+        {
+            var plusIndex = informational.IndexOf('+', StringComparison.Ordinal);
+            return plusIndex >= 0 ? informational[..plusIndex] : informational;
+        }
         return assembly.GetName().Version?.ToString(3) ?? "2.0.0-dev";
     }
 
     private readonly TrackerShellHost _shellHost;
     private readonly DispatcherTimer _pollingTimer;
+    private readonly DispatcherTimer _updateCheckTimer;
+    private readonly UpdateChecker _updateChecker;
+    private readonly AppUpdater _appUpdater;
     private readonly SimCrewOps.Hosting.Hosting.LiveMapService? _liveMapService;
+    private UpdateInfo? _pendingUpdate;
+    private DateTimeOffset? _lastUpdateCheckUtc;
+    private string? _lastUpdateError;
 
     private TrackerShellSnapshot? _latestSnapshot;
     private bool _isRefreshing;
@@ -119,6 +129,10 @@ public sealed class MainWindowViewModel : ObservableObject
     private bool _autoFailBannerVisible;
     private bool _groundedBannerVisible;
     private string _groundedBannerText = string.Empty;
+    private bool _updateBannerVisible;
+    private string _updateBannerText = string.Empty;
+    private bool _isInstallingUpdate;
+    private int _updateDownloadProgress;
     private string _pilotIdentityText = string.Empty;
     private Brush _runwayMarkerBrush = new SolidColorBrush(MediaColor.FromRgb(63, 185, 80));
     private Thickness _runwayMarkerMargin = new Thickness(40, 2, 0, 2);
@@ -136,6 +150,14 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _diagnosticsTelemetryCounters = "Poll, null-frame, and mapping counters will appear here.";
     private string _diagnosticsRawTelemetry = "Raw SimConnect values will appear here when telemetry diagnostics are enabled.";
     private string _diagnosticsTouchdownRates = "No touchdown recorded this session.";
+    // Structured diagnostics panels (always visible)
+    private string _diagnosticsConnection = "Waiting for simulator process…";
+    private string _diagnosticsPreflightPilot = "No preflight check performed yet.";
+    private string _diagnosticsFlightSession = "No active session.";
+    private string _diagnosticsUploadSync = "No upload attempted this run.";
+    private string _diagnosticsStorageBuild = string.Empty;
+    // Telemetry-gated additional section
+    private string _diagnosticsBeaconPath = "Beacon and path info appears when telemetry diagnostics are enabled.";
     private string _settingsSaveStatus = "Changes are saved for the next launch.";
 
     // Persistent instruments
@@ -203,12 +225,21 @@ public sealed class MainWindowViewModel : ObservableObject
         RetrySyncCommand = new RelayCommand(() => _ = RetrySyncAsync());
         SaveSettingsCommand = new RelayCommand(() => _ = SaveSettingsAsync());
         ResetSessionCommand = new RelayCommand(() => _ = ResetSessionAsync());
+        InstallUpdateCommand = new RelayCommand(() => _ = InstallUpdateAsync());
 
         _pollingTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromSeconds(1),
         };
         _pollingTimer.Tick += async (_, _) => await RefreshAsync();
+
+        _updateChecker = new UpdateChecker(new HttpClient());
+        _appUpdater = new AppUpdater(new HttpClient());
+        _updateCheckTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromHours(4),
+        };
+        _updateCheckTimer.Tick += async (_, _) => await CheckForUpdateAsync();
 
         ApplySampleState();
     }
@@ -251,6 +282,7 @@ public sealed class MainWindowViewModel : ObservableObject
     }
     public RelayCommand RetrySyncCommand { get; }
     public RelayCommand SaveSettingsCommand { get; }
+    public RelayCommand InstallUpdateCommand { get; }
 
     /// <summary>
     /// Resets the current session to Preflight without losing departure/arrival context.
@@ -587,6 +619,30 @@ public sealed class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _groundedBannerText, value);
     }
 
+    public bool UpdateBannerVisible
+    {
+        get => _updateBannerVisible;
+        private set => SetProperty(ref _updateBannerVisible, value);
+    }
+
+    public string UpdateBannerText
+    {
+        get => _updateBannerText;
+        private set => SetProperty(ref _updateBannerText, value);
+    }
+
+    public bool IsInstallingUpdate
+    {
+        get => _isInstallingUpdate;
+        private set => SetProperty(ref _isInstallingUpdate, value);
+    }
+
+    public int UpdateDownloadProgress
+    {
+        get => _updateDownloadProgress;
+        private set => SetProperty(ref _updateDownloadProgress, value);
+    }
+
     public string PilotIdentityText
     {
         get => _pilotIdentityText;
@@ -688,6 +744,42 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         get => _diagnosticsTouchdownRates;
         private set => SetProperty(ref _diagnosticsTouchdownRates, value);
+    }
+
+    public string DiagnosticsConnection
+    {
+        get => _diagnosticsConnection;
+        private set => SetProperty(ref _diagnosticsConnection, value);
+    }
+
+    public string DiagnosticsPreflightPilot
+    {
+        get => _diagnosticsPreflightPilot;
+        private set => SetProperty(ref _diagnosticsPreflightPilot, value);
+    }
+
+    public string DiagnosticsFlightSession
+    {
+        get => _diagnosticsFlightSession;
+        private set => SetProperty(ref _diagnosticsFlightSession, value);
+    }
+
+    public string DiagnosticsUploadSync
+    {
+        get => _diagnosticsUploadSync;
+        private set => SetProperty(ref _diagnosticsUploadSync, value);
+    }
+
+    public string DiagnosticsStorageBuild
+    {
+        get => _diagnosticsStorageBuild;
+        private set => SetProperty(ref _diagnosticsStorageBuild, value);
+    }
+
+    public string DiagnosticsBeaconPath
+    {
+        get => _diagnosticsBeaconPath;
+        private set => SetProperty(ref _diagnosticsBeaconPath, value);
     }
 
     public string SettingsSaveStatus
@@ -956,6 +1048,8 @@ public sealed class MainWindowViewModel : ObservableObject
 
         await RefreshAsync();
         _pollingTimer.Start();
+        _ = CheckForUpdateAsync();
+        _updateCheckTimer.Start();
     }
 
     public Task RetrySyncFromTrayAsync() => RetrySyncAsync();
@@ -1053,6 +1147,78 @@ public sealed class MainWindowViewModel : ObservableObject
         catch (Exception ex)
         {
             SettingsSaveStatus = $"Unable to save settings: {ex.Message}";
+        }
+    }
+
+    private async Task CheckForUpdateAsync()
+    {
+        try
+        {
+            var info = await _updateChecker.CheckForUpdateAsync().ConfigureAwait(false);
+            _lastUpdateCheckUtc = DateTimeOffset.UtcNow;
+            _lastUpdateError = null;
+
+            if (info?.IsUpdateAvailable != true)
+            {
+                return;
+            }
+
+            _pendingUpdate = info;
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                UpdateBannerText = $"Update available: v{info.LatestVersion} — click to install";
+                UpdateBannerVisible = true;
+            });
+        }
+        catch (Exception ex)
+        {
+            _lastUpdateError = ex.Message;
+            // Update checks should never interrupt tracker use.
+        }
+    }
+
+    private async Task InstallUpdateAsync()
+    {
+        var update = _pendingUpdate;
+        if (update is null || IsInstallingUpdate)
+        {
+            return;
+        }
+
+        IsInstallingUpdate = true;
+        UpdateBannerVisible = true;
+        UpdateBannerText = "Downloading update… 0%";
+
+        void OnDownloadProgress(object? _, double fraction)
+        {
+            var percent = (int)(fraction * 100);
+            UpdateDownloadProgress = percent;
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                UpdateBannerText = $"Downloading update… {percent}%";
+            });
+        }
+
+        try
+        {
+            _appUpdater.DownloadProgressChanged += OnDownloadProgress;
+            await _appUpdater.DownloadAndApplyAsync(update).ConfigureAwait(false);
+
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                UpdateBannerText = "Restarting…";
+                Application.Current.Shutdown();
+            });
+        }
+        catch (Exception ex)
+        {
+            IsInstallingUpdate = false;
+            _lastUpdateError = ex.Message;
+            UpdateBannerText = $"Update failed: {ex.Message}";
+        }
+        finally
+        {
+            _appUpdater.DownloadProgressChanged -= OnDownloadProgress;
         }
     }
 
@@ -1269,6 +1435,13 @@ public sealed class MainWindowViewModel : ObservableObject
         DiagnosticsSettingsPath = snapshot.SettingsFilePath;
         DiagnosticsStoragePath = snapshot.Settings.Storage.RootDirectory;
 
+        // Structured diagnostics panels
+        DiagnosticsConnection = BuildConnectionDiagnostics(snapshot.SimConnectStatus, snapshot.LastRawTelemetryFrame);
+        DiagnosticsPreflightPilot = BuildPreflightPilotDiagnostics(snapshot.PreflightStatus);
+        DiagnosticsFlightSession = BuildFlightSessionDiagnostics(activeState, snapshot.RecoverySnapshot, snapshot.ActiveFlight, snapshot.SessionWasResumed);
+        DiagnosticsUploadSync = BuildUploadSyncDiagnostics(snapshot.BackgroundSyncStatus, snapshot.RecoverySnapshot, snapshot.LastUploadAttemptUtc, snapshot.LastUploadResult, snapshot.ServerCareerResult, snapshot.PostFlightStatus);
+        DiagnosticsStorageBuild = BuildStorageBuildDiagnostics(snapshot.SettingsFilePath, snapshot.Settings);
+
         // Build the embedded map URL from base URL + tracker API token.
         // Keep null when no token is configured — WebView2 shows a "configure your token" message
         // rather than navigating to /tracker-map with no auth (which returns 404).
@@ -1291,7 +1464,8 @@ public sealed class MainWindowViewModel : ObservableObject
             DiagnosticsTelemetryCounters =
                 $"Polls {snapshot.SimConnectStatus.PollCount} • Null polls {snapshot.SimConnectStatus.NullPollCount} • Raw frames {snapshot.SimConnectStatus.RawFrameCount} • Mapped frames {snapshot.SimConnectStatus.TelemetryFrameCount}";
             DiagnosticsRawTelemetry = BuildRawTelemetryDebug(snapshot.LastRawTelemetryFrame);
-            DiagnosticsTouchdownRates = BuildTouchdownRatesDebug(snapshot.RuntimeState?.ScoreInput?.TouchdownRateCandidates);
+            DiagnosticsTouchdownRates = BuildTouchdownDiagnostics(snapshot.RuntimeState);
+            DiagnosticsBeaconPath = BuildBeaconPathDiagnostics(snapshot.LivePositionEnabled, snapshot.LivePositionLastUploadUtc, snapshot.RuntimeState);
         }
         else
         {
@@ -1299,7 +1473,8 @@ public sealed class MainWindowViewModel : ObservableObject
             DiagnosticsTelemetryFlow = "Enable telemetry diagnostics to inspect raw SimConnect frame flow.";
             DiagnosticsTelemetryCounters = "Poll, null-frame, and mapping counters will appear here.";
             DiagnosticsRawTelemetry = "Raw SimConnect values will appear here when telemetry diagnostics are enabled.";
-            DiagnosticsTouchdownRates = "No touchdown recorded this session.";
+            DiagnosticsTouchdownRates = "Enable telemetry diagnostics to see touchdown detail.";
+            DiagnosticsBeaconPath = "Beacon and path info appears when telemetry diagnostics are enabled.";
         }
     }
 
@@ -1821,23 +1996,23 @@ public sealed class MainWindowViewModel : ObservableObject
     private static string BuildRawTelemetryDebug(SimConnectRawTelemetryFrame? rawFrame)
     {
         if (rawFrame is null)
-        {
             return "No raw SimConnect frame received yet.";
-        }
 
-        var lightSource = rawFrame.LightSourceIsIndividual ? "individual SimVars" : "LIGHT STATES bitmask fallback";
-        var bridgeStatus = rawFrame.LvarBridgeRequired
-            ? rawFrame.LvarBridgeConnected ? "LVAR bridge: connected ✓" : "LVAR bridge: NOT connected — install MobiFlight WASM"
-            : "LVAR bridge: not needed";
+        var lightSource = rawFrame.LightSourceIsIndividual ? "individual" : "LIGHT STATES bitmask";
+        var bridge = rawFrame.LvarBridgeRequired
+            ? rawFrame.LvarBridgeConnected ? "LVAR ✓" : "LVAR NOT connected (MobiFlight WASM needed)"
+            : "LVAR not needed";
         return
-            $"Aircraft profile: {rawFrame.ActiveProfileName}  •  {bridgeStatus}\n" +
-            $"HDG MAG {rawFrame.HeadingMagneticDegrees:0.##} • HDG TRUE {rawFrame.HeadingTrueDegrees:0.##} • AGL {rawFrame.AltitudeAglFeet:0.##} • ALT {rawFrame.AltitudeFeet:0.##} • ON GND {rawFrame.OnGround:0} • PB pos={rawFrame.ParkingBrakePosition:0}%\n" +
-            $"GEAR HANDLE raw={rawFrame.GearPosition:0.000}  (0.000=up  1.000=down)  FLAPS idx={rawFrame.FlapsHandleIndex:0}\n" +
-            $"LIGHT source: {lightSource}\n" +
-            $"  individual  => BCN {rawFrame.LightBeaconRaw} • TAXI {rawFrame.LightTaxiRaw} • LDG {rawFrame.LightLandingRaw} • STB {rawFrame.LightStrobeRaw}\n" +
-            $"  bitmask raw => 0x{rawFrame.LightStatesRaw:X4}  (BCN=0x0002 LAND=0x0004 TAXI=0x0008 STB=0x0010)\n" +
-            $"  final used  => BCN {rawFrame.BeaconLightOn:0} • TAXI {rawFrame.TaxiLightsOn:0} • LDG {rawFrame.LandingLightsOn:0} • STB {rawFrame.StrobesOn:0}\n" +
-            $"IAS {rawFrame.IndicatedAirspeedKnots:0.##} • GS {rawFrame.GroundSpeedKnots:0.##} • VS {rawFrame.VerticalSpeedFpm:0.##}";
+            $"Aircraft : {rawFrame.ActiveProfileName}  •  {bridge}\n" +
+            $"IAS      : {rawFrame.IndicatedAirspeedKnots:0.#} kts   GS {rawFrame.GroundSpeedKnots:0.#} kts   Mach {rawFrame.Mach:0.000}\n" +
+            $"ALT      : {rawFrame.AltitudeFeet:0} ft   AGL {rawFrame.AltitudeAglFeet:0} ft   IALT {rawFrame.IndicatedAltitudeFeet:0} ft\n" +
+            $"VS (baro): {rawFrame.VerticalSpeedFpm:+0;-0} fpm   WorldY {rawFrame.VelocityWorldYFps:+0.00;-0.00} fps   TDNorm {rawFrame.TouchdownNormalVelocityFps:+0.00;-0.00} fps\n" +
+            $"HDG MAG  : {rawFrame.HeadingMagneticDegrees:0.#}°   TRUE {rawFrame.HeadingTrueDegrees:0.#}°\n" +
+            $"Wind     : {rawFrame.WindDirectionDegrees:0}° / {rawFrame.WindSpeedKnots:0.#} kts\n" +
+            $"On ground: {rawFrame.OnGround:0}   PB {rawFrame.ParkingBrakePosition:0}%   Gear raw={rawFrame.GearPosition:0.000}   Flaps idx={rawFrame.FlapsHandleIndex:0}\n" +
+            $"Lights ({lightSource}): BCN {rawFrame.BeaconLightOn:0}  STB {rawFrame.StrobesOn:0}  LDG {rawFrame.LandingLightsOn:0}  TAXI {rawFrame.TaxiLightsOn:0}\n" +
+            $"  indiv => BCN {rawFrame.LightBeaconRaw} TAXI {rawFrame.LightTaxiRaw} LDG {rawFrame.LightLandingRaw} STB {rawFrame.LightStrobeRaw}   bitmask 0x{rawFrame.LightStatesRaw:X4}\n" +
+            $"Crash    : {rawFrame.CrashFlag:0}   Stall {rawFrame.StallWarning:0}   GPWS {rawFrame.GpwsAlert:0}   Overspeed {rawFrame.OverspeedWarning:0}";
     }
 
     private static string BuildTouchdownRatesDebug(TouchdownRateCandidates? c)
@@ -1850,6 +2025,216 @@ public sealed class MainWindowViewModel : ObservableObject
             $"TOUCHDOWN NORMAL  : {c.FpmTouchdownNormal:0} fpm\n" +
             $"VERTICAL SPEED    : {c.FpmVerticalSpeed:0} fpm\n" +
             $"SELECTED (final)  : {c.FinalSelected:0} fpm";
+    }
+
+    private static string BuildConnectionDiagnostics(SimConnectHostStatus status, SimConnectRawTelemetryFrame? rawFrame)
+    {
+        var procInfo = status.SimulatorProcess is { } proc
+            ? $"{proc.ProcessName} (PID {proc.ProcessId})"
+            : "—";
+        var aircraft = rawFrame?.ActiveProfileName ?? "—";
+        var bridge = rawFrame is null ? "—"
+            : rawFrame.LvarBridgeRequired
+                ? rawFrame.LvarBridgeConnected ? "LVAR bridge: connected ✓" : "LVAR bridge: required, NOT connected"
+                : "LVAR bridge: not needed";
+        var connected = status.ConnectedUtc is { } c ? c.ToLocalTime().ToString("HH:mm:ss") : "—";
+        return
+            $"State    : {status.ConnectionState}" +
+            (status.LastErrorMessage is { Length: > 0 } e ? $"  [{e}]" : string.Empty) + "\n" +
+            $"Client   : {status.ClientPath}\n" +
+            $"Process  : {procInfo}\n" +
+            $"Connected: {connected}\n" +
+            $"FC data  : {ToYesNo(status.HasReceivedFlightCriticalData)}   Operational: {ToYesNo(status.HasReceivedOperationalData)}\n" +
+            $"Raw frame: {FormatTimeAgo(status.LastRawFrameUtc)}   Telemetry: {FormatTimeAgo(status.LastTelemetryUtc)}\n" +
+            $"Aircraft : {aircraft}   {bridge}";
+    }
+
+    private static string BuildPreflightPilotDiagnostics(SimCrewOps.Sync.Models.PreflightStatusResponse? p)
+    {
+        if (p is null)
+            return "No preflight check performed yet.";
+
+        var identity = string.IsNullOrWhiteSpace(p.PilotDisplayName) ? p.PilotUsername ?? "—" : p.PilotDisplayName;
+        var rank = string.IsNullOrWhiteSpace(p.Rank) ? string.Empty : $"  ({p.Rank})";
+        var grounded = p.IsGrounded
+            ? $"YES — {p.GroundingReason ?? "see simcrewops.com"}" +
+              (string.IsNullOrWhiteSpace(p.GroundingAction) ? string.Empty : $"  ·  {p.GroundingAction}")
+            : "No";
+        var crewRest = p.InCrewRest
+            ? $"Yes — ends {(p.CrewRestEndsAt?.ToLocalTime().ToString("HH:mm") ?? "—")}"
+            : "No";
+        return
+            $"Pilot    : {identity}{rank}\n" +
+            $"Username : {p.PilotUsername ?? "—"}\n" +
+            $"Checked  : {p.CheckedAt.ToLocalTime():HH:mm:ss} local\n" +
+            $"Grounded : {grounded}\n" +
+            $"Crew rest: {crewRest}";
+    }
+
+    private static string BuildFlightSessionDiagnostics(
+        FlightSessionRuntimeState? state,
+        SimCrewOps.Persistence.Models.SessionRecoverySnapshot recovery,
+        SimCrewOps.Sync.Models.ActiveFlightResponse? activeFlight,
+        bool sessionWasResumed)
+    {
+        var phase = state is not null ? state.CurrentPhase.ToString() : "—";
+        var sessionState = state is null
+            ? (recovery.HasRecoverableCurrentSession ? "Recovery available" : "Idle")
+            : state.IsComplete ? "Complete" : sessionWasResumed ? "Active (resumed)" : "Active";
+
+        var ctx = state?.Context;
+        var dep = ctx?.DepartureAirportIcao ?? activeFlight?.Departure ?? "——";
+        var arr = ctx?.ArrivalAirportIcao   ?? activeFlight?.Arrival   ?? "——";
+        var flt = ctx?.FlightNumber ?? activeFlight?.FlightNumber ?? string.Empty;
+        var acft = ctx?.AircraftType ?? activeFlight?.AircraftType ?? "—";
+        var mode = ctx?.FlightMode ?? "—";
+        var route = $"{dep} → {arr}" + (string.IsNullOrWhiteSpace(flt) ? string.Empty : $"  {flt}") + $"  {acft}";
+
+        var bt = state?.BlockTimes;
+        var fmtT = (DateTimeOffset? t) => t?.ToLocalTime().ToString("HH:mm") ?? "--:--";
+        var oooi = $"Out {fmtT(bt?.BlocksOffUtc)}  Off {fmtT(bt?.WheelsOffUtc)}  On {fmtT(bt?.WheelsOnUtc)}  In {fmtT(bt?.BlocksOnUtc)}";
+
+        var autosave = recovery.CurrentSession is { } cs
+            ? $"autosave {cs.SavedUtc.ToLocalTime():HH:mm:ss}"
+            : "no autosave";
+
+        return
+            $"Phase    : {phase}\n" +
+            $"State    : {sessionState}\n" +
+            $"Route    : {route}\n" +
+            $"Mode     : {mode}\n" +
+            $"OOOI     : {oooi}\n" +
+            $"Recovery : {autosave}   Resumed: {ToYesNo(sessionWasResumed)}";
+    }
+
+    private static string BuildUploadSyncDiagnostics(
+        SimCrewOps.Sync.Models.BackgroundSyncStatus? sync,
+        SimCrewOps.Persistence.Models.SessionRecoverySnapshot recovery,
+        DateTimeOffset? lastAttemptUtc,
+        SimCrewOps.Sync.Models.CompletedSessionUploadResult? lastResult,
+        SimCrewOps.Sync.Models.CareerResultDto? career,
+        SimCrewOps.Sync.Models.PostFlightStatusDto? postFlight)
+    {
+        var syncLine = sync is null
+            ? "Disabled"
+            : $"{(sync.Enabled ? "Enabled" : "Disabled")}  •  " +
+              $"last run {(sync.LastRunCompletedUtc?.ToLocalTime().ToString("HH:mm:ss") ?? "—")}  •  " +
+              $"{sync.ConsecutiveFailureCount} failure(s)";
+
+        var pending = recovery.PendingCompletedSessions.Count;
+        var oldestAge = pending > 0 && recovery.PendingCompletedSessions[0] is { } oldest
+            ? $"oldest: {FormatTimeAgo(oldest.QueuedUtc)}"
+            : string.Empty;
+
+        var uploadLine = lastAttemptUtc is null
+            ? "No upload attempted this run"
+            : $"{lastAttemptUtc.Value.ToLocalTime():HH:mm:ss}  —  " +
+              (lastResult is null ? "pending"
+               : lastResult.Status == SimCrewOps.Sync.Models.SessionUploadStatus.Success
+                   ? $"Success (HTTP {lastResult.StatusCode})"
+                   : $"{lastResult.Status} (HTTP {lastResult.StatusCode?.ToString() ?? "—"})  {lastResult.ErrorMessage}");
+
+        var serverLine = career is not null
+            ? $"Grade {career.Grade}  Score {career.Score:0.##}  +{career.HoursAdded:0.##}h  Pay ${career.Pay:0.##}"
+            : "—";
+        var sessionId = lastResult?.ServerSessionId ?? "—";
+        var postFlightLine = postFlight is null ? "—"
+            : postFlight.IsGrounded ? $"GROUNDED — {postFlight.StrikeType}  {postFlight.StrikeAction}"
+            : $"Not grounded  ({postFlight.StrikeType ?? "no strike"})";
+
+        return
+            $"Sync     : {syncLine}\n" +
+            $"Pending  : {pending} session(s){(string.IsNullOrEmpty(oldestAge) ? string.Empty : $"  {oldestAge}")}\n" +
+            $"Upload   : {uploadLine}\n" +
+            $"Server ID: {sessionId}\n" +
+            $"Career   : {serverLine}\n" +
+            $"PostFlt  : {postFlightLine}";
+    }
+
+    private string BuildStorageBuildDiagnostics(string settingsPath, SimCrewOps.Hosting.Models.TrackerAppSettings settings)
+    {
+        var updateLine = _pendingUpdate is { } update
+            ? $"Update   : v{update.LatestVersion} available"
+            : "Update   : up to date";
+        var currentSessionPath = Path.Combine(settings.Storage.RootDirectory, settings.Storage.CurrentSessionFileName);
+        var completedSessionsPath = Path.Combine(settings.Storage.RootDirectory, settings.Storage.CompletedSessionsDirectoryName);
+        var errorLine = string.IsNullOrWhiteSpace(_lastUpdateError)
+            ? "Upd Err  : none"
+            : $"Upd Err  : {_lastUpdateError}";
+
+        return
+            $"Version  : {AppVersion}\n" +
+            $"Channel  : beta-latest\n" +
+            $"Checked  : {FormatTimeAgo(_lastUpdateCheckUtc)}\n" +
+            $"{updateLine}\n" +
+            $"{errorLine}\n" +
+            $"Settings : {settingsPath}\n" +
+            $"Storage  : {settings.Storage.RootDirectory}\n" +
+            $"Current  : {currentSessionPath}\n" +
+            $"Done Dir : {completedSessionsPath}";
+    }
+
+    private static string BuildBeaconPathDiagnostics(bool beaconEnabled, DateTimeOffset? lastSuccessUtc, FlightSessionRuntimeState? state)
+    {
+        var beaconLine = beaconEnabled
+            ? lastSuccessUtc is { } t ? $"Active  •  last OK {t.ToLocalTime():HH:mm:ss} ({FormatTimeAgo(t)})" : "Active  •  no successful send yet"
+            : "Inactive (no API token configured)";
+
+        var flightPathCount = state?.ScoreInput.FlightPath.Count ?? 0;
+        var approachPathCount = state?.ScoreInput.ApproachPath.Count ?? 0;
+
+        return
+            $"LIVE BEACON\n" +
+            $"State    : {beaconLine}\n\n" +
+            $"PATH SAMPLING\n" +
+            $"FlightPath  : {flightPathCount} pts\n" +
+            $"ApproachPath: {approachPathCount} pts";
+    }
+
+    private static string BuildTouchdownDiagnostics(FlightSessionRuntimeState? state)
+    {
+        if (state is null)
+            return "No active session.";
+
+        var landing = state.ScoreInput.Landing;
+        var analysis = state.ScoreInput.LandingAnalysis;
+        var candidates = state.ScoreInput.TouchdownRateCandidates;
+
+        if (candidates is null && !analysis.TouchdownLat.HasValue)
+            return "No touchdown recorded this session.";
+
+        var bt = state.BlockTimes;
+        var tdTime = bt.WheelsOnUtc?.ToLocalTime().ToString("HH:mm:ss") ?? "—";
+
+        var selectedFpm = candidates?.FinalSelected ?? landing.TouchdownVerticalSpeedFpm;
+
+        // Mark which candidate matched the final selection
+        static string Mark(double candidate, double final) =>
+            Math.Abs(candidate - final) < 1.0 ? " ★" : string.Empty;
+
+        var candBlock = candidates is null ? "—"
+            : $"  VELOCITY WORLD Y  : {candidates.FpmVelocityWorldY:0} fpm{Mark(candidates.FpmVelocityWorldY, selectedFpm)}\n" +
+              $"  TOUCHDOWN NORMAL  : {candidates.FpmTouchdownNormal:0} fpm{Mark(candidates.FpmTouchdownNormal, selectedFpm)}\n" +
+              $"  VERTICAL SPEED    : {candidates.FpmVerticalSpeed:0} fpm{Mark(candidates.FpmVerticalSpeed, selectedFpm)}";
+
+        var latLon = analysis.TouchdownLat.HasValue && analysis.TouchdownLon.HasValue
+            ? $"{analysis.TouchdownLat.Value:0.0000}° / {analysis.TouchdownLon.Value:0.0000}°"
+            : "—";
+
+        return
+            $"Touchdown: {tdTime} local\n" +
+            $"Bounces  : {landing.BounceCount}\n" +
+            $"FPM sel  : {selectedFpm:0} fpm  (★ = selected source)\n" +
+            $"Candidates:\n{candBlock}\n\n" +
+            $"IAS      : {landing.TouchdownIndicatedAirspeedKnots:0} kts\n" +
+            $"Pitch    : {landing.TouchdownPitchAngleDegrees:0.#}°  MaxWoW: {landing.MaxPitchWhileWowDegrees:0.#}°\n" +
+            $"Bank     : {landing.TouchdownBankAngleDegrees:0.#}°\n" +
+            $"G-force  : {landing.TouchdownGForce:0.00}\n" +
+            $"Lat/Lon  : {latLon}\n" +
+            $"Hdg MAG  : {(analysis.TouchdownHeadingMagneticDeg.HasValue ? $"{analysis.TouchdownHeadingMagneticDeg.Value:0}°" : "—")}\n" +
+            $"Alt      : {(analysis.TouchdownAltFt.HasValue ? $"{analysis.TouchdownAltFt.Value:0} ft" : "—")}\n" +
+            $"Wind     : {(analysis.WindDirectionDegrees.HasValue ? $"{analysis.WindDirectionDegrees.Value:0}° / {analysis.WindSpeedKnots ?? 0:0.#} kts" : "—")}\n" +
+            $"Gear up  : {ToYesNo(landing.GearUpAtTouchdown)}";
     }
 
     private void UpdatePersistentInstruments(TelemetryFrame? telemetry)

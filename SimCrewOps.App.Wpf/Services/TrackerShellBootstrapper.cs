@@ -8,6 +8,9 @@ namespace SimCrewOps.App.Wpf.Services;
 
 public static class TrackerShellBootstrapper
 {
+    private const string EmbeddedSimConnectResourceName = "SimCrewOps.NativeSimConnect.dll";
+    private const string EmbeddedMsfsSimConnectResourceName = "SimCrewOps.NativeMsfsSimConnect.dll";
+
     public static async Task<TrackerShellBootstrapResult> BootstrapAsync(CancellationToken cancellationToken = default)
     {
         var appRootDirectory = Path.Combine(
@@ -16,6 +19,7 @@ public static class TrackerShellBootstrapper
             "SimTrackerV2");
 
         Directory.CreateDirectory(appRootDirectory);
+        await ExtractBundledNativeDllsAsync(appRootDirectory, cancellationToken).ConfigureAwait(false);
 
         var settingsFilePath = Path.Combine(appRootDirectory, "settings.json");
         var settingsStore = new FileSystemTrackerAppSettingsStore(new FileSystemTrackerAppSettingsStoreOptions
@@ -42,6 +46,43 @@ public static class TrackerShellBootstrapper
             SettingsFilePath = settingsFilePath,
             LiveMapService = serviceStack.LiveMapService,
         };
+    }
+
+    private static async Task ExtractBundledNativeDllsAsync(string appRootDirectory, CancellationToken cancellationToken)
+    {
+        var nativeDirectory = Path.Combine(appRootDirectory, "native");
+        Directory.CreateDirectory(nativeDirectory);
+
+        var assembly = Assembly.GetEntryAssembly() ?? typeof(TrackerShellBootstrapper).Assembly;
+        var resources = new[]
+        {
+            (ResourceName: EmbeddedSimConnectResourceName, FileName: "SimConnect.dll"),
+            (ResourceName: EmbeddedMsfsSimConnectResourceName, FileName: "Microsoft.FlightSimulator.SimConnect.dll"),
+        };
+
+        foreach (var (resourceName, fileName) in resources)
+        {
+            await using var resourceStream = assembly.GetManifestResourceStream(resourceName);
+            if (resourceStream is null)
+            {
+                continue;
+            }
+
+            var destination = Path.Combine(nativeDirectory, fileName);
+            await using var destinationStream = new FileStream(
+                destination,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 65536,
+                useAsync: true);
+
+            await resourceStream.CopyToAsync(destinationStream, cancellationToken).ConfigureAwait(false);
+        }
+
+        Environment.SetEnvironmentVariable(
+            "SIMCONNECT_NATIVE_DLL_PATH",
+            Path.Combine(nativeDirectory, "SimConnect.dll"));
     }
 
     private static TrackerAppSettings CreateDefaultSettings(string appRootDirectory) =>
@@ -81,6 +122,6 @@ public static class TrackerShellBootstrapper
             return informationalVersion;
         }
 
-        return assembly.GetName().Version?.ToString() ?? "2.0.0-alpha";
+        return assembly.GetName().Version?.ToString() ?? "3.0.0-beta";
     }
 }

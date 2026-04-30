@@ -58,4 +58,13 @@ public sealed record TrackerShellSnapshot
     /// upload succeeds. IsGrounded == true means a new strike was applied.
     /// </summary>
     public PostFlightStatusDto? PostFlightStatus { get; init; }
+
+    /// <summary>UTC timestamp of the most recent completed-session upload attempt this run.</summary>
+    public DateTimeOffset? LastUploadAttemptUtc { get; init; }
+
+    /// <summary>Result of the most recent completed-session upload attempt. Null until one is made.</summary>
+    public CompletedSessionUploadResult? LastUploadResult { get; init; }
+
+    /// <summary>True when the current session was resumed from a persisted recovery snapshot.</summary>
+    public bool SessionWasResumed { get; init; }
 }
