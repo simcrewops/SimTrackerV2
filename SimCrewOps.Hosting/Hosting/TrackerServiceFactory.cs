@@ -102,7 +102,7 @@ public sealed class TrackerServiceFactory
                 settings.Api.BaseUri,
                 settings.Api.PilotApiToken);
 
-        if (!settings.BackgroundSync.Enabled || string.IsNullOrWhiteSpace(settings.Api.PilotApiToken))
+        if (string.IsNullOrWhiteSpace(settings.Api.PilotApiToken))
         {
             return new TrackerServiceStack
             {
@@ -129,6 +129,19 @@ public sealed class TrackerServiceFactory
         var preflightChecker = new HttpPreflightChecker(
             _httpClientFactory(),
             uploaderOptions);
+
+        if (!settings.BackgroundSync.Enabled)
+        {
+            return new TrackerServiceStack
+            {
+                Settings = settings,
+                FlightSessionStore = flightSessionStore,
+                LivePositionUploader = livePositionUploader,
+                PreflightChecker = preflightChecker,
+                ActiveFlightFetcher = activeFlightFetcher,
+                LiveMapService = liveMapService,
+            };
+        }
 
         var syncService = new CompletedSessionSyncService(flightSessionStore, uploader);
         var backgroundSyncCoordinator = new BackgroundSyncCoordinator(
