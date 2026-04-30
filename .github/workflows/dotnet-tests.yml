@@ -180,7 +180,7 @@ jobs:
           }
           & $iscc `
             /DMyAppVersion="${{ env.PACKAGE_VERSION }}" `
-            /DMyAppSourceDir="artifacts\package\SimTrackerV2-preview-win-x64" `
+            "/DMyAppSourceDir=${{ github.workspace }}\artifacts\package\SimTrackerV2-preview-win-x64" `
             "packaging\windows\installer\SimTrackerV2.iss"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Rename-Item "artifacts/installer/SimTrackerV2-Setup.exe" `
@@ -257,7 +257,7 @@ jobs:
           }
           & $iscc `
             /DMyAppVersion="${{ env.PACKAGE_VERSION }}" `
-            /DMyAppSourceDir="artifacts\package\SimTrackerV2-beta-win-x64" `
+            "/DMyAppSourceDir=${{ github.workspace }}\artifacts\package\SimTrackerV2-beta-win-x64" `
             "packaging\windows\installer\SimTrackerV2.iss"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Rename-Item "artifacts/installer/SimTrackerV2-Setup.exe" `
