@@ -196,7 +196,7 @@ public sealed class ScoringEngine
             findings,
             "CRUISE_BANK",
             "Cruise bank angle exceeded the 30 degree target.",
-            ScoreMath.AbsoluteLinearPenalty(metrics.MaxBankAngleDegrees, 30, 45, weights.BankAngle));
+            ScoreMath.AbsoluteLinearPenalty(metrics.LevelMaxBankDegrees, 30, 45, weights.BankAngle));
 
         AddPenalty(
             findings,

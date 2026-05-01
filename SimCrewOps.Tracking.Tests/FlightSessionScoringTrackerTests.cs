@@ -366,4 +366,68 @@ public sealed class FlightSessionScoringTrackerTests
             TouchdownNormalVelocityFps = touchdownNormal,
         };
     }
+
+    // ── Cruise altitude auto-detect tests ────────────────────────────────────
+
+    [Fact]
+    public void CruiseAutoDetect_AcceptsAfter60sStable()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 5, 1, 12, 0, 0, TimeSpan.Zero);
+
+        // 61 airborne frames at 1-second intervals — FL340, VS = 50 fpm (< 200 threshold)
+        for (var i = 0; i <= 60; i++)
+            tracker.Ingest(Frame(t0.AddSeconds(i), FlightPhase.Cruise,
+                onGround: false, altitude: 34000, agl: 32000, vs: 50));
+
+        var input = tracker.BuildScoreInput();
+        Assert.NotNull(input.Cruise.CruiseTargetAltitudeFt);
+        Assert.Equal(34000.0, input.Cruise.CruiseTargetAltitudeFt!.Value);
+    }
+
+    [Fact]
+    public void CruiseAutoDetect_ResetsOnAltDrift()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 5, 1, 12, 0, 0, TimeSpan.Zero);
+
+        // 30 frames stable at FL340 — timer starts but doesn't reach 60 s
+        for (var i = 0; i < 30; i++)
+            tracker.Ingest(Frame(t0.AddSeconds(i), FlightPhase.Cruise,
+                onGround: false, altitude: 34000, agl: 32000, vs: 50));
+
+        // Altitude drifts > 100 ft — timer resets; only 10 frames (10 s) elapse at new alt
+        for (var i = 30; i < 40; i++)
+            tracker.Ingest(Frame(t0.AddSeconds(i), FlightPhase.Cruise,
+                onGround: false, altitude: 34800, agl: 32800, vs: 50));
+
+        var input = tracker.BuildScoreInput();
+        Assert.Null(input.Cruise.CruiseTargetAltitudeFt);
+    }
+
+    [Fact]
+    public void CruiseAutoDetect_StepClimbUpdatesTarget()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 5, 1, 12, 0, 0, TimeSpan.Zero);
+
+        // 65 stable frames at FL280 — sets initial target to FL280
+        for (var i = 0; i < 65; i++)
+            tracker.Ingest(Frame(t0.AddSeconds(i), FlightPhase.Cruise,
+                onGround: false, altitude: 28000, agl: 26000, vs: 30));
+
+        // 10 frames climbing (VS > 200) — resets the level-off timer
+        for (var i = 65; i < 75; i++)
+            tracker.Ingest(Frame(t0.AddSeconds(i), FlightPhase.Cruise,
+                onGround: false, altitude: 28000 + (i - 65) * 600, agl: 26000 + (i - 65) * 600, vs: 1200));
+
+        // 65 stable frames at FL340 — updates target to FL340 after 60 s
+        for (var i = 75; i < 140; i++)
+            tracker.Ingest(Frame(t0.AddSeconds(i), FlightPhase.Cruise,
+                onGround: false, altitude: 34000, agl: 32000, vs: 30));
+
+        var input = tracker.BuildScoreInput();
+        Assert.NotNull(input.Cruise.CruiseTargetAltitudeFt);
+        Assert.Equal(34000.0, input.Cruise.CruiseTargetAltitudeFt!.Value);
+    }
 }
