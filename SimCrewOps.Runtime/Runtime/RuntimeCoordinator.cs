@@ -253,6 +253,14 @@ public sealed class RuntimeCoordinator
         if (telemetryFrame.Latitude == 0.0 && telemetryFrame.Longitude == 0.0)
             return;
 
+        // Prime heading cache on every valid GPS frame, including the seed frame that
+        // returns early below. Without this the first-frame heading is lost and a later
+        // zero-heading Operational frame would still send 0.
+        if (telemetryFrame.HeadingMagneticDegrees != 0.0)
+            _lastKnownHeadingMagnetic = telemetryFrame.HeadingMagneticDegrees;
+        if (telemetryFrame.HeadingTrueDegrees != 0.0)
+            _lastKnownHeadingTrue = telemetryFrame.HeadingTrueDegrees;
+
         if (!_beaconInitialized)
         {
             // First valid GPS frame: seed the position reference so subsequent movement
@@ -278,11 +286,6 @@ public sealed class RuntimeCoordinator
 
         if (!hasMovedEnough && elapsed < TimeSpan.FromSeconds(4))
             return;
-
-        if (telemetryFrame.HeadingMagneticDegrees != 0.0)
-            _lastKnownHeadingMagnetic = telemetryFrame.HeadingMagneticDegrees;
-        if (telemetryFrame.HeadingTrueDegrees != 0.0)
-            _lastKnownHeadingTrue = telemetryFrame.HeadingTrueDegrees;
 
         var payload = new LivePositionPayload
         {
