@@ -118,23 +118,97 @@ public sealed class UpdateChecker
         }
 
         var candidate = parts[^1].TrimStart('v', 'V');
-        return Version.TryParse(candidate, out _) ? candidate : null;
+        return BetaVersion.TryParse(candidate, out _) ? candidate : null;
     }
 
     internal static bool IsNewerVersion(string latest, string current)
     {
-        if (!Version.TryParse(latest, out var latestVersion))
+        if (!BetaVersion.TryParse(latest, out var latestVersion))
         {
             return false;
         }
 
-        if (!Version.TryParse(current, out var currentVersion))
+        if (!BetaVersion.TryParse(current, out var currentVersion))
         {
             return false;
         }
 
         return latestVersion > currentVersion;
     }
+}
+
+/// <summary>
+/// Parses and compares the repo's version scheme: major.minor.patch[-beta.N][+sha].
+/// <c>Version.TryParse</c> rejects prerelease strings, so this type handles them directly.
+/// </summary>
+internal readonly struct BetaVersion : IComparable<BetaVersion>
+{
+    public int Major { get; }
+    public int Minor { get; }
+    public int Patch { get; }
+
+    // null = stable/release release (ranks above any beta)
+    public int? BetaBuild { get; }
+
+    private BetaVersion(int major, int minor, int patch, int? betaBuild)
+    {
+        Major = major;
+        Minor = minor;
+        Patch = patch;
+        BetaBuild = betaBuild;
+    }
+
+    public static bool TryParse(string? text, out BetaVersion result)
+    {
+        result = default;
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        // Strip +sha suffix (e.g. "3.0.0-beta.42+abc1234def")
+        var plusIdx = text.IndexOf('+', StringComparison.Ordinal);
+        var s = plusIdx >= 0 ? text[..plusIdx] : text;
+
+        // Extract optional "-beta.N" prerelease segment
+        int? betaBuild = null;
+        var betaIdx = s.IndexOf("-beta.", StringComparison.OrdinalIgnoreCase);
+        if (betaIdx >= 0)
+        {
+            if (!int.TryParse(s[(betaIdx + 6)..], out var bn))
+                return false;
+            betaBuild = bn;
+            s = s[..betaIdx];
+        }
+
+        // Parse major.minor.patch (a fourth component is ignored)
+        var parts = s.Split('.');
+        if (parts.Length < 3)
+            return false;
+        if (!int.TryParse(parts[0], out var major)) return false;
+        if (!int.TryParse(parts[1], out var minor)) return false;
+        if (!int.TryParse(parts[2], out var patch)) return false;
+
+        result = new BetaVersion(major, minor, patch, betaBuild);
+        return true;
+    }
+
+    public int CompareTo(BetaVersion other)
+    {
+        var c = Major.CompareTo(other.Major);
+        if (c != 0) return c;
+        c = Minor.CompareTo(other.Minor);
+        if (c != 0) return c;
+        c = Patch.CompareTo(other.Patch);
+        if (c != 0) return c;
+
+        // stable (null) > any beta
+        if (!BetaBuild.HasValue && !other.BetaBuild.HasValue) return 0;
+        if (!BetaBuild.HasValue) return 1;
+        if (!other.BetaBuild.HasValue) return -1;
+        return BetaBuild.Value.CompareTo(other.BetaBuild.Value);
+    }
+
+    public static bool operator >(BetaVersion a, BetaVersion b) => a.CompareTo(b) > 0;
+    public static bool operator <(BetaVersion a, BetaVersion b) => a.CompareTo(b) < 0;
 }
 
 file sealed record GitHubReleaseResponse

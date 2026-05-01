@@ -16,6 +16,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Allow the WPF service test project to reach internal members (e.g. UpdateChecker). -->
+    <InternalsVisibleTo Include="SimCrewOps.App.Wpf.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- WebView2 — embeds Chromium so the Live Map page loads simcrewops.com/tracker-map -->
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
   </ItemGroup>

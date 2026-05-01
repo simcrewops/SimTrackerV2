@@ -44,7 +44,7 @@ iscc packaging\windows\installer\SimTrackerV2.iss `
 ## Install And Update Model
 
 **First install:** run `SimTrackerV2-Setup.exe`. The installer places the app under the user's
-`%LOCALAPPDATA%\Programs\SimCrewOps` directory (no admin elevation required).
+`%LOCALAPPDATA%\SimCrewOps\SimTrackerV2` directory (no admin elevation required).
 
 **Portable fallback:** unzip `SimTrackerV2-beta-win-x64.zip` and run `SimTrackerV2.exe` directly.
 
