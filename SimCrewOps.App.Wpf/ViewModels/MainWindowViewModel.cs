@@ -1952,22 +1952,20 @@ public sealed class MainWindowViewModel : ObservableObject
         FlightSessionRuntimeState? activeState,
         SimConnectRawTelemetryFrame? rawFrame)
     {
-        // Prefer the ICAO type detected from the loaded aircraft file path.
+        // Priority 1: runtime-resolved aircraft (ATC MODEL or detected aircraft title).
+        if (!string.IsNullOrWhiteSpace(activeState?.Context.AircraftType))
+            return activeState.Context.AircraftType;
+
+        // Priority 2: ICAO type detected from the loaded aircraft file path.
         if (!string.IsNullOrWhiteSpace(rawFrame?.ActiveProfileIcaoType))
-        {
             return rawFrame.ActiveProfileIcaoType;
-        }
 
         if (activeState is null)
-        {
             return "—";
-        }
 
         var profile = activeState.Context.Profile;
         if (profile.HeavyFourEngineAircraft)
-        {
             return "Heavy / 4-Engine";
-        }
 
         return profile.EngineCount > 0 ? $"{profile.EngineCount}-Engine" : "—";
     }

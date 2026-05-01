@@ -32,6 +32,12 @@ public sealed class RuntimeCoordinator
     private double? _lastLivePositionLatitude;
     private double? _lastLivePositionLongitude;
 
+    // Heading preservation — heading lives in the SimConnect Operational group (1 s poll) while
+    // FlightCritical frames arrive every SIM_FRAME, so early frames carry 0 until the first
+    // Operational update. Once a valid heading is seen it is preserved and reused on zero frames.
+    private double _lastKnownHeadingMagnetic;
+    private double _lastKnownHeadingTrue;
+
     /// <summary>
     /// UTC timestamp of the most recent live-position upload that the server accepted (HTTP 200).
     /// Null until the first successful upload.
@@ -247,6 +253,14 @@ public sealed class RuntimeCoordinator
         if (telemetryFrame.Latitude == 0.0 && telemetryFrame.Longitude == 0.0)
             return;
 
+        // Prime heading cache on every valid GPS frame, including the seed frame that
+        // returns early below. Without this the first-frame heading is lost and a later
+        // zero-heading Operational frame would still send 0.
+        if (telemetryFrame.HeadingMagneticDegrees != 0.0)
+            _lastKnownHeadingMagnetic = telemetryFrame.HeadingMagneticDegrees;
+        if (telemetryFrame.HeadingTrueDegrees != 0.0)
+            _lastKnownHeadingTrue = telemetryFrame.HeadingTrueDegrees;
+
         if (!_beaconInitialized)
         {
             // First valid GPS frame: seed the position reference so subsequent movement
@@ -277,7 +291,9 @@ public sealed class RuntimeCoordinator
         {
             Latitude             = telemetryFrame.Latitude,
             Longitude            = telemetryFrame.Longitude,
-            HeadingMagnetic      = telemetryFrame.HeadingMagneticDegrees,
+            HeadingMagnetic      = _lastKnownHeadingMagnetic,
+            HeadingTrue          = _lastKnownHeadingTrue,
+            OnGround             = telemetryFrame.OnGround,
             AltitudeFt           = telemetryFrame.AltitudeFeet,
             AltitudeAglFt        = telemetryFrame.AltitudeAglFeet,
             IndicatedAirspeedKts = telemetryFrame.IndicatedAirspeedKnots,

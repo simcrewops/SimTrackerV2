@@ -319,6 +319,65 @@ public sealed class RuntimeCoordinatorTests
         Assert.Equal(2, uploader.Payloads.Count);
     }
 
+    // ── Heading pipeline ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LivePosition_HeadingTrue_IsPopulatedInPayload()
+    {
+        var uploader = new SpyLivePositionUploader();
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext(),
+            livePositionUploader: uploader);
+
+        var t0 = new DateTimeOffset(2026, 4, 30, 10, 0, 0, TimeSpan.Zero);
+        // Frame 1: seeds position, no beacon.
+        await coordinator.ProcessFrameAsync(Frame(t0, onGround: true, latitude: 40.0, longitude: -75.0, heading: 270));
+        // Frame 2: moved enough → beacon fires with heading 270.
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(1), onGround: true, latitude: 40.0015, longitude: -75.0015, heading: 270));
+        await Task.Delay(50);
+
+        Assert.Single(uploader.Payloads);
+        Assert.Equal(270, uploader.Payloads[0].HeadingTrue);
+        Assert.Equal(270, uploader.Payloads[0].HeadingMagnetic);
+    }
+
+    [Fact]
+    public async Task LivePosition_PreservesLastValidHeading_WhenFrameReportsZero()
+    {
+        var uploader = new SpyLivePositionUploader();
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext(),
+            livePositionUploader: uploader);
+
+        var t0 = new DateTimeOffset(2026, 4, 30, 10, 0, 0, TimeSpan.Zero);
+        // Frame 1: seeds with valid heading 180°, no beacon.
+        await coordinator.ProcessFrameAsync(Frame(t0, onGround: false, latitude: 40.0, longitude: -75.0, heading: 180));
+        // Frame 2: position moved, heading reverts to 0 (uninitialized Operational frame).
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(1), onGround: false, latitude: 40.001, longitude: -75.001, heading: 0));
+        await Task.Delay(50);
+
+        Assert.Single(uploader.Payloads);
+        Assert.Equal(180, uploader.Payloads[0].HeadingMagnetic);
+        Assert.Equal(180, uploader.Payloads[0].HeadingTrue);
+    }
+
+    [Fact]
+    public async Task LivePosition_OnGround_IsPopulatedInPayload()
+    {
+        var uploader = new SpyLivePositionUploader();
+        var coordinator = new RuntimeCoordinator(
+            new FlightSessionContext(),
+            livePositionUploader: uploader);
+
+        var t0 = new DateTimeOffset(2026, 4, 30, 10, 0, 0, TimeSpan.Zero);
+        await coordinator.ProcessFrameAsync(Frame(t0, onGround: true, latitude: 40.0, longitude: -75.0, heading: 90));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(1), onGround: true, latitude: 40.001, longitude: -75.001, heading: 90));
+        await Task.Delay(50);
+
+        Assert.Single(uploader.Payloads);
+        Assert.True(uploader.Payloads[0].OnGround);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static TelemetryFrame Frame(
