@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Net.Http;
 
 namespace SimCrewOps.App.Wpf.Services;
@@ -8,6 +9,8 @@ public sealed class AppUpdater
 {
     private static readonly string AppDirectory =
         AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+
+    internal const string RequiredExeName = "SimTrackerV2.exe";
 
     private readonly HttpClient _httpClient;
 
@@ -33,7 +36,30 @@ public sealed class AppUpdater
             update.DownloadSizeBytes,
             cancellationToken).ConfigureAwait(false);
 
+        VerifyZipPayload(tempZip);
         LaunchUpdaterScript(tempZip);
+    }
+
+    /// <summary>
+    /// Verifies that the downloaded ZIP contains the expected executable.
+    /// Deletes the ZIP and throws if the payload looks wrong, so the current install is never
+    /// replaced by a corrupt or mismatched archive.
+    /// </summary>
+    internal static void VerifyZipPayload(string zipPath)
+    {
+        using var zip = ZipFile.OpenRead(zipPath);
+        var hasExe = zip.Entries.Any(e =>
+            string.Equals(e.Name, RequiredExeName, StringComparison.OrdinalIgnoreCase));
+
+        if (hasExe)
+            return;
+
+        // Clean up before throwing so temp storage is not littered with bad ZIPs.
+        zip.Dispose();
+        try { File.Delete(zipPath); } catch { /* best-effort */ }
+
+        throw new InvalidOperationException(
+            $"Downloaded update does not contain {RequiredExeName} — update aborted to protect the current installation.");
     }
 
     private async Task DownloadWithProgressAsync(

@@ -225,6 +225,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="{Binding UpdateBannerText}"
                                FontSize="13"
@@ -233,12 +234,20 @@
                                VerticalAlignment="Center"
                                TextWrapping="Wrap" />
                     <Button Grid.Column="1"
-                            Content="Install Update"
+                            Content="Install Now"
                             Command="{Binding InstallUpdateCommand}"
                             IsEnabled="{Binding IsInstallingUpdate, Converter={StaticResource InverseBooleanConverter}}"
                             Style="{StaticResource PrimaryButtonStyle}"
                             Padding="14,6"
                             Margin="14,0,0,0"
+                            VerticalAlignment="Center" />
+                    <Button Grid.Column="2"
+                            Content="Later"
+                            Command="{Binding DismissUpdateCommand}"
+                            IsEnabled="{Binding IsInstallingUpdate, Converter={StaticResource InverseBooleanConverter}}"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Padding="10,6"
+                            Margin="8,0,0,0"
                             VerticalAlignment="Center" />
                 </Grid>
             </Border>

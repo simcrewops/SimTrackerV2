@@ -43,8 +43,21 @@ iscc packaging\windows\installer\SimTrackerV2.iss `
 
 ## Install And Update Model
 
-- Initial install: run `SimTrackerV2-Setup.exe`
-- Portable fallback: unzip `SimTrackerV2-beta-win-x64.zip` and run `SimTrackerV2.exe`
-- In-app updates: the tracker checks `beta-latest` on startup and every 4 hours, then downloads the portable ZIP and restarts into the new version
+**First install:** run `SimTrackerV2-Setup.exe`. The installer places the app under the user's
+`%LOCALAPPDATA%\Programs\SimCrewOps` directory (no admin elevation required).
 
-The installer and the in-app updater share the same packaged app payload.
+**Portable fallback:** unzip `SimTrackerV2-beta-win-x64.zip` and run `SimTrackerV2.exe` directly.
+
+**In-app updates (post-install):**
+1. The tracker checks the `beta-latest` GitHub release on startup and every 4 hours.
+2. When a newer version is found a banner appears: *"vX.Y.Z available — select Install Now to update."*
+3. The user chooses **Install Now** or **Later**.
+   - **Later** dismisses the banner until the next periodic check. The current version continues running.
+   - **Install Now** downloads `SimTrackerV2-beta-win-x64.zip`, verifies it contains `SimTrackerV2.exe`,
+     then launches a background PowerShell script that waits for the app to exit, extracts the ZIP
+     over the install directory, and relaunches `SimTrackerV2.exe`.
+4. The app shuts down while the script runs; the updated version starts automatically.
+
+No admin elevation is needed for in-app updates because the install path is under `%LOCALAPPDATA%`.
+
+The installer EXE and the in-app updater ZIP share the same packaged app payload.
