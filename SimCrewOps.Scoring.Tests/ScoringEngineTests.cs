@@ -174,7 +174,7 @@ public sealed class ScoringEngineTests
                 MaxAltitudeDeviationFeet = 60,
                 NewFlightLevelCaptureSeconds = 35,
                 SpeedInstabilityEvents = 0,
-                MaxBankAngleDegrees = 6,
+                LevelMaxBankDegrees = 6,
                 MaxGForce = 1.08,
             },
             Descent = new DescentMetrics
