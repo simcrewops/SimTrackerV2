@@ -370,10 +370,8 @@ public sealed class RuntimeCoordinatorTests
             livePositionUploader: uploader);
 
         var t0 = new DateTimeOffset(2026, 4, 30, 10, 0, 0, TimeSpan.Zero);
-        // Seed
-        await coordinator.ProcessFrameAsync(Frame(t0, onGround: true, latitude: 40.0, longitude: -75.0));
-        // Beacon frame, still on ground
-        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(1), onGround: true, latitude: 40.0015, longitude: -75.0015));
+        await coordinator.ProcessFrameAsync(Frame(t0, onGround: true, latitude: 40.0, longitude: -75.0, heading: 90));
+        await coordinator.ProcessFrameAsync(Frame(t0.AddSeconds(1), onGround: true, latitude: 40.001, longitude: -75.001, heading: 90));
         await Task.Delay(50);
 
         Assert.Single(uploader.Payloads);
