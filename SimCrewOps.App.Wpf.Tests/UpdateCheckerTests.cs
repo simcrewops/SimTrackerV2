@@ -1,4 +1,5 @@
 using SimCrewOps.App.Wpf.Services;
+using Xunit;
 
 namespace SimCrewOps.App.Wpf.Tests;
 
