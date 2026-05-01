@@ -32,6 +32,12 @@ public sealed class RuntimeCoordinator
     private double? _lastLivePositionLatitude;
     private double? _lastLivePositionLongitude;
 
+    // Heading preservation — heading lives in the SimConnect Operational group (1 s poll) while
+    // FlightCritical frames arrive every SIM_FRAME, so early frames carry 0 until the first
+    // Operational update. Once a valid heading is seen it is preserved and reused on zero frames.
+    private double _lastKnownHeadingMagnetic;
+    private double _lastKnownHeadingTrue;
+
     /// <summary>
     /// UTC timestamp of the most recent live-position upload that the server accepted (HTTP 200).
     /// Null until the first successful upload.
@@ -273,11 +279,18 @@ public sealed class RuntimeCoordinator
         if (!hasMovedEnough && elapsed < TimeSpan.FromSeconds(4))
             return;
 
+        if (telemetryFrame.HeadingMagneticDegrees != 0.0)
+            _lastKnownHeadingMagnetic = telemetryFrame.HeadingMagneticDegrees;
+        if (telemetryFrame.HeadingTrueDegrees != 0.0)
+            _lastKnownHeadingTrue = telemetryFrame.HeadingTrueDegrees;
+
         var payload = new LivePositionPayload
         {
             Latitude             = telemetryFrame.Latitude,
             Longitude            = telemetryFrame.Longitude,
-            HeadingMagnetic      = telemetryFrame.HeadingMagneticDegrees,
+            HeadingMagnetic      = _lastKnownHeadingMagnetic,
+            HeadingTrue          = _lastKnownHeadingTrue,
+            OnGround             = telemetryFrame.OnGround,
             AltitudeFt           = telemetryFrame.AltitudeFeet,
             AltitudeAglFt        = telemetryFrame.AltitudeAglFeet,
             IndicatedAirspeedKts = telemetryFrame.IndicatedAirspeedKnots,
