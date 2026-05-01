@@ -29,30 +29,10 @@ public sealed class SimSessionPayloadTests
         Assert.Equal(1.967,       request.BlockTimeActual);
         Assert.Equal(2.0,         request.BlockTimeScheduled);
 
-        // Departure phase scoring
-        var dep = request.ScoringInput.Departure;
-        Assert.Equal(12.8,  dep.TakeoffPitchDeg);
-        Assert.Equal(2,     dep.FlapsAtTakeoff);
-        Assert.Equal(1840.0, dep.InitialClimbFpm);
-        Assert.Null(dep.V1Kts);
-        Assert.Null(dep.VrKts);
-        Assert.Null(dep.V2Kts);
-
-        // Climb phase scoring
-        var climb = request.ScoringInput.Climb;
-        Assert.Equal(1920.0, climb.AvgClimbFpm);
-        Assert.Equal(18.5,   climb.TimeToFL100Min);
-        Assert.Equal(0.88,   climb.VsStabilityScore);
-
-        // Cruise phase scoring
+        // Cruise phase scoring (v5 field names)
         var cruise = request.ScoringInput.Cruise;
-        Assert.Equal(120.0, cruise.AltitudeDeviationFt);
-        Assert.Equal(11.0,  cruise.SpeedDeviationKts);
-
-        // Descent phase scoring
-        var descent = request.ScoringInput.Descent;
-        Assert.Equal(-1750.0, descent.AvgDescentFpm);
-        Assert.Equal(248.0,   descent.SpeedAtFL100Kts);
+        Assert.Equal(120.0, cruise.MaxAltitudeDeviationFt);
+        Assert.Equal(11.0,  cruise.MaxIasDeviationKts);
 
         // Landing scoring
         var landing = request.ScoringInput.Landing;
@@ -134,10 +114,10 @@ public sealed class SimSessionPayloadTests
         Assert.Equal(270.0, request.LandingAnalysis.WindDirectionAtTouchdownDegrees);
     }
 
-    // ── Departure phase fields ────────────────────────────────────────────────
+    // ── Takeoff phase fields (v5 shape) ──────────────────────────────────────
 
     [Fact]
-    public void DepartureFields_ArePopulatedFromTrackerState_NotDefaultZero()
+    public void TakeoffFields_ArePopulatedFromTrackerState_NotDefaultZero()
     {
         var session = BuildMinimalSession() with
         {
@@ -147,9 +127,11 @@ public sealed class SimSessionPayloadTests
                 {
                     Takeoff = new TakeoffMetrics
                     {
-                        MaxPitchAngleDegrees      = 14.5,
-                        FlapsHandleIndexAtLiftoff = 3,
-                        InitialClimbFpm           = 2100.0,
+                        MaxPitchWhileWowDegrees  = 11.5,
+                        MaxPitchAglFt            = 5.0,
+                        GForceAtRotation         = 1.15,
+                        PositiveRateBeforeGearUp = true,
+                        BounceCount              = 0,
                     },
                 },
                 ScoreResult = new ScoreResult(100, 0, "C", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
@@ -157,45 +139,13 @@ public sealed class SimSessionPayloadTests
         };
 
         var request = new SimSessionUploadRequestMapper().Map(session, "1.0.0");
-        var dep = request.ScoringInput.Departure;
+        var takeoff = request.ScoringInput.Takeoff;
 
-        Assert.Equal(14.5,  dep.TakeoffPitchDeg);
-        Assert.Equal(3,     dep.FlapsAtTakeoff);
-        Assert.Equal(2100.0, dep.InitialClimbFpm);
-        Assert.NotEqual(0, dep.FlapsAtTakeoff);
-        Assert.NotEqual(0.0, dep.InitialClimbFpm);
-    }
-
-    // ── Climb phase fields ────────────────────────────────────────────────────
-
-    [Fact]
-    public void ClimbFields_ArePopulatedFromTrackerState_NotDefaultZero()
-    {
-        var session = BuildMinimalSession() with
-        {
-            State = BuildMinimalSession().State with
-            {
-                ScoreInput = new FlightScoreInput
-                {
-                    Climb = new ClimbMetrics
-                    {
-                        AvgClimbFpm      = 1750.0,
-                        TimeToFL100Minutes = 16.2,
-                        VsStabilityScore = 0.92,
-                    },
-                },
-                ScoreResult = new ScoreResult(100, 0, "C", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
-            },
-        };
-
-        var request = new SimSessionUploadRequestMapper().Map(session, "1.0.0");
-        var climb = request.ScoringInput.Climb;
-
-        Assert.Equal(1750.0, climb.AvgClimbFpm);
-        Assert.Equal(16.2,   climb.TimeToFL100Min);
-        Assert.Equal(0.92,   climb.VsStabilityScore);
-        Assert.NotEqual(0.0, climb.AvgClimbFpm);
-        Assert.NotEqual(0.0, climb.VsStabilityScore);
+        Assert.Equal(11.5, takeoff.MaxPitchWhileWowDeg);
+        Assert.Equal(5.0,  takeoff.MaxPitchAglFt);
+        Assert.Equal(1.15, takeoff.GForceAtRotation);
+        Assert.True(takeoff.PositiveRateBeforeGearUp);
+        Assert.False(takeoff.BounceOnRotation);
     }
 
     // ── Cruise speed deviation ────────────────────────────────────────────────
@@ -222,38 +172,9 @@ public sealed class SimSessionPayloadTests
         var request = new SimSessionUploadRequestMapper().Map(session, "1.0.0");
         var cruise = request.ScoringInput.Cruise;
 
-        Assert.Equal(80.0,  cruise.AltitudeDeviationFt);
-        Assert.Equal(12.5,  cruise.SpeedDeviationKts);
-        Assert.NotEqual(0.0, cruise.SpeedDeviationKts);
-    }
-
-    // ── Descent phase fields ──────────────────────────────────────────────────
-
-    [Fact]
-    public void DescentFields_ArePopulatedFromTrackerState_NotDefaultZero()
-    {
-        var session = BuildMinimalSession() with
-        {
-            State = BuildMinimalSession().State with
-            {
-                ScoreInput = new FlightScoreInput
-                {
-                    Descent = new DescentMetrics
-                    {
-                        AvgDescentFpm   = -1820.0,
-                        SpeedAtFL100Kts = 252.0,
-                    },
-                },
-                ScoreResult = new ScoreResult(100, 0, "C", false, Array.Empty<PhaseScoreResult>(), Array.Empty<ScoreFinding>()),
-            },
-        };
-
-        var request = new SimSessionUploadRequestMapper().Map(session, "1.0.0");
-        var descent = request.ScoringInput.Descent;
-
-        Assert.Equal(-1820.0, descent.AvgDescentFpm);
-        Assert.Equal(252.0,   descent.SpeedAtFL100Kts);
-        Assert.NotEqual(0.0,  descent.AvgDescentFpm);
+        Assert.Equal(80.0,  cruise.MaxAltitudeDeviationFt);
+        Assert.Equal(12.5,  cruise.MaxIasDeviationKts);
+        Assert.NotEqual(0.0, cruise.MaxIasDeviationKts);
     }
 
     // ── Approach path distance-to-threshold ───────────────────────────────────
@@ -351,27 +272,10 @@ public sealed class SimSessionPayloadTests
                 },
                 ScoreInput = new FlightScoreInput
                 {
-                    Takeoff = new TakeoffMetrics
-                    {
-                        MaxPitchAngleDegrees      = 12.8,
-                        FlapsHandleIndexAtLiftoff = 2,
-                        InitialClimbFpm           = 1840.0,
-                    },
-                    Climb = new ClimbMetrics
-                    {
-                        AvgClimbFpm       = 1920.0,
-                        TimeToFL100Minutes = 18.5,
-                        VsStabilityScore  = 0.88,
-                    },
                     Cruise = new CruiseMetrics
                     {
                         MaxAltitudeDeviationFeet = 120.0,
                         MaxSpeedDeviationKts     = 11.0,
-                    },
-                    Descent = new DescentMetrics
-                    {
-                        AvgDescentFpm   = -1750.0,
-                        SpeedAtFL100Kts = 248.0,
                     },
                     Landing = new LandingMetrics
                     {

@@ -36,50 +36,126 @@ public sealed class SimSessionUploadRequestMapper
         };
     }
 
-    private static ScoringInputDto MapScoringInput(FlightScoreInput s) =>
+    private static FlightScoreInputV5Upload MapScoringInput(FlightScoreInput s) =>
         new()
         {
-            Departure = new DepartureScoringDto
+            Preflight = new ScoreInputPreflightV5
             {
-                // V1/Vr/V2 are not observable from MSFS SimConnect telemetry — sent null.
-                TakeoffPitchDeg  = s.Takeoff.MaxPitchAngleDegrees,
-                FlapsAtTakeoff   = s.Takeoff.FlapsHandleIndexAtLiftoff,
-                InitialClimbFpm  = s.Takeoff.InitialClimbFpm,
+                BeaconOnBeforeTaxi = s.Preflight.BeaconOnBeforeTaxi,
             },
-            Climb = new ClimbScoringDto
+            TaxiOut = new ScoreInputTaxiV5
             {
-                AvgClimbFpm      = s.Climb.AvgClimbFpm,
-                TimeToFL100Min   = s.Climb.TimeToFL100Minutes,
-                VsStabilityScore = s.Climb.VsStabilityScore,
+                MaxGroundSpeedKts       = s.TaxiOut.MaxGroundSpeedKnots,
+                MaxTurnSpeedKts         = s.TaxiOut.MaxTurnSpeedKnots,
+                NavLightsOn             = s.TaxiOut.NavLightsOn,
+                StrobeLightOnDuringTaxi = !s.TaxiOut.StrobesOff,
             },
-            Cruise = new CruiseScoringDto
+            Takeoff = new ScoreInputTakeoffV5
             {
-                AltitudeDeviationFt = s.Cruise.MaxAltitudeDeviationFeet,
-                SpeedDeviationKts   = s.Cruise.MaxSpeedDeviationKts,
+                BounceOnRotation         = s.Takeoff.BounceCount > 0,
+                PositiveRateBeforeGearUp = s.Takeoff.PositiveRateBeforeGearUp,
+                MaxBankBelow1000AglDeg   = s.Takeoff.MaxBankAngleDegrees,
+                MaxPitchWhileWowDeg      = s.Takeoff.MaxPitchWhileWowDegrees,
+                MaxPitchAglFt            = s.Takeoff.MaxPitchAglFt,
+                StrobeLightsOn           = s.Takeoff.StrobesOnFromTakeoffToLanding,
+                LandingLightsOn          = s.Takeoff.LandingLightsOnBeforeTakeoff,
+                GForceAtRotation         = s.Takeoff.GForceAtRotation,
             },
-            Descent = new DescentScoringDto
+            Climb = new ScoreInputClimbV5
             {
-                AvgDescentFpm   = s.Descent.AvgDescentFpm,
-                SpeedAtFL100Kts = s.Descent.SpeedAtFL100Kts,
+                IsHeavy                    = s.Climb.HeavyFourEngineAircraft,
+                MaxIasBelowFl100Kts        = s.Climb.MaxIasBelowFl100Knots,
+                MaxBankDeg                 = s.Climb.MaxBankAngleDegrees,
+                MinGForce                  = s.Climb.MinGForce,
+                MaxGForce                  = s.Climb.MaxGForce,
+                LandingLightsOffAboveFL180 = s.Takeoff.LandingLightsOffByFl180,
             },
-            Landing = new LandingScoringDto
+            Cruise = new ScoreInputCruiseV5
+            {
+                CruiseAltitudeFt       = s.Cruise.CruiseTargetAltitudeFt,
+                MaxAltitudeDeviationFt = s.Cruise.MaxAltitudeDeviationFeet,
+                MachTarget             = s.Cruise.MachTarget,
+                MaxMachDeviation       = s.Cruise.MaxMachDeviation,
+                IasTarget              = s.Cruise.IasTarget,
+                MaxIasDeviationKts     = s.Cruise.MaxSpeedDeviationKts,
+                SpeedInstabilityEvents = s.Cruise.SpeedInstabilityEvents,
+                MaxBankDeg             = s.Cruise.LevelMaxBankDegrees,
+                MaxTurnBankDeg         = s.Cruise.TurnMaxBankDegrees,
+                MinGForce              = s.Cruise.MinGForce,
+                MaxGForce              = s.Cruise.MaxGForce,
+            },
+            Descent = new ScoreInputDescentV5
+            {
+                IsHeavy                    = s.Climb.HeavyFourEngineAircraft,
+                MaxIasBelowFl100Kts        = s.Descent.MaxIasBelowFl100Knots,
+                MaxBankDeg                 = s.Descent.MaxBankAngleDegrees,
+                MinGForce                  = s.Descent.MinGForce,
+                MaxGForce                  = s.Descent.MaxGForce,
+                MaxDescentRateFpm          = s.Descent.MaxDescentRateFpm,
+                LandingLightsOnBeforeFL180 = s.Descent.LandingLightsOnByFl180,
+                MaxNoseDownPitchDeg        = s.Descent.MaxNoseDownPitchDeg,
+            },
+            Approach = new ScoreInputApproachV5
+            {
+                ApproachSpeedKts         = s.Approach.ApproachSpeedKts,
+                MaxIasDeviationKts       = s.Approach.MaxIasDeviationKts,
+                GearDownAglFt            = s.Approach.GearDownAglFt,
+                FlapsConfiguredBy1000Agl = s.Approach.FlapsConfiguredBy1000Agl,
+                MaxBankDeg               = s.Approach.MaxBankDegrees,
+                // ILS fields default to 0/false until SimConnect ILS SimVars are wired.
+            },
+            StabilizedApproach = new ScoreInputStabilizedApproachV5
+            {
+                ApproachSpeedKts       = s.StabilizedApproach.ApproachSpeedKts,
+                MaxIasDeviationKts     = s.StabilizedApproach.MaxIasDeviationKts,
+                MaxDescentRateFpm      = s.StabilizedApproach.MaxDescentRateFpm,
+                ConfigChanged          = s.StabilizedApproach.ConfigChanged,
+                MaxHeadingDeviationDeg = s.StabilizedApproach.MaxHeadingDeviationDeg,
+                IlsAvailable           = s.StabilizedApproach.IlsAvailable,
+                MaxGlideslopeDevDots   = s.StabilizedApproach.MaxGlideslopeDevDots,
+                PitchAtGateDeg         = s.StabilizedApproach.PitchAtGateDeg,
+            },
+            Landing = new ScoreInputLandingV5
             {
                 // Tracker stores positive magnitude; negate for payload convention (negative = descending).
                 TouchdownRateFpm    = -(s.Landing.TouchdownVerticalSpeedFpm),
-                TouchdownPitchDeg   = s.Landing.TouchdownPitchAngleDegrees,
-                MaxPitchWhileWowDeg = s.Landing.MaxPitchWhileWowDegrees,
-                TouchdownBankDeg    = s.Landing.TouchdownBankAngleDegrees,
                 TouchdownGForce     = s.Landing.TouchdownGForce,
                 BounceCount         = s.Landing.BounceCount,
+                TouchdownBankDeg    = s.Landing.TouchdownBankAngleDegrees,
                 GearUpAtTouchdown   = s.Landing.GearUpAtTouchdown,
+                MaxPitchWhileWowDeg = s.Landing.MaxPitchWhileWowDegrees,
+                TouchdownPitchDeg   = s.Landing.TouchdownPitchAngleDegrees,
             },
-            Safety = new SafetyScoringDto
+            TaxiIn = new ScoreInputTaxiInV5
             {
-                CrashDetected        = s.Safety.CrashDetected,
-                OverspeedWarningCount = s.Safety.OverspeedEvents,
-                StallWarningCount    = s.Safety.StallEvents,
-                GpwsAlertCount       = s.Safety.GpwsEvents,
+                MaxGroundSpeedKts       = s.TaxiIn.MaxGroundSpeedKnots,
+                MaxTurnSpeedKts         = s.TaxiIn.MaxTurnSpeedKnots,
+                NavLightsOn             = s.TaxiIn.NavLightsOn,
+                StrobeLightOnDuringTaxi = !s.TaxiIn.StrobesOff,
+                SmoothDeceleration      = s.TaxiIn.SmoothDeceleration,
             },
+            LightsSystems = new ScoreInputLightsSystemsV5
+            {
+                BeaconOnThroughoutFlight    = s.LightsSystems.BeaconOnThroughoutFlight,
+                NavLightsOnThroughoutFlight = s.LightsSystems.NavLightsOnThroughoutFlight,
+                StrobesCorrect              = s.LightsSystems.StrobesCorrect,
+                LandingLightsCompliance     = s.LightsSystems.LandingLightsCompliance,
+            },
+            Safety = new ScoreInputSafetyV5
+            {
+                CrashDetected            = s.Safety.CrashDetected,
+                OverspeedWarningCount    = s.Safety.OverspeedEvents,
+                SustainedOverspeedEvents = s.Safety.SustainedOverspeedEvents,
+                StallWarningCount        = s.Safety.StallEvents,
+                GpwsAlertCount           = s.Safety.GpwsEvents,
+                EngineShutdownsInFlight  = s.Safety.EngineShutdownsInFlight,
+                EngineShutdownInFlight   = s.Safety.EngineShutdownsInFlight > 0,
+            },
+            Arrival = s.Arrival.ArrivalReached ? new ScoreInputArrivalV5
+            {
+                EnginesOffAfterParkingBrake = !s.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown,
+                BeaconOffAfterEngines       = s.Arrival.BeaconOffAfterEngines,
+            } : null,
         };
 
     private static LandingAnalysisDto MapLandingAnalysis(FlightScoreInput s)

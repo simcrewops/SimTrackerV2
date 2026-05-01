@@ -13,6 +13,9 @@ namespace SimCrewOps.Sync.Models;
 /// </summary>
 public sealed record FlightScoreInputV5Upload
 {
+    [JsonPropertyName("preflight")]
+    public ScoreInputPreflightV5 Preflight { get; init; } = new();
+
     [JsonPropertyName("taxiOut")]
     public ScoreInputTaxiV5 TaxiOut { get; init; } = new();
 
@@ -51,6 +54,12 @@ public sealed record FlightScoreInputV5Upload
 }
 
 // ── Phase sub-records ──────────────────────────────────────────────────────────
+
+public sealed record ScoreInputPreflightV5
+{
+    [JsonPropertyName("beaconOnBeforeTaxi")]
+    public bool BeaconOnBeforeTaxi { get; init; }
+}
 
 public sealed record ScoreInputTaxiV5
 {
@@ -121,7 +130,7 @@ public sealed record ScoreInputClimbV5
     [JsonPropertyName("isHeavy")]
     public bool IsHeavy { get; init; }
 
-    [JsonPropertyName("maxIasBelowFl100Kts")]
+    [JsonPropertyName("maxIasBelow10000Kts")]
     public double MaxIasBelowFl100Kts { get; init; }
 
     [JsonPropertyName("maxBankDeg")]
@@ -178,7 +187,7 @@ public sealed record ScoreInputDescentV5
     [JsonPropertyName("isHeavy")]
     public bool IsHeavy { get; init; }
 
-    [JsonPropertyName("maxIasBelowFl100Kts")]
+    [JsonPropertyName("maxIasBelow10000Kts")]
     public double MaxIasBelowFl100Kts { get; init; }
 
     [JsonPropertyName("maxBankDeg")]

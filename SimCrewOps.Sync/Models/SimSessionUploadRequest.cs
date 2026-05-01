@@ -44,124 +44,13 @@ public sealed record SimSessionUploadRequest
     public double? BlockTimeScheduled { get; init; }
 
     [JsonPropertyName("scoringInput")]
-    public ScoringInputDto ScoringInput { get; init; } = new();
+    public FlightScoreInputV5Upload ScoringInput { get; init; } = new();
 
     [JsonPropertyName("landingAnalysis")]
     public LandingAnalysisDto LandingAnalysis { get; init; } = new();
 
     [JsonPropertyName("flightPath")]
     public FlightPathPointDto[] FlightPath { get; init; } = [];
-}
-
-public sealed record ScoringInputDto
-{
-    [JsonPropertyName("departure")]
-    public DepartureScoringDto Departure { get; init; } = new();
-
-    [JsonPropertyName("climb")]
-    public ClimbScoringDto Climb { get; init; } = new();
-
-    [JsonPropertyName("cruise")]
-    public CruiseScoringDto Cruise { get; init; } = new();
-
-    [JsonPropertyName("descent")]
-    public DescentScoringDto Descent { get; init; } = new();
-
-    [JsonPropertyName("landing")]
-    public LandingScoringDto Landing { get; init; } = new();
-
-    [JsonPropertyName("safety")]
-    public SafetyScoringDto Safety { get; init; } = new();
-}
-
-public sealed record DepartureScoringDto
-{
-    [JsonPropertyName("v1Kts")]
-    public double? V1Kts { get; init; }
-
-    [JsonPropertyName("vrKts")]
-    public double? VrKts { get; init; }
-
-    [JsonPropertyName("v2Kts")]
-    public double? V2Kts { get; init; }
-
-    [JsonPropertyName("takeoffPitchDeg")]
-    public double TakeoffPitchDeg { get; init; }
-
-    [JsonPropertyName("initialClimbFpm")]
-    public double InitialClimbFpm { get; init; }
-
-    [JsonPropertyName("flapsAtTakeoff")]
-    public int FlapsAtTakeoff { get; init; }
-}
-
-public sealed record ClimbScoringDto
-{
-    [JsonPropertyName("avgClimbFpm")]
-    public double AvgClimbFpm { get; init; }
-
-    [JsonPropertyName("timeToFL100Min")]
-    public double? TimeToFL100Min { get; init; }
-
-    [JsonPropertyName("vsStabilityScore")]
-    public double VsStabilityScore { get; init; }
-}
-
-public sealed record CruiseScoringDto
-{
-    [JsonPropertyName("altitudeDeviationFt")]
-    public double AltitudeDeviationFt { get; init; }
-
-    [JsonPropertyName("speedDeviationKts")]
-    public double SpeedDeviationKts { get; init; }
-}
-
-public sealed record DescentScoringDto
-{
-    [JsonPropertyName("avgDescentFpm")]
-    public double AvgDescentFpm { get; init; }
-
-    [JsonPropertyName("speedAtFL100Kts")]
-    public double? SpeedAtFL100Kts { get; init; }
-}
-
-public sealed record LandingScoringDto
-{
-    [JsonPropertyName("touchdownRateFpm")]
-    public double TouchdownRateFpm { get; init; }
-
-    [JsonPropertyName("touchdownPitchDeg")]
-    public double TouchdownPitchDeg { get; init; }
-
-    [JsonPropertyName("maxPitchWhileWowDeg")]
-    public double MaxPitchWhileWowDeg { get; init; }
-
-    [JsonPropertyName("touchdownBankDeg")]
-    public double TouchdownBankDeg { get; init; }
-
-    [JsonPropertyName("touchdownGForce")]
-    public double TouchdownGForce { get; init; }
-
-    [JsonPropertyName("bounceCount")]
-    public int BounceCount { get; init; }
-
-    [JsonPropertyName("gearUpAtTouchdown")]
-    public bool GearUpAtTouchdown { get; init; }
-}
-
-public sealed record SafetyScoringDto
-{
-    [JsonPropertyName("crashDetected")]
-    public bool CrashDetected { get; init; }
-
-    [JsonPropertyName("overspeedWarningCount")]
-    public int OverspeedWarningCount { get; init; }
-
-    [JsonPropertyName("stallWarningCount")]
-    public int StallWarningCount { get; init; }
-
-    [JsonPropertyName("gpwsAlertCount")]
-    public int GpwsAlertCount { get; init; }
 }
 
 public sealed record LandingAnalysisDto
