@@ -227,7 +227,12 @@ public sealed class MainWindowViewModel : ObservableObject
         RetrySyncCommand = new RelayCommand(() => _ = RetrySyncAsync());
         SaveSettingsCommand = new RelayCommand(() => _ = SaveSettingsAsync());
         ResetSessionCommand = new RelayCommand(() => _ = ResetSessionAsync());
-        InstallUpdateCommand = new RelayCommand(() => _ = InstallUpdateAsync());
+        InstallUpdateCommand  = new RelayCommand(() => _ = InstallUpdateAsync());
+        DismissUpdateCommand  = new RelayCommand(() =>
+        {
+            _pendingUpdate = null;
+            UpdateBannerVisible = false;
+        });
 
         _pollingTimer = new DispatcherTimer
         {
@@ -284,7 +289,8 @@ public sealed class MainWindowViewModel : ObservableObject
     }
     public RelayCommand RetrySyncCommand { get; }
     public RelayCommand SaveSettingsCommand { get; }
-    public RelayCommand InstallUpdateCommand { get; }
+    public RelayCommand InstallUpdateCommand  { get; }
+    public RelayCommand DismissUpdateCommand  { get; }
 
     /// <summary>
     /// Resets the current session to Preflight without losing departure/arrival context.
@@ -1168,7 +1174,7 @@ public sealed class MainWindowViewModel : ObservableObject
             _pendingUpdate = info;
             Application.Current.Dispatcher.Invoke(() =>
             {
-                UpdateBannerText = $"Update available: v{info.LatestVersion} — click to install";
+                UpdateBannerText = $"v{info.LatestVersion} available — select Install Now to update";
                 UpdateBannerVisible = true;
             });
         }
@@ -1183,22 +1189,18 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         var update = _pendingUpdate;
         if (update is null || IsInstallingUpdate)
-        {
             return;
-        }
 
         IsInstallingUpdate = true;
-        UpdateBannerVisible = true;
-        UpdateBannerText = "Downloading update… 0%";
+        UpdateBannerText = $"Downloading v{update.LatestVersion}… 0%";
+        UpdateDownloadProgress = 0;
 
         void OnDownloadProgress(object? _, double fraction)
         {
             var percent = (int)(fraction * 100);
             UpdateDownloadProgress = percent;
             Application.Current.Dispatcher.Invoke(() =>
-            {
-                UpdateBannerText = $"Downloading update… {percent}%";
-            });
+                UpdateBannerText = $"Downloading v{update.LatestVersion}… {percent}%");
         }
 
         try
@@ -1206,17 +1208,19 @@ public sealed class MainWindowViewModel : ObservableObject
             _appUpdater.DownloadProgressChanged += OnDownloadProgress;
             await _appUpdater.DownloadAndApplyAsync(update).ConfigureAwait(false);
 
+            // Updater script has been launched — shut down so it can replace app files.
             Application.Current.Dispatcher.Invoke(() =>
             {
-                UpdateBannerText = "Restarting…";
+                UpdateBannerText = "Applying update — restarting shortly…";
                 Application.Current.Shutdown();
             });
         }
         catch (Exception ex)
         {
-            IsInstallingUpdate = false;
             _lastUpdateError = ex.Message;
-            UpdateBannerText = $"Update failed: {ex.Message}";
+            IsInstallingUpdate = false;
+            Application.Current.Dispatcher.Invoke(() =>
+                UpdateBannerText = $"Update failed: {ex.Message}");
         }
         finally
         {

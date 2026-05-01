@@ -111,6 +111,18 @@ jobs:
       - name: Test simconnect
         run: dotnet test SimCrewOps.SimConnect.Tests/SimCrewOps.SimConnect.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=simconnect-tests.trx" --results-directory TestResults
 
+      - name: Restore WPF tests
+        if: matrix.os == 'windows-latest'
+        run: dotnet restore SimCrewOps.App.Wpf.Tests/SimCrewOps.App.Wpf.Tests.csproj
+
+      - name: Build WPF tests
+        if: matrix.os == 'windows-latest'
+        run: dotnet build SimCrewOps.App.Wpf.Tests/SimCrewOps.App.Wpf.Tests.csproj --configuration Release --no-restore
+
+      - name: Test WPF services
+        if: matrix.os == 'windows-latest'
+        run: dotnet test SimCrewOps.App.Wpf.Tests/SimCrewOps.App.Wpf.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=wpf-tests.trx" --results-directory TestResults
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
