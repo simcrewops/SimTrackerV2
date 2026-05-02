@@ -60,6 +60,15 @@ public sealed class SimConnectTelemetryMapperTests
     }
 
     [Fact]
+    public void Map_PitchAngle_NegatesForUserConvention()
+    {
+        // SimConnect: -5.0 (nose UP is negative) → user convention: +5.0 (nose UP is positive)
+        var mapper = new SimConnectTelemetryMapper();
+        var frame = mapper.Map(new SimConnectRawTelemetryFrame { PitchAngleDegrees = -5.0 });
+        Assert.Equal(5.0, frame.PitchAngleDegrees);
+    }
+
+    [Fact]
     public void Map_MapsWindFieldsCorrectly()
     {
         var mapper = new SimConnectTelemetryMapper();
