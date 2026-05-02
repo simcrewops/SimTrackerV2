@@ -6,6 +6,7 @@ public sealed record TelemetryFrame
 {
     public DateTimeOffset TimestampUtc { get; init; }
     public FlightPhase Phase { get; init; }
+    public bool IsPaused { get; init; }
 
     public double Latitude { get; init; }
     public double Longitude { get; init; }

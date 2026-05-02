@@ -199,6 +199,15 @@ public sealed class FlightSessionScoringTracker
     // this many frames to prevent false deductions on reconnect.
     private int _postRestoreGraceFrames;
 
+    // Pause filtering: skip all accumulator updates during pause AND for 10 s after unpause.
+    // Layer 1 — explicit flag from Pause_EX1 system event (frame.IsPaused).
+    // Layer 2 — timestamp-stall fallback: TimestampUtc is wall-clock (DateTimeOffset.UtcNow),
+    //   so this layer only fires if the timestamp source is ever changed to sim-supplied time.
+    //   Kept as future-proofing; with wall-clock stamps Layer 1 covers all cases.
+    private bool _wasPaused;
+    private DateTimeOffset? _unpausedAt;
+    private static readonly TimeSpan PauseWarmupWindow = TimeSpan.FromSeconds(10);
+
     private bool _crashDetected;
     private int _overspeedEvents;
     private int _sustainedOverspeedEvents;
@@ -426,10 +435,56 @@ public sealed class FlightSessionScoringTracker
         _overspeedStartedAt = null;
         _stallActive = false;
         _gpwsActive = false;
+
+        // Pause state resets on reconnect — incoming frames re-establish it via
+        // Pause_EX1 flag and timestamp-stall detection naturally.
+        _wasPaused = false;
+        _unpausedAt = null;
     }
 
     public void Ingest(TelemetryFrame frame)
     {
+        // ── Pause gate ────────────────────────────────────────────────────────────
+        // Layer 1: explicit flag from Pause_EX1 system event.
+        bool isPaused = frame.IsPaused;
+
+        // Layer 2: timestamp-stall fallback (only meaningful when TimestampUtc is
+        // sim-supplied rather than wall-clock; currently wall-clock so rarely fires).
+        if (!isPaused && _previousFrame is not null)
+        {
+            var delta = (frame.TimestampUtc - _previousFrame.TimestampUtc).TotalSeconds;
+            if (delta < 0.001) isPaused = true;
+        }
+
+        if (isPaused)
+        {
+            _wasPaused = true;
+            _unpausedAt = null;     // reset any prior warmup timer
+            _previousFrame = frame;
+            return;
+        }
+
+        // Transition: last processed frame was paused → start 10-second warmup.
+        if (_wasPaused)
+        {
+            _wasPaused = false;
+            _unpausedAt = frame.TimestampUtc;
+            _previousFrame = frame;
+            return;
+        }
+
+        // Within warmup window: skip all accumulator updates.
+        if (_unpausedAt is not null)
+        {
+            if ((frame.TimestampUtc - _unpausedAt.Value) < PauseWarmupWindow)
+            {
+                _previousFrame = frame;
+                return;
+            }
+            _unpausedAt = null;     // warmup expired — resume normal updates
+        }
+        // ─────────────────────────────────────────────────────────────────────────
+
         if (_postRestoreGraceFrames > 0) _postRestoreGraceFrames--;
 
         _sessionStartUtc ??= frame.TimestampUtc;
