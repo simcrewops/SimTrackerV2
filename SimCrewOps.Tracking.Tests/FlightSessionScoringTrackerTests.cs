@@ -156,6 +156,10 @@ public sealed class FlightSessionScoringTrackerTests
         tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
             velocityWorldY: -2.0, touchdownNormal: -1.8, vs: -180));
 
+        // Sustaining frame: ≥500ms elapsed — debounce commits the first touchdown.
+        tracker.Ingest(Frame(t0.AddSeconds(1.6), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -2.0, touchdownNormal: -1.8, vs: -180));
+
         var input = tracker.BuildScoreInput();
         Assert.NotNull(input.TouchdownRateCandidates);
 
@@ -187,6 +191,9 @@ public sealed class FlightSessionScoringTrackerTests
             velocityWorldY: -3.5, vs: -220));
         tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
             velocityWorldY: -2.0, vs: -180));
+        // Sustaining frame: ≥500ms elapsed — debounce commits.
+        tracker.Ingest(Frame(t0.AddSeconds(1.6), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -2.0, vs: -180));
 
         var c = tracker.BuildScoreInput().TouchdownRateCandidates!;
         Assert.Equal(210.0, c.FpmVelocityWorldYLastAirborne, precision: 1);  // 3.5 * 60
@@ -202,6 +209,9 @@ public sealed class FlightSessionScoringTrackerTests
         tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false));
         // TD frame with negative VelocityWorldY — should use primary path
         tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -2.0, vs: -180));
+        // Sustaining frame: ≥500ms elapsed — debounce commits.
+        tracker.Ingest(Frame(t0.AddSeconds(1.6), FlightPhase.Landing, onGround: true,
             velocityWorldY: -2.0, vs: -180));
 
         var c = tracker.BuildScoreInput().TouchdownRateCandidates!;
@@ -219,6 +229,9 @@ public sealed class FlightSessionScoringTrackerTests
             velocityWorldY: -2.0, vs: -180));
         tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
             velocityWorldY: 0.0, vs: -150));
+        // Sustaining frame: ≥500ms elapsed — debounce commits.
+        tracker.Ingest(Frame(t0.AddSeconds(1.6), FlightPhase.Landing, onGround: true,
+            velocityWorldY: 0.0, vs: -150));
 
         var c = tracker.BuildScoreInput().TouchdownRateCandidates!;
         Assert.Equal("VelocityWorldY (last airborne)", c.SelectedSourceLabel);
@@ -233,13 +246,17 @@ public sealed class FlightSessionScoringTrackerTests
         tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
             velocityWorldY: -2.0, vs: -150));
 
-        // TD frame: TouchdownNormal is 0 — opens the 2-second scan window
+        // TD frame: TouchdownNormal is 0 — will open the 2-second scan window after commit.
         tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
             velocityWorldY: -2.0, touchdownNormal: 0.0, vs: -150));
 
-        // Post-touchdown frame within the 2-second window: sticky SimVar now has a value
-        tracker.Ingest(Frame(t0.AddSeconds(1.1), FlightPhase.Landing, onGround: true,
-            velocityWorldY: 0.0, touchdownNormal: -2.1, vs: -120));
+        // Sustaining frame at 500ms: ≥500ms elapsed — debounce commits and scan window opens.
+        tracker.Ingest(Frame(t0.AddSeconds(1.5), FlightPhase.Landing, onGround: true,
+            velocityWorldY: 0.0, touchdownNormal: 0.0, vs: -120));
+
+        // Post-commit frame within the 2-second window: sticky SimVar now has a value.
+        tracker.Ingest(Frame(t0.AddSeconds(1.6), FlightPhase.Landing, onGround: true,
+            velocityWorldY: 0.0, touchdownNormal: -2.1, vs: -100));
 
         var c = tracker.BuildScoreInput().TouchdownRateCandidates!;
         Assert.NotNull(c.RawTouchdownNormalVelocityFpsFirstNonZero);
@@ -255,8 +272,11 @@ public sealed class FlightSessionScoringTrackerTests
         tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
             velocityWorldY: -2.0, vs: -150));
 
-        // TD frame already has non-zero TouchdownNormal — no scan needed
+        // TD frame already has non-zero TouchdownNormal — no scan needed.
         tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -2.0, touchdownNormal: -1.8, vs: -150));
+        // Sustaining frame: ≥500ms elapsed — debounce commits.
+        tracker.Ingest(Frame(t0.AddSeconds(1.6), FlightPhase.Landing, onGround: true,
             velocityWorldY: -2.0, touchdownNormal: -1.8, vs: -150));
 
         var c = tracker.BuildScoreInput().TouchdownRateCandidates!;
@@ -273,6 +293,9 @@ public sealed class FlightSessionScoringTrackerTests
         tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
             velocityWorldY: -3.0, touchdownNormal: -2.5, vs: -200));
         tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -2.5, touchdownNormal: -2.0, vs: -180));
+        // Sustaining frame: ≥500ms elapsed — debounce commits before BuildScoreInput.
+        tracker.Ingest(Frame(t0.AddSeconds(1.6), FlightPhase.Landing, onGround: true,
             velocityWorldY: -2.5, touchdownNormal: -2.0, vs: -180));
 
         var saved = tracker.BuildScoreInput();
@@ -298,6 +321,97 @@ public sealed class FlightSessionScoringTrackerTests
         Assert.Equal(s.SelectedSourceLabel, r.SelectedSourceLabel);
         Assert.Equal(s.RawTouchdownNormalVelocityFpsTouchdownFrame, r.RawTouchdownNormalVelocityFpsTouchdownFrame);
         Assert.Equal(s.RawTouchdownNormalVelocityFpsFirstNonZero, r.RawTouchdownNormalVelocityFpsFirstNonZero);
+    }
+
+    // ── Touchdown debounce tests ──────────────────────────────────────────────
+
+    [Fact]
+    public void TouchdownDebounce_FlickerIgnored_SustainedGroundIsCaptured()
+    {
+        // Simulates the observed bug: SIM_ON_GROUND flickers true ~5s before actual touchdown
+        // during the ground-effect/flare phase. The pre-flare flicker shows 450 fpm (7.5 fps);
+        // the real touchdown shows 240 fpm (4.0 fps). Without debounce SimCrewOps captured the flicker.
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 12, 22, 24, 45, TimeSpan.Zero);
+
+        // Airborne approach
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false, velocityWorldY: -8.0, vs: -480, agl: 30));
+
+        // Premature SIM_ON_GROUND flicker (~18 ft AGL, pre-flare) — 100ms ground contact
+        tracker.Ingest(Frame(t0.AddMilliseconds(100), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -7.5, vs: -450, agl: 18));  // 7.5 fps * 60 = 450 fpm
+
+        // Back airborne after 130ms total (<500ms) — flicker, tentative resets
+        tracker.Ingest(Frame(t0.AddMilliseconds(230), FlightPhase.Landing, onGround: false,
+            velocityWorldY: -6.5, vs: -400, agl: 20));
+
+        tracker.Ingest(Frame(t0.AddMilliseconds(350), FlightPhase.Approach, onGround: false,
+            velocityWorldY: -4.5, vs: -270, agl: 60));  // agl >50: FallbackB won't use this
+
+        // Real touchdown after flare (~2 ft AGL, reduced sink rate): 4.0 fps * 60 = 240 fpm
+        tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -4.0, vs: -240, agl: 2));
+
+        // Sustaining frames — debounce window
+        tracker.Ingest(Frame(t0.AddSeconds(5.3), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -1.0, vs: -60, agl: 0));
+        // ≥500ms elapsed from real TD frame → debounce commits
+        tracker.Ingest(Frame(t0.AddSeconds(5.6), FlightPhase.Landing, onGround: true,
+            vs: -30, agl: 0));
+
+        var input = tracker.BuildScoreInput();
+        // Should capture real TD at 240 fpm (4.0 fps * 60), not flicker at 450 fpm (7.5 fps * 60)
+        Assert.Equal(240.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);
+    }
+
+    [Fact]
+    public void TouchdownDebounce_NoFlicker_NormalLandingCaptured()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 12, 22, 24, 45, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
+            velocityWorldY: -5.0, vs: -300, agl: 60));  // agl >50: FallbackB won't trigger
+        // Clean touchdown — no flicker. 3.0 fps * 60 = 180 fpm.
+        tracker.Ingest(Frame(t0.AddMilliseconds(100), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -3.0, vs: -180, agl: 2));
+        // ≥500ms elapsed → debounce commits
+        tracker.Ingest(Frame(t0.AddMilliseconds(700), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -1.0, vs: -60, agl: 0));
+
+        var input = tracker.BuildScoreInput();
+        Assert.Equal(180.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);  // 3.0 fps * 60
+    }
+
+    [Fact]
+    public void TouchdownDebounce_BounceCountedAfterConfirmedTouchdown()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 4, 12, 22, 24, 45, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
+            velocityWorldY: -4.0, vs: -240, agl: 60));  // agl >50
+
+        // Real touchdown. 3.5 fps * 60 = 210 fpm.
+        tracker.Ingest(Frame(t0.AddMilliseconds(100), FlightPhase.Landing, onGround: true,
+            velocityWorldY: -3.5, vs: -210, agl: 2));
+        // ≥500ms elapsed — debounce commits first touchdown
+        tracker.Ingest(Frame(t0.AddMilliseconds(700), FlightPhase.Landing, onGround: true,
+            vs: -50, agl: 0));
+
+        // Bounce: go airborne within 3s of confirmed touchdown
+        tracker.Ingest(Frame(t0.AddSeconds(1.5), FlightPhase.Landing, onGround: false,
+            vs: 200, agl: 5));
+        // Return to ground
+        tracker.Ingest(Frame(t0.AddSeconds(2), FlightPhase.Landing, onGround: true,
+            vs: -80, agl: 0));
+        tracker.Ingest(Frame(t0.AddSeconds(2.6), FlightPhase.Landing, onGround: true,
+            vs: -20, agl: 0));
+
+        var input = tracker.BuildScoreInput();
+        Assert.Equal(1, input.Landing.BounceCount);
+        // TD rate captured from first contact (3.5 fps * 60 = 210 fpm), not from bounce
+        Assert.Equal(210.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);
     }
 
     private static TelemetryFrame Frame(

@@ -145,6 +145,17 @@ public sealed class FlightSessionScoringTracker
     private bool _abTouchdownNormalSearchActive;
     private DateTimeOffset? _abTouchdownNormalSearchExpiry;
 
+    // Debounce: first-touchdown tentative state.
+    // SIM_ON_GROUND can flicker true during ground-effect/flare before actual wheel contact.
+    // We require ≥500ms of sustained ground before committing the first touchdown.
+    // Known limitation: a genuine hard landing that bounces back airborne within 500ms will
+    // be misclassified as a flicker (TD recorded at the softer second contact). Real bounces
+    // occur >1s after touchdown in practice; a future AGL discriminator could resolve it.
+    private TelemetryFrame? _tentativeTouchdownFrame;
+    private TelemetryFrame? _tentativeTouchdownPreviousFrame;
+    private double _tentativeTdFpm;
+    private string _tentativeTdLabel = string.Empty;
+
     private DateTimeOffset? _sessionStartUtc;
     private DateTimeOffset? _lastFlightPathSampleAt;
     private double? _lastFlightPathAltFt;
@@ -1040,73 +1051,56 @@ public sealed class FlightSessionScoringTracker
             return;
         }
 
-        if (!_previousFrame.OnGround && frame.OnGround)
+        // First-touchdown: set tentative candidate, defer commit until ≥500ms of sustained ground.
+        if (!_previousFrame.OnGround && frame.OnGround && !_capturedFirstTouchdown)
+        {
+            _tentativeTouchdownFrame = frame;
+            _tentativeTouchdownPreviousFrame = _previousFrame;
+            (_tentativeTdFpm, _tentativeTdLabel) = CalculateTouchdownVerticalSpeed(frame);
+        }
+
+        // After first touchdown confirmed: handle subsequent WOW transitions for bounce counting.
+        if (!_previousFrame.OnGround && frame.OnGround && _capturedFirstTouchdown)
         {
             _lastTouchdownAt = frame.TimestampUtc;
-            var (tdFpm, tdLabel) = CalculateTouchdownVerticalSpeed(frame);
+            var (tdFpm, _) = CalculateTouchdownVerticalSpeed(frame);
             _landingTouchdownVerticalSpeedFpm = Math.Max(_landingTouchdownVerticalSpeedFpm, tdFpm);
             _landingTouchdownGForce = Math.Max(_landingTouchdownGForce, CalculateTouchdownGForce());
             if (_landingTouchdownIndicatedAirspeedKnots == 0)
             {
-                _landingTouchdownBankAngleDegrees = Math.Abs(frame.BankAngleDegrees);
+                _landingTouchdownBankAngleDegrees       = Math.Abs(frame.BankAngleDegrees);
                 _landingTouchdownIndicatedAirspeedKnots = frame.IndicatedAirspeedKnots;
-                _landingTouchdownPitchAngleDegrees = frame.PitchAngleDegrees;
+                _landingTouchdownPitchAngleDegrees      = frame.PitchAngleDegrees;
             }
-
-            if (!_capturedFirstTouchdown)
-            {
-                _capturedFirstTouchdown = true;
-                _landingTouchdownLat = frame.Latitude;
-                _landingTouchdownLon = frame.Longitude;
-                _landingTouchdownHeadingMagneticDeg = frame.HeadingMagneticDegrees;
-                _landingTouchdownAltFt = frame.AltitudeFeet;
-                _landingTouchdownWindSpeedKnots = frame.WindSpeedKnots;
-                _landingTouchdownWindDirectionDegrees = frame.WindDirectionDegrees;
-                _landingGearUpAtTouchdown = !frame.GearDown;
-                _landingMaxPitchWhileWowDegrees = Math.Abs(frame.PitchAngleDegrees);
-
-                // A/B instrumentation: capture all candidates at the moment of first touchdown.
-                _abFpmVelocityWorldY = frame.VelocityWorldYFps < 0
-                    ? Math.Abs(frame.VelocityWorldYFps) * 60.0 : 0;
-                _abFpmTouchdownNormal = frame.TouchdownNormalVelocityFps < 0
-                    ? Math.Abs(frame.TouchdownNormalVelocityFps) * 60.0 : 0;
-                _abFpmVerticalSpeed = frame.VerticalSpeedFpm < 0
-                    ? Math.Abs(frame.VerticalSpeedFpm) : 0;
-                _abFinalSelected = _landingTouchdownVerticalSpeedFpm;
-
-                // Last-airborne candidates (frame immediately before OnGround flip).
-                if (_previousFrame is not null && !_previousFrame.OnGround)
-                {
-                    _abFpmVelocityWorldYLastAirborne = _previousFrame.VelocityWorldYFps < 0
-                        ? Math.Abs(_previousFrame.VelocityWorldYFps) * 60.0 : 0;
-                    _abFpmVerticalSpeedLastAirborne = _previousFrame.VerticalSpeedFpm < 0
-                        ? Math.Abs(_previousFrame.VerticalSpeedFpm) : 0;
-                }
-
-                // Selected-source label from the fallback cascade above.
-                _abSelectedSourceLabel = tdLabel;
-
-                // Raw TouchdownNormal fps (signed) at TD frame.
-                _abRawTouchdownNormalFpsTdFrame = frame.TouchdownNormalVelocityFps;
-
-                // If TD-frame TouchdownNormal is zero, open a 2-second scan for first non-zero.
-                // The sticky SimVar can take a frame or two to update after wheel contact.
-                if (frame.TouchdownNormalVelocityFps == 0)
-                {
-                    _abTouchdownNormalSearchActive = true;
-                    _abTouchdownNormalSearchExpiry = frame.TimestampUtc + TimeSpan.FromSeconds(2);
-                }
-            }
-
             if (_airborneAfterTouchdownAt is not null &&
                 frame.TimestampUtc - _airborneAfterTouchdownAt <= TimeSpan.FromSeconds(3))
             {
                 _landingBounceCount++;
             }
-
             if (frame.TouchdownZoneExcessDistanceFeet is not null)
             {
                 _landingTouchdownZoneExcessDistanceFeet = frame.TouchdownZoneExcessDistanceFeet.Value;
+            }
+        }
+
+        // Debounce resolution: confirm or discard the tentative first touchdown.
+        if (_tentativeTouchdownFrame != null)
+        {
+            var elapsed = (frame.TimestampUtc - _tentativeTouchdownFrame.TimestampUtc).TotalMilliseconds;
+            if (elapsed >= 500)
+            {
+                // ≥500ms of sustained ground (or going airborne after ≥500ms ground contact) =
+                // confirmed real touchdown. Commit using the first-contact frame's data.
+                CommitFirstTouchdown();
+            }
+            else if (!frame.OnGround)
+            {
+                // Back airborne within 500ms = SIM_ON_GROUND flicker. Reset and wait for the
+                // next transition. Note: a genuine hard landing that bounces in <500ms would
+                // also be reset here (TD recorded at the softer second contact). Acceptable
+                // since real bounces occur >1s post-touchdown in practice.
+                _tentativeTouchdownFrame = null;
+                _tentativeTouchdownPreviousFrame = null;
             }
         }
 
@@ -1500,6 +1494,64 @@ public sealed class FlightSessionScoringTracker
         }
 
         return touchdownSamples.Max(sample => sample.GForce);
+    }
+
+    private void CommitFirstTouchdown()
+    {
+        var tdFrame = _tentativeTouchdownFrame!;
+        _lastTouchdownAt = tdFrame.TimestampUtc;
+        _landingTouchdownVerticalSpeedFpm = Math.Max(_landingTouchdownVerticalSpeedFpm, _tentativeTdFpm);
+        _landingTouchdownGForce = Math.Max(_landingTouchdownGForce, CalculateTouchdownGForce());
+        if (_landingTouchdownIndicatedAirspeedKnots == 0)
+        {
+            _landingTouchdownBankAngleDegrees       = Math.Abs(tdFrame.BankAngleDegrees);
+            _landingTouchdownIndicatedAirspeedKnots = tdFrame.IndicatedAirspeedKnots;
+            _landingTouchdownPitchAngleDegrees      = tdFrame.PitchAngleDegrees;
+        }
+        _capturedFirstTouchdown               = true;
+        _landingTouchdownLat                  = tdFrame.Latitude;
+        _landingTouchdownLon                  = tdFrame.Longitude;
+        _landingTouchdownHeadingMagneticDeg   = tdFrame.HeadingMagneticDegrees;
+        _landingTouchdownAltFt                = tdFrame.AltitudeFeet;
+        _landingTouchdownWindSpeedKnots       = tdFrame.WindSpeedKnots;
+        _landingTouchdownWindDirectionDegrees = tdFrame.WindDirectionDegrees;
+        _landingGearUpAtTouchdown             = !tdFrame.GearDown;
+        _landingMaxPitchWhileWowDegrees       = Math.Abs(tdFrame.PitchAngleDegrees);
+
+        // A/B instrumentation: all values from the first-contact frame.
+        _abFpmVelocityWorldY  = tdFrame.VelocityWorldYFps < 0
+            ? Math.Abs(tdFrame.VelocityWorldYFps) * 60.0 : 0;
+        _abFpmTouchdownNormal = tdFrame.TouchdownNormalVelocityFps < 0
+            ? Math.Abs(tdFrame.TouchdownNormalVelocityFps) * 60.0 : 0;
+        _abFpmVerticalSpeed   = tdFrame.VerticalSpeedFpm < 0
+            ? Math.Abs(tdFrame.VerticalSpeedFpm) : 0;
+        _abFinalSelected      = _landingTouchdownVerticalSpeedFpm;
+
+        // Last-airborne candidates from the frame immediately before first contact.
+        if (_tentativeTouchdownPreviousFrame is not null && !_tentativeTouchdownPreviousFrame.OnGround)
+        {
+            _abFpmVelocityWorldYLastAirborne = _tentativeTouchdownPreviousFrame.VelocityWorldYFps < 0
+                ? Math.Abs(_tentativeTouchdownPreviousFrame.VelocityWorldYFps) * 60.0 : 0;
+            _abFpmVerticalSpeedLastAirborne  = _tentativeTouchdownPreviousFrame.VerticalSpeedFpm < 0
+                ? Math.Abs(_tentativeTouchdownPreviousFrame.VerticalSpeedFpm) : 0;
+        }
+        _abSelectedSourceLabel          = _tentativeTdLabel;
+        _abRawTouchdownNormalFpsTdFrame = tdFrame.TouchdownNormalVelocityFps;
+
+        // If TD-frame TouchdownNormal is zero, open a 2-second scan for first non-zero.
+        // The sticky SimVar can take a frame or two to update after wheel contact.
+        if (tdFrame.TouchdownNormalVelocityFps == 0)
+        {
+            _abTouchdownNormalSearchActive = true;
+            _abTouchdownNormalSearchExpiry = tdFrame.TimestampUtc + TimeSpan.FromSeconds(2);
+        }
+        if (tdFrame.TouchdownZoneExcessDistanceFeet is not null)
+        {
+            _landingTouchdownZoneExcessDistanceFeet = tdFrame.TouchdownZoneExcessDistanceFeet.Value;
+        }
+
+        _tentativeTouchdownFrame         = null;
+        _tentativeTouchdownPreviousFrame = null;
     }
 
     private void CountTurnSpeedEvent(
