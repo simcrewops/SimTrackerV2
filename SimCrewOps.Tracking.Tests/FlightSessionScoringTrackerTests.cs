@@ -544,4 +544,83 @@ public sealed class FlightSessionScoringTrackerTests
         Assert.NotNull(input.Cruise.CruiseTargetAltitudeFt);
         Assert.Equal(34000.0, input.Cruise.CruiseTargetAltitudeFt!.Value);
     }
+
+    // ── Pause-filtering tests ─────────────────────────────────────────────────
+
+    [Fact]
+    public void PauseFilter_FrameWithIsPausedTrue_DoesNotUpdateCruiseAccumulators()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 5, 1, 12, 0, 0, TimeSpan.Zero);
+
+        // Establish baseline: one clean cruise frame (G=1.0, bank=0°).
+        tracker.Ingest(Frame(t0, FlightPhase.Cruise, onGround: false, g: 1.0, bank: 0));
+
+        // Paused frame with absurd values — should be silently dropped.
+        var pausedFrame = Frame(t0.AddSeconds(1), FlightPhase.Cruise, onGround: false, g: 5.0, bank: 60)
+            with { IsPaused = true };
+        tracker.Ingest(pausedFrame);
+
+        var input = tracker.BuildScoreInput();
+        Assert.True(input.Cruise.MaxGForce < 2.0,
+            $"MaxGForce should not have been poisoned by paused frame (got {input.Cruise.MaxGForce})");
+        Assert.True(input.Cruise.LevelMaxBankDegrees < 10.0,
+            $"LevelMaxBankDegrees should not have been poisoned by paused frame (got {input.Cruise.LevelMaxBankDegrees})");
+    }
+
+    [Fact]
+    public void PauseFilter_TimestampStall_DetectedAsPause()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 5, 1, 12, 0, 0, TimeSpan.Zero);
+
+        // Baseline cruise frame.
+        tracker.Ingest(Frame(t0, FlightPhase.Cruise, onGround: false, g: 1.0, bank: 0));
+
+        // Frame with identical timestamp — stall detected as pause; absurd values must not land.
+        tracker.Ingest(Frame(t0, FlightPhase.Cruise, onGround: false, g: 5.0, bank: 60));
+
+        var input = tracker.BuildScoreInput();
+        Assert.True(input.Cruise.MaxGForce < 2.0,
+            $"MaxGForce should not have been updated by timestamp-stall frame (got {input.Cruise.MaxGForce})");
+        Assert.True(input.Cruise.LevelMaxBankDegrees < 10.0,
+            $"LevelMaxBankDegrees should not have been updated by timestamp-stall frame (got {input.Cruise.LevelMaxBankDegrees})");
+    }
+
+    [Fact]
+    public void PauseFilter_UnpauseWarmupWindow_BlocksAccumulatorsFor10Seconds()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 5, 1, 12, 0, 0, TimeSpan.Zero);
+
+        // Baseline cruise frame.
+        tracker.Ingest(Frame(t0, FlightPhase.Cruise, onGround: false, g: 1.0, bank: 0));
+
+        // Paused frame at t+1s.
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Cruise, onGround: false)
+            with { IsPaused = true });
+
+        // First unpaused frame at t+5s — this is the transition tick that STARTS the warmup
+        // (sets _unpausedAt = t+5s) and returns early without updating accumulators.
+        // The absurd values here must NOT land.
+        tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.Cruise, onGround: false, g: 5.0, bank: 60));
+
+        var inputMidWarmup = tracker.BuildScoreInput();
+        Assert.True(inputMidWarmup.Cruise.MaxGForce < 2.0,
+            $"MaxGForce must be blocked on the transition-out-of-pause tick (got {inputMidWarmup.Cruise.MaxGForce})");
+
+        // Frame at t+12s — warmup started at t+5s; only 7s have elapsed (< 10s) — still blocked.
+        tracker.Ingest(Frame(t0.AddSeconds(12), FlightPhase.Cruise, onGround: false, g: 5.0, bank: 60));
+
+        var inputStillWarmup = tracker.BuildScoreInput();
+        Assert.True(inputStillWarmup.Cruise.MaxGForce < 2.0,
+            $"MaxGForce must still be blocked 7s into warmup (got {inputStillWarmup.Cruise.MaxGForce})");
+
+        // Frame at t+16s — warmup started at t+5s; 11s have elapsed (> 10s) — must update.
+        tracker.Ingest(Frame(t0.AddSeconds(16), FlightPhase.Cruise, onGround: false, g: 1.3, bank: 5));
+
+        var inputAfterWarmup = tracker.BuildScoreInput();
+        Assert.True(inputAfterWarmup.Cruise.MaxGForce >= 1.3,
+            $"MaxGForce should have updated after warmup expired (got {inputAfterWarmup.Cruise.MaxGForce})");
+    }
 }

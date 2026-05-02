@@ -198,6 +198,9 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private const uint OperationalDefinitionId    = 12;
     private const uint AtcModelDefinitionId       = 13; // separate String256 definition
     private const uint UserObjectId = 0;
+    // Tracker-defined event registry ID (not an MSFS-assigned value — arbitrary uint, must not
+    // collide with request IDs 1-4 or definition IDs 11-13; 100 is well clear of both).
+    private const uint PauseEx1EventId = 100;
 
     private readonly nint _nativeLibraryHandle;
     private readonly SimConnectHostOptions _options;
@@ -211,6 +214,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
     private string? _atcModelSimVar;   // ATC MODEL SimVar override; null until response arrives
     private readonly MobiFlightBridge _mobiFlightBridge = new();
     private bool _disposed;
+    private bool _isPaused;
 
     public NativeSimConnectBridge(nint nativeLibraryHandle, SimConnectHostOptions options)
     {
@@ -297,6 +301,9 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
                     break;
                 case SimConnectRecvId.Quit:
                     throw new InvalidOperationException("Microsoft Flight Simulator closed the SimConnect session.");
+                case SimConnectRecvId.Event:
+                    HandlePauseEx1Event(dispatchPointer);
+                    break;
                 case SimConnectRecvId.SimObjectData:
                     HandleSimObjectData(dispatchPointer);
                     break;
@@ -365,6 +372,13 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             SimConnectDefinitionCatalog.ScoringAndOperationalVariables,
             SimConnectPeriod.Second);
 
+        // Subscribe to the Pause_EX1 system event so we can track pause state on every frame.
+        // dwData in the event will be 0 (unpaused) or non-zero (any pause type).
+        var pauseResult = _exports.SubscribeToSystemEvent(_simConnectHandle, PauseEx1EventId, "Pause_EX1");
+        if (pauseResult < 0)
+            System.Diagnostics.Debug.WriteLine(
+                $"[SimConnect] SubscribeToSystemEvent(Pause_EX1) failed: 0x{pauseResult:X8} — pause filtering will rely on timestamp-stall fallback only.");
+
         // ATC MODEL is a String256 SimVar — cannot use RegisterDefinition() which is Float64-only
         // and fires a periodic poll. Register the definition here once; the one-time request fires
         // per aircraft load in HandleSystemState().
@@ -430,6 +444,13 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
                 0,
                 0),
             $"SimConnect_RequestDataOnSimObject({requestId})");
+    }
+
+    private void HandlePauseEx1Event(nint dispatchPointer)
+    {
+        var ev = Marshal.PtrToStructure<SimConnectRecvEvent>(dispatchPointer);
+        if (ev.EventId == PauseEx1EventId)
+            _isPaused = ev.Data != 0;
     }
 
     private void HandleSimObjectData(nint dispatchPointer)
@@ -780,6 +801,7 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
             TimestampUtc = DateTimeOffset.UtcNow,
             HasFlightCriticalData = _latestState.HasFlightCritical,
             HasOperationalData = _latestState.HasOperational,
+            IsPaused = _isPaused,
             Latitude = _latestState.Latitude,
             Longitude = _latestState.Longitude,
             AltitudeAglFeet = _latestState.AltitudeAglFeet,
@@ -942,6 +964,19 @@ internal sealed class NativeSimConnectBridge : INativeSimConnectBridge
         public readonly uint RecvId;
     }
 
+    // SIMCONNECT_RECV_EVENT — fired when a subscribed system event triggers.
+    // For Pause_EX1: Data = 0 (unpaused), 1/2/4/8 (various pause types).
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct SimConnectRecvEvent
+    {
+        public readonly uint Size;
+        public readonly uint Version;
+        public readonly uint RecvId;
+        public readonly uint GroupId;
+        public readonly uint EventId;
+        public readonly uint Data;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private readonly struct SimConnectRecvException
     {
@@ -1050,6 +1085,7 @@ internal sealed class NativeSimConnectExports
         AddToDataDefinitionDelegate addToDataDefinition,
         RequestDataOnSimObjectDelegate requestDataOnSimObject,
         RequestSystemStateDelegate requestSystemState,
+        SubscribeToSystemEventDelegate subscribeToSystemEvent,
         MapClientDataNameToIdDelegate mapClientDataNameToId,
         AddToClientDataDefinitionDelegate addToClientDataDefinition,
         RequestClientDataDelegate requestClientData,
@@ -1061,6 +1097,7 @@ internal sealed class NativeSimConnectExports
         AddToDataDefinition = addToDataDefinition;
         RequestDataOnSimObject = requestDataOnSimObject;
         RequestSystemState = requestSystemState;
+        SubscribeToSystemEvent = subscribeToSystemEvent;
         MapClientDataNameToId = mapClientDataNameToId;
         AddToClientDataDefinition = addToClientDataDefinition;
         RequestClientData = requestClientData;
@@ -1073,6 +1110,7 @@ internal sealed class NativeSimConnectExports
     public AddToDataDefinitionDelegate AddToDataDefinition { get; }
     public RequestDataOnSimObjectDelegate RequestDataOnSimObject { get; }
     public RequestSystemStateDelegate RequestSystemState { get; }
+    public SubscribeToSystemEventDelegate SubscribeToSystemEvent { get; }
     public MapClientDataNameToIdDelegate MapClientDataNameToId { get; }
     public AddToClientDataDefinitionDelegate AddToClientDataDefinition { get; }
     public RequestClientDataDelegate RequestClientData { get; }
@@ -1086,6 +1124,7 @@ internal sealed class NativeSimConnectExports
             GetExport<AddToDataDefinitionDelegate>(libraryHandle, "SimConnect_AddToDataDefinition"),
             GetExport<RequestDataOnSimObjectDelegate>(libraryHandle, "SimConnect_RequestDataOnSimObject"),
             GetExport<RequestSystemStateDelegate>(libraryHandle, "SimConnect_RequestSystemState"),
+            GetExport<SubscribeToSystemEventDelegate>(libraryHandle, "SimConnect_SubscribeToSystemEvent"),
             GetExport<MapClientDataNameToIdDelegate>(libraryHandle, "SimConnect_MapClientDataNameToID"),
             GetExport<AddToClientDataDefinitionDelegate>(libraryHandle, "SimConnect_AddToClientDataDefinition"),
             GetExport<RequestClientDataDelegate>(libraryHandle, "SimConnect_RequestClientData"),
@@ -1138,6 +1177,12 @@ internal sealed class NativeSimConnectExports
         nint simConnectHandle,
         uint requestId,
         string stateName);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Ansi)]
+    public delegate int SubscribeToSystemEventDelegate(
+        nint simConnectHandle,
+        uint eventId,
+        string systemEventName);
 
     // ── MobiFlight WASM / client-data P/Invoke ───────────────────────────────────
 

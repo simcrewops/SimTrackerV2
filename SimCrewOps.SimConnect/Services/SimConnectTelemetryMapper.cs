@@ -14,6 +14,7 @@ public sealed class SimConnectTelemetryMapper
         {
             TimestampUtc = rawFrame.TimestampUtc,
             Phase = FlightPhase.Preflight,
+            IsPaused = rawFrame.IsPaused,
             Latitude = rawFrame.Latitude,
             Longitude = rawFrame.Longitude,
             AltitudeFeet = rawFrame.AltitudeFeet,
