@@ -27,7 +27,9 @@ public sealed class SimConnectTelemetryMapper
             VelocityWorldYFps = rawFrame.VelocityWorldYFps,
             TouchdownNormalVelocityFps = rawFrame.TouchdownNormalVelocityFps,
             BankAngleDegrees = rawFrame.BankAngleDegrees,
-            PitchAngleDegrees = rawFrame.PitchAngleDegrees,
+            // SimConnect's PLANE PITCH DEGREES convention: negative = nose UP, positive = nose DOWN.
+            // Negate here so downstream scoring uses the user-facing convention (positive = nose UP).
+            PitchAngleDegrees = -rawFrame.PitchAngleDegrees,
             HeadingMagneticDegrees = rawFrame.HeadingMagneticDegrees,
             HeadingTrueDegrees = rawFrame.HeadingTrueDegrees,
             GForce = rawFrame.GForce,
