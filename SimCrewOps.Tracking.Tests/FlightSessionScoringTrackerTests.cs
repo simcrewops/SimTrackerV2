@@ -438,7 +438,8 @@ public sealed class FlightSessionScoringTrackerTests
         Assert.Equal("VerticalSpeed (last airborne)", input.TouchdownRateCandidates.SelectedSourceLabel);
         Assert.Equal(300, input.TouchdownRateCandidates.FpmVerticalSpeedLastAirborne, precision: 1);
         Assert.Equal(180, input.TouchdownRateCandidates.FpmVerticalSpeed, precision: 1);
-        Assert.Equal(420, input.TouchdownRateCandidates.FpmVelocityWorldY, precision: 1);
+        Assert.Equal(180, input.TouchdownRateCandidates.FpmVelocityWorldY, precision: 1);
+        Assert.Equal(420, input.TouchdownRateCandidates.FpmVelocityWorldYLastAirborne, precision: 1);
     }
 
     private static TelemetryFrame Frame(
