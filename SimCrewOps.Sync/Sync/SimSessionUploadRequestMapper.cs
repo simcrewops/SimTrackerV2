@@ -168,7 +168,7 @@ public sealed class SimSessionUploadRequestMapper
         {
             TouchdownLat                    = tdLat,
             TouchdownLon                    = tdLon,
-            TouchdownHeadingDeg             = s.LandingAnalysis.TouchdownHeadingMagneticDeg,
+            TouchdownHeadingDeg             = s.LandingAnalysis.TouchdownHeadingTrueDeg ?? s.LandingAnalysis.TouchdownHeadingMagneticDeg,
             TouchdownAltFt                  = s.LandingAnalysis.TouchdownAltFt,
             TouchdownIAS                    = s.LandingAnalysis.TouchdownIAS,
             WindSpeedAtTouchdownKnots       = s.LandingAnalysis.WindSpeedKnots,

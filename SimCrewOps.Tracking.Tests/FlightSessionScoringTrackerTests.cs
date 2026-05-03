@@ -623,4 +623,101 @@ public sealed class FlightSessionScoringTrackerTests
         Assert.True(inputAfterWarmup.Cruise.MaxGForce >= 1.3,
             $"MaxGForce should have updated after warmup expired (got {inputAfterWarmup.Cruise.MaxGForce})");
     }
+
+    // ── Bug A: Beacon-after-shutdown latch direction ──────────────────────────
+
+    [Fact]
+    public void Arrival_BeaconStaysOffAfterEngines_Passes()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0, FlightPhase.TaxiIn, onGround: true, engine1: true, engine2: true, beacon: true));
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Arrival, onGround: true, engine1: false, engine2: false, beacon: false, parkingBrake: true));
+
+        Assert.True(tracker.BuildScoreInput().Arrival.BeaconOffAfterEngines);
+    }
+
+    [Fact]
+    public void Arrival_BeaconTurnsOnAfterEngines_Fails()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
+
+        // Engines already off, beacon correctly off.
+        tracker.Ingest(Frame(t0, FlightPhase.TaxiIn, onGround: true, engine1: false, engine2: false, beacon: false));
+        // Beacon turns back on — violation.
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Arrival, onGround: true, engine1: false, engine2: false, beacon: true, parkingBrake: true));
+
+        Assert.False(tracker.BuildScoreInput().Arrival.BeaconOffAfterEngines);
+    }
+
+    [Fact]
+    public void Arrival_EnginesNeverOff_BeaconCheckPassesByDefault()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0, FlightPhase.TaxiIn, onGround: true, engine1: true, engine2: true, beacon: true));
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Arrival, onGround: true, engine1: true, engine2: true, beacon: true, parkingBrake: true));
+
+        // Engines never went off — rule is N/A, should pass.
+        Assert.True(tracker.BuildScoreInput().Arrival.BeaconOffAfterEngines);
+    }
+
+    // ── Bug C: GPWS sustained-duration + AGL filter ───────────────────────────
+
+    [Fact]
+    public void Gpws_SingleFrameSpike_NotCounted()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0, FlightPhase.Climb, onGround: false, agl: 5000, gpws: true));
+        tracker.Ingest(Frame(t0.AddSeconds(0.05), FlightPhase.Climb, onGround: false, agl: 5000, gpws: false));
+
+        Assert.Equal(0, tracker.BuildScoreInput().Safety.GpwsEvents);
+    }
+
+    [Fact]
+    public void Gpws_SustainedAlertAtAltitude_IsCounted()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0, FlightPhase.Climb, onGround: false, agl: 5000, gpws: true));
+        tracker.Ingest(Frame(t0.AddSeconds(1.5), FlightPhase.Climb, onGround: false, agl: 5000, gpws: false));
+
+        Assert.Equal(1, tracker.BuildScoreInput().Safety.GpwsEvents);
+    }
+
+    [Fact]
+    public void Gpws_SustainedAlertDuringLandingFlare_NotCounted()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
+
+        tracker.Ingest(Frame(t0, FlightPhase.Landing, onGround: false, agl: 100, gpws: true));
+        tracker.Ingest(Frame(t0.AddSeconds(1.5), FlightPhase.Landing, onGround: false, agl: 80, gpws: false));
+
+        Assert.Equal(0, tracker.BuildScoreInput().Safety.GpwsEvents);
+    }
+
+    // ── Bug D: True heading at touchdown ─────────────────────────────────────
+
+    [Fact]
+    public void LandingAnalysis_TouchdownHeadingTrueIsCaptured()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
+
+        // Airborne approach frame to establish prior-airborne state.
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false, agl: 300, vs: -700, heading: 161.5));
+        // First ground contact — heading (HeadingTrueDegrees) = 161.5. Starts the 500ms debounce.
+        tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true, agl: 0, vs: -180, heading: 161.5, g: 1.2));
+        // Confirming frame ≥500ms later — triggers CommitFirstTouchdown() with the first-contact frame.
+        tracker.Ingest(Frame(t0.AddSeconds(1.6), FlightPhase.Landing, onGround: true, agl: 0, heading: 161.5));
+
+        Assert.Equal(161.5, tracker.BuildScoreInput().LandingAnalysis.TouchdownHeadingTrueDeg);
+    }
 }
