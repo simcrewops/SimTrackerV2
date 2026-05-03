@@ -472,7 +472,6 @@ public sealed class FlightSessionScoringTrackerTests
         bool engine3 = false,
         bool engine4 = false,
         double? touchdownZoneExcess = null,
-        double velocityWorldY = 0,
         double touchdownNormal = 0)
     {
         return new TelemetryFrame
@@ -493,7 +492,6 @@ public sealed class FlightSessionScoringTrackerTests
             IndicatedAltitudeFeet = altitude,
             AltitudeAglFeet = agl,
             VerticalSpeedFpm = vs,
-            VelocityWorldYFps = velocityWorldY,
             BankAngleDegrees = bank,
             PitchAngleDegrees = pitch,
             HeadingTrueDegrees = heading,

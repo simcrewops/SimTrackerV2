@@ -190,7 +190,7 @@ public sealed class FlightSessionScoringTracker
     private bool _beaconOnAirborneThroughout = true;
     private bool _navLightsOnThroughout = true;
     private bool _strobesCorrect = true;
-    private bool _strobesShouldBeOn;
+
     private int _landingLightsCompliantTicks;
     private int _landingLightsTotalTicks;
 
