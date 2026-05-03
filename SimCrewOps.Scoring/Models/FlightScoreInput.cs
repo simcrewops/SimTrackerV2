@@ -18,11 +18,6 @@ public sealed record FlightScoreInput
     public LandingAnalysisData LandingAnalysis { get; init; } = new();
     public IReadOnlyList<FlightPathPoint> FlightPath { get; init; } = [];
     public IReadOnlyList<ApproachPathPoint> ApproachPath { get; init; } = [];
-    /// <summary>
-    /// A/B instrumentation: multiple touchdown FPM candidates captured at first touchdown.
-    /// Persisted locally for post-flight comparison. Not included in the upload payload.
-    /// Null until a touchdown is recorded.
-    /// </summary>
     public TouchdownRateCandidates? TouchdownRateCandidates { get; init; }
 }
 
@@ -213,7 +208,6 @@ public sealed record ApproachPathPoint
 
 /// <summary>
 /// A/B instrumentation: multiple touchdown FPM calculation candidates captured at first touchdown.
-/// Stored in local session JSON only — not sent in the upload payload.
 /// FPM fields are positive magnitudes (0 = not available); raw fps fields are signed (negative = descending).
 /// </summary>
 public sealed record TouchdownRateCandidates

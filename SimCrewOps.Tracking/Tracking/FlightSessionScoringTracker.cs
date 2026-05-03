@@ -1502,38 +1502,61 @@ public sealed class FlightSessionScoringTracker
 
     private (double Fpm, string Label) CalculateTouchdownVerticalSpeed(TelemetryFrame touchdownFrame)
     {
-        // Primary: VELOCITY WORLD Y at the moment of wheel contact.
-        //
-        // This SimVar is driven by the physics engine and has no barometric lag —
-        // it reads the true instantaneous sink rate at the exact frame OnGround flips.
-        // The VERTICAL SPEED SimVar (barometric) lags real aircraft motion by 1–2 s,
-        // so during a flare where the pilot arrests from 350 → 195 fpm the baro VS
-        // still reads the pre-flare rate at touchdown. VELOCITY WORLD Y does not have
-        // this problem and matches what Volanta and other pro trackers report.
-        if (touchdownFrame.VelocityWorldYFps < 0)
-            return (Math.Abs(touchdownFrame.VelocityWorldYFps) * 60.0, "VelocityWorldY (TD frame)");
+        // Gather all candidate readings.
+        var fpmVelocityWorldY = touchdownFrame.VelocityWorldYFps < 0
+            ? Math.Abs(touchdownFrame.VelocityWorldYFps) * 60.0 : 0;
+        var fpmVerticalSpeed = touchdownFrame.VerticalSpeedFpm < 0
+            ? Math.Abs(touchdownFrame.VerticalSpeedFpm) : 0;
+        var fpmVelocityWorldYLastAirborne = _previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VelocityWorldYFps < 0
+            ? Math.Abs(_previousFrame.VelocityWorldYFps) * 60.0 : 0;
+        var fpmVerticalSpeedLastAirborne = _previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VerticalSpeedFpm < 0
+            ? Math.Abs(_previousFrame.VerticalSpeedFpm) : 0;
 
-        // Fallback A: VelocityWorldY on the last airborne frame (slightly earlier reading).
-        // Catches the case where the sim briefly reports 0 or positive on the touchdown frame.
-        if (_previousFrame is not null && !_previousFrame.OnGround && _previousFrame.VelocityWorldYFps < 0)
-            return (Math.Abs(_previousFrame.VelocityWorldYFps) * 60.0, "VelocityWorldY (last airborne)");
+        double selected;
+        string label;
 
-        // Fallback B: barometric VS on the last airborne frame (sampled just before contact).
-        // The frame immediately before OnGround is free of gear-compression artefacts.
-        if (_previousFrame is not null
-            && !_previousFrame.OnGround
-            && _previousFrame.AltitudeAglFeet <= 50
-            && _previousFrame.VerticalSpeedFpm < 0)
+        // Primary: VERTICAL SPEED from the last airborne frame (matches TouchdownFX-style trackers).
+        // This is "what was the VSI gauge showing the moment before contact" — the framing pilots
+        // expect and other industry trackers (TouchdownFX, Volanta) report. The barometric VS lag
+        // that previously made us prefer VELOCITY WORLD Y is acceptable here because we read the
+        // value from the airborne frame BEFORE contact, not the contact frame itself. The contact
+        // frame can be corrupted by gear compression, spoiler deployment, and reverse-thrust spikes.
+        if (fpmVerticalSpeedLastAirborne > 0)
         {
-            return (Math.Abs(_previousFrame.VerticalSpeedFpm), "VerticalSpeed (last airborne)");
+            selected = fpmVerticalSpeedLastAirborne;
+            label    = "VerticalSpeed (last airborne)";
+        }
+        // Fallback A: VERTICAL SPEED at touchdown frame.
+        else if (fpmVerticalSpeed > 0)
+        {
+            selected = fpmVerticalSpeed;
+            label    = "VerticalSpeed (TD frame)";
+        }
+        // Fallback B: VELOCITY WORLD Y at touchdown frame (physics-engine, no barometric lag).
+        else if (fpmVelocityWorldY > 0)
+        {
+            selected = fpmVelocityWorldY;
+            label    = "VelocityWorldY (TD frame)";
+        }
+        // Fallback C: VELOCITY WORLD Y at last airborne frame.
+        else if (fpmVelocityWorldYLastAirborne > 0)
+        {
+            selected = fpmVelocityWorldYLastAirborne;
+            label    = "VelocityWorldY (last airborne)";
+        }
+        // Fallback D: AGL rate-of-change across the full flare window.
+        else
+        {
+            (selected, label) = CalculateTouchdownFallbackD();
         }
 
-        // Fallback C: barometric VS on the touchdown frame itself.
-        if (touchdownFrame.VerticalSpeedFpm < 0)
-            return (Math.Abs(touchdownFrame.VerticalSpeedFpm), "VerticalSpeed (TD frame)");
+        return (selected, label);
+    }
 
-        // Fallback D: AGL rate-of-change across the full flare window in the 2-second rolling
-        // buffer.  Using a wider time span (first → last sample in 0.5–30 ft range) smooths
+    private (double Fpm, string Label) CalculateTouchdownFallbackD()
+    {
+        // AGL rate-of-change across the full flare window in the 2-second rolling buffer.
+        // Using a wider time span (first → last sample in 0.5–30 ft range) smooths
         // out per-frame noise and gives a stable average sink rate.
         var flareFrames = _recentSamples
             .Where(static s => s.AltitudeAglFeet >= 0.5 && s.AltitudeAglFeet <= 30)
@@ -1542,8 +1565,8 @@ public sealed class FlightSessionScoringTracker
 
         if (flareFrames.Count >= 2)
         {
-            var first = flareFrames[0];
-            var last  = flareFrames[^1];
+            var first     = flareFrames[0];
+            var last      = flareFrames[^1];
             var dtSeconds = (last.TimestampUtc - first.TimestampUtc).TotalSeconds;
             if (dtSeconds >= 0.1)
             {
