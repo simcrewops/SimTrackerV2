@@ -124,6 +124,7 @@ public sealed class FlightSessionScoringTracker
     private double? _landingTouchdownLat;
     private double? _landingTouchdownLon;
     private double? _landingTouchdownHeadingMagneticDeg;
+    private double? _landingTouchdownHeadingTrueDeg;
     private double? _landingTouchdownAltFt;
     private double? _landingTouchdownWindSpeedKnots;
     private double? _landingTouchdownWindDirectionDegrees;
@@ -183,7 +184,7 @@ public sealed class FlightSessionScoringTracker
     private bool _taxiLightsWentOffBeforeBrake;
     private bool _arrivalParkingBrakeSetBeforeAllEnginesShutdown = true;
     private bool _arrivalAllEnginesOffByEndOfSession;
-    private bool _arrivalBeaconOffAfterEngines;
+    private bool _arrivalBeaconOnAfterEnginesOff;  // sticky failure: beacon came back on after engines off
     private bool _arrivalEnginesOffObserved;
     // LightsSystems accumulators
     private bool _beaconOnAirborneThroughout = true;
@@ -219,6 +220,10 @@ public sealed class FlightSessionScoringTracker
     private DateTimeOffset? _overspeedStartedAt;
     private bool _stallActive;
     private bool _gpwsActive;
+    private DateTimeOffset? _gpwsActiveStartedAt;
+    private double? _gpwsActiveStartAgl;
+    private static readonly TimeSpan GpwsMinSustained = TimeSpan.FromSeconds(1.0);
+    private const double GpwsAglSkipBelow = 200.0;
 
     public FlightSessionScoringTracker(FlightSessionProfile? profile = null)
     {
@@ -370,6 +375,7 @@ public sealed class FlightSessionScoringTracker
         _landingTouchdownLat = input.LandingAnalysis.TouchdownLat;
         _landingTouchdownLon = input.LandingAnalysis.TouchdownLon;
         _landingTouchdownHeadingMagneticDeg = input.LandingAnalysis.TouchdownHeadingMagneticDeg;
+        _landingTouchdownHeadingTrueDeg = input.LandingAnalysis.TouchdownHeadingTrueDeg;
         _landingTouchdownAltFt = input.LandingAnalysis.TouchdownAltFt;
         _landingTouchdownWindSpeedKnots = input.LandingAnalysis.WindSpeedKnots;
         _landingTouchdownWindDirectionDegrees = input.LandingAnalysis.WindDirectionDegrees;
@@ -410,8 +416,8 @@ public sealed class FlightSessionScoringTracker
         _arrivalParkingBrakeSetBeforeAllEnginesShutdown =
             !_arrivalSeen || input.Arrival.ParkingBrakeSetBeforeAllEnginesShutdown;
         _arrivalAllEnginesOffByEndOfSession = input.Arrival.AllEnginesOffByEndOfSession;
-        _arrivalBeaconOffAfterEngines = input.Arrival.BeaconOffAfterEngines;
-        _arrivalEnginesOffObserved = false;
+        _arrivalBeaconOnAfterEnginesOff = !input.Arrival.BeaconOffAfterEngines;
+        _arrivalEnginesOffObserved = input.Arrival.AllEnginesOffByEndOfSession;
 
         _beaconOnAirborneThroughout = input.LightsSystems.BeaconOnThroughoutFlight;
         _navLightsOnThroughout = input.LightsSystems.NavLightsOnThroughoutFlight;
@@ -435,6 +441,8 @@ public sealed class FlightSessionScoringTracker
         _overspeedStartedAt = null;
         _stallActive = false;
         _gpwsActive = false;
+        _gpwsActiveStartedAt = null;
+        _gpwsActiveStartAgl = null;
 
         // Pause state resets on reconnect — incoming frames re-establish it via
         // Pause_EX1 flag and timestamp-stall detection naturally.
@@ -637,6 +645,7 @@ public sealed class FlightSessionScoringTracker
                 TouchdownLat                = _landingTouchdownLat,
                 TouchdownLon                = _landingTouchdownLon,
                 TouchdownHeadingMagneticDeg = _landingTouchdownHeadingMagneticDeg,
+                TouchdownHeadingTrueDeg     = _landingTouchdownHeadingTrueDeg,
                 TouchdownAltFt              = _landingTouchdownAltFt,
                 TouchdownIAS                = _capturedFirstTouchdown ? _landingTouchdownIndicatedAirspeedKnots : null,
                 WindSpeedKnots              = _landingTouchdownWindSpeedKnots,
@@ -677,7 +686,7 @@ public sealed class FlightSessionScoringTracker
                 TaxiLightsOffBeforeParkingBrakeSet      = !_arrivalSeen || (_arrivalParkingBrakeObserved && _arrivalTaxiLightsOffBeforeParkingBrakeSet),
                 ParkingBrakeSetBeforeAllEnginesShutdown = !_arrivalSeen || (_arrivalParkingBrakeObserved && _arrivalParkingBrakeSetBeforeAllEnginesShutdown),
                 AllEnginesOffByEndOfSession             = !_arrivalSeen || _arrivalAllEnginesOffByEndOfSession,
-                BeaconOffAfterEngines                   = _arrivalBeaconOffAfterEngines,
+                BeaconOffAfterEngines                   = !_arrivalEnginesOffObserved || !_arrivalBeaconOnAfterEnginesOff,
             },
             LightsSystems = new LightsSystemsMetrics
             {
@@ -1342,14 +1351,15 @@ public sealed class FlightSessionScoringTracker
             _arrivalSeen = true;
         }
 
-        // Beacon off after engines: engines must shut down first, then beacon off.
+        // Beacon off after engines: engines must shut down first, beacon must stay off.
+        // Use a sticky failure latch: if beacon is ever ON after all engines off, record the violation.
         if (!_arrivalEnginesOffObserved && !AnyEngineRunning(frame))
         {
             _arrivalEnginesOffObserved = true;
         }
-        if (_arrivalEnginesOffObserved && !frame.BeaconLightOn)
+        if (_arrivalEnginesOffObserved && frame.BeaconLightOn)
         {
-            _arrivalBeaconOffAfterEngines = true;
+            _arrivalBeaconOnAfterEnginesOff = true;
         }
 
         if (!_arrivalParkingBrakeObserved)
@@ -1433,13 +1443,9 @@ public sealed class FlightSessionScoringTracker
             _stallEvents++;
         }
 
-        if (frame.GpwsAlert && !_gpwsActive)
-        {
-            _gpwsEvents++;
-        }
+        UpdateSafetyGpws(frame);
 
         _stallActive = frame.StallWarning;
-        _gpwsActive = frame.GpwsAlert;
 
         if (_previousFrame is not null && !frame.OnGround && IsAirbornePhase(frame.Phase))
         {
@@ -1447,6 +1453,26 @@ public sealed class FlightSessionScoringTracker
             CountEngineShutdown(_previousFrame.Engine2Running, frame.Engine2Running);
             CountEngineShutdown(_previousFrame.Engine3Running, frame.Engine3Running);
             CountEngineShutdown(_previousFrame.Engine4Running, frame.Engine4Running);
+        }
+    }
+
+    private void UpdateSafetyGpws(TelemetryFrame frame)
+    {
+        if (frame.GpwsAlert && !_gpwsActive)
+        {
+            _gpwsActive = true;
+            _gpwsActiveStartedAt = frame.TimestampUtc;
+            _gpwsActiveStartAgl = frame.AltitudeAglFeet;
+        }
+        else if (!frame.GpwsAlert && _gpwsActive)
+        {
+            var duration = frame.TimestampUtc - _gpwsActiveStartedAt!.Value;
+            var startAgl = _gpwsActiveStartAgl ?? 0;
+            if (duration >= GpwsMinSustained && startAgl >= GpwsAglSkipBelow)
+                _gpwsEvents++;
+            _gpwsActive = false;
+            _gpwsActiveStartedAt = null;
+            _gpwsActiveStartAgl = null;
         }
     }
 
@@ -1567,6 +1593,7 @@ public sealed class FlightSessionScoringTracker
         _landingTouchdownLat                  = tdFrame.Latitude;
         _landingTouchdownLon                  = tdFrame.Longitude;
         _landingTouchdownHeadingMagneticDeg   = tdFrame.HeadingMagneticDegrees;
+        _landingTouchdownHeadingTrueDeg       = tdFrame.HeadingTrueDegrees;
         _landingTouchdownAltFt                = tdFrame.AltitudeFeet;
         _landingTouchdownWindSpeedKnots       = tdFrame.WindSpeedKnots;
         _landingTouchdownWindDirectionDegrees = tdFrame.WindDirectionDegrees;

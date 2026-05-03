@@ -187,6 +187,7 @@ public sealed record LandingAnalysisData
     public double? TouchdownLat { get; init; }
     public double? TouchdownLon { get; init; }
     public double? TouchdownHeadingMagneticDeg { get; init; }
+    public double? TouchdownHeadingTrueDeg { get; init; }
     public double? TouchdownAltFt { get; init; }
     public double? TouchdownIAS { get; init; }
     public double? WindSpeedKnots { get; init; }
