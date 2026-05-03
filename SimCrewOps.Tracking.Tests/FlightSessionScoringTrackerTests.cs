@@ -217,7 +217,7 @@ public sealed class FlightSessionScoringTrackerTests
             velocityWorldY: -2.0, vs: -180));
 
         var c = tracker.BuildScoreInput().TouchdownRateCandidates!;
-        Assert.Equal("VelocityWorldY (TD frame)", c.SelectedSourceLabel);
+        Assert.Equal("VerticalSpeed (TD frame)", c.SelectedSourceLabel);
     }
 
     [Fact]
@@ -226,9 +226,8 @@ public sealed class FlightSessionScoringTrackerTests
         var tracker = new FlightSessionScoringTracker();
         var t0 = new DateTimeOffset(2026, 4, 12, 22, 0, 0, TimeSpan.Zero);
 
-        // Last-airborne has negative VelocityWorldY; TD frame reports 0
-        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
-            velocityWorldY: -2.0, vs: -180));
+        // Last-airborne VS = 0, VelocityWorldY = 0; TD frame has VS < 0 → new Fallback A
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false));
         tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
             velocityWorldY: 0.0, vs: -150));
         // Sustaining frame: ≥500ms elapsed — debounce commits.
@@ -236,7 +235,7 @@ public sealed class FlightSessionScoringTrackerTests
             velocityWorldY: 0.0, vs: -150));
 
         var c = tracker.BuildScoreInput().TouchdownRateCandidates!;
-        Assert.Equal("VelocityWorldY (last airborne)", c.SelectedSourceLabel);
+        Assert.Equal("VerticalSpeed (TD frame)", c.SelectedSourceLabel);
     }
 
     [Fact]
@@ -382,7 +381,7 @@ public sealed class FlightSessionScoringTrackerTests
             velocityWorldY: -1.0, vs: -60, agl: 0));
 
         var input = tracker.BuildScoreInput();
-        Assert.Equal(180.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);  // 3.0 fps * 60
+        Assert.Equal(300.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);  // last-airborne VS = abs(-300)
     }
 
     [Fact]
@@ -412,8 +411,8 @@ public sealed class FlightSessionScoringTrackerTests
 
         var input = tracker.BuildScoreInput();
         Assert.Equal(1, input.Landing.BounceCount);
-        // TD rate captured from first contact (3.5 fps * 60 = 210 fpm), not from bounce
-        Assert.Equal(210.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);
+        // TD rate from last-airborne VS = abs(-240), not from VelocityWorldY or the bounce
+        Assert.Equal(240.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);
     }
 
     [Fact]
