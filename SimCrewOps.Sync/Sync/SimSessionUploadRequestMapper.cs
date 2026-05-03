@@ -30,9 +30,10 @@ public sealed class SimSessionUploadRequestMapper
             ActualBlocksOn    = state.BlockTimes.BlocksOnUtc,
             BlockTimeActual   = CalculateActualBlockHours(state.BlockTimes),
             BlockTimeScheduled = state.Context.ScheduledBlockHours,
-            ScoringInput      = MapScoringInput(s),
-            LandingAnalysis   = MapLandingAnalysis(s),
-            FlightPath        = MapFlightPath(s.FlightPath),
+            ScoringInput            = MapScoringInput(s),
+            LandingAnalysis         = MapLandingAnalysis(s),
+            FlightPath              = MapFlightPath(s.FlightPath),
+            TouchdownRateCandidates = MapTouchdownRateCandidates(s.TouchdownRateCandidates),
         };
     }
 
@@ -211,6 +212,18 @@ public sealed class SimSessionUploadRequestMapper
                 TMin  = p.TMin,
             })
             .ToArray();
+
+    private static SimSessionTouchdownRateCandidates? MapTouchdownRateCandidates(TouchdownRateCandidates? c) =>
+        c is null ? null : new SimSessionTouchdownRateCandidates
+        {
+            FpmVelocityWorldY             = c.FpmVelocityWorldY,
+            FpmVerticalSpeed              = c.FpmVerticalSpeed,
+            FpmTouchdownNormal            = c.FpmTouchdownNormal,
+            FpmVelocityWorldYLastAirborne = c.FpmVelocityWorldYLastAirborne,
+            FpmVerticalSpeedLastAirborne  = c.FpmVerticalSpeedLastAirborne,
+            FinalSelected                 = c.FinalSelected,
+            SelectedSourceLabel           = c.SelectedSourceLabel,
+        };
 
     private static double? CalculateActualBlockHours(FlightSessionBlockTimes blockTimes)
     {

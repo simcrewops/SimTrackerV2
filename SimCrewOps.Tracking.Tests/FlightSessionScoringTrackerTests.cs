@@ -40,7 +40,9 @@ public sealed class FlightSessionScoringTrackerTests
         Assert.Equal(1.0, input.Takeoff.MaxGForce);
         Assert.True(input.Approach.GearDownBy1000Agl);
         Assert.Equal(3, input.Approach.FlapsHandleIndexAt500Agl);
-        Assert.Equal(160, input.Landing.TouchdownVerticalSpeedFpm);
+        // New primary: last-airborne barometric VS (-180 fpm on the frame at t0+32s).
+        // Pre-WS13 this returned 160 (barometric VS at the touchdown frame).
+        Assert.Equal(180, input.Landing.TouchdownVerticalSpeedFpm);
         Assert.Equal(0, input.Landing.TouchdownBankAngleDegrees);
         Assert.Equal(135, input.Landing.TouchdownIndicatedAirspeedKnots);
         Assert.Equal(0, input.Landing.TouchdownPitchAngleDegrees);
@@ -215,7 +217,7 @@ public sealed class FlightSessionScoringTrackerTests
             velocityWorldY: -2.0, vs: -180));
 
         var c = tracker.BuildScoreInput().TouchdownRateCandidates!;
-        Assert.Equal("VelocityWorldY (TD frame)", c.SelectedSourceLabel);
+        Assert.Equal("VerticalSpeed (TD frame)", c.SelectedSourceLabel);
     }
 
     [Fact]
@@ -224,9 +226,8 @@ public sealed class FlightSessionScoringTrackerTests
         var tracker = new FlightSessionScoringTracker();
         var t0 = new DateTimeOffset(2026, 4, 12, 22, 0, 0, TimeSpan.Zero);
 
-        // Last-airborne has negative VelocityWorldY; TD frame reports 0
-        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false,
-            velocityWorldY: -2.0, vs: -180));
+        // Last-airborne VS = 0, VelocityWorldY = 0; TD frame has VS < 0 → new Fallback A
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false));
         tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true,
             velocityWorldY: 0.0, vs: -150));
         // Sustaining frame: ≥500ms elapsed — debounce commits.
@@ -234,7 +235,7 @@ public sealed class FlightSessionScoringTrackerTests
             velocityWorldY: 0.0, vs: -150));
 
         var c = tracker.BuildScoreInput().TouchdownRateCandidates!;
-        Assert.Equal("VelocityWorldY (last airborne)", c.SelectedSourceLabel);
+        Assert.Equal("VerticalSpeed (TD frame)", c.SelectedSourceLabel);
     }
 
     [Fact]
@@ -329,8 +330,9 @@ public sealed class FlightSessionScoringTrackerTests
     public void TouchdownDebounce_FlickerIgnored_SustainedGroundIsCaptured()
     {
         // Simulates the observed bug: SIM_ON_GROUND flickers true ~5s before actual touchdown
-        // during the ground-effect/flare phase. The pre-flare flicker shows 450 fpm (7.5 fps);
-        // the real touchdown shows 240 fpm (4.0 fps). Without debounce SimCrewOps captured the flicker.
+        // during the ground-effect/flare phase. The pre-flare flicker would capture 480 fpm
+        // (last-airborne VS); the real touchdown captures 270 fpm. Without debounce SimCrewOps
+        // captured the flicker.
         var tracker = new FlightSessionScoringTracker();
         var t0 = new DateTimeOffset(2026, 4, 12, 22, 24, 45, TimeSpan.Zero);
 
@@ -348,7 +350,7 @@ public sealed class FlightSessionScoringTrackerTests
         tracker.Ingest(Frame(t0.AddMilliseconds(350), FlightPhase.Approach, onGround: false,
             velocityWorldY: -4.5, vs: -270, agl: 60));  // agl >50: FallbackB won't use this
 
-        // Real touchdown after flare (~2 ft AGL, reduced sink rate): 4.0 fps * 60 = 240 fpm
+        // Real touchdown after flare (~2 ft AGL); last-airborne frame had vs=-270 → 270 fpm
         tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.Landing, onGround: true,
             velocityWorldY: -4.0, vs: -240, agl: 2));
 
@@ -360,8 +362,8 @@ public sealed class FlightSessionScoringTrackerTests
             vs: -30, agl: 0));
 
         var input = tracker.BuildScoreInput();
-        // Should capture real TD at 240 fpm (4.0 fps * 60), not flicker at 450 fpm (7.5 fps * 60)
-        Assert.Equal(240.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);
+        // Should capture real TD at 270 fpm (last-airborne VS), not flicker at 480 fpm
+        Assert.Equal(270.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);
     }
 
     [Fact]
@@ -380,7 +382,7 @@ public sealed class FlightSessionScoringTrackerTests
             velocityWorldY: -1.0, vs: -60, agl: 0));
 
         var input = tracker.BuildScoreInput();
-        Assert.Equal(180.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);  // 3.0 fps * 60
+        Assert.Equal(300.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);  // last-airborne VS = abs(-300)
     }
 
     [Fact]
@@ -410,8 +412,34 @@ public sealed class FlightSessionScoringTrackerTests
 
         var input = tracker.BuildScoreInput();
         Assert.Equal(1, input.Landing.BounceCount);
-        // TD rate captured from first contact (3.5 fps * 60 = 210 fpm), not from bounce
-        Assert.Equal(210.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);
+        // TD rate from last-airborne VS = abs(-240), not from VelocityWorldY or the bounce
+        Assert.Equal(240.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);
+    }
+
+    [Fact]
+    public void TouchdownFpm_UsesVerticalSpeedFromLastAirborneAsPrimary()
+    {
+        var tracker = new FlightSessionScoringTracker();
+        var t0 = new DateTimeOffset(2026, 5, 3, 10, 0, 0, TimeSpan.Zero);
+
+        // Last airborne frame: VS = -300 fpm — this should be the reported FPM.
+        tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false, vs: -300, velocityWorldY: -7.0, agl: 5));
+
+        // First ground frame: VS = -180 fpm (settled), VelocityWorldY = -3.0 fps (= 180 fpm).
+        // Pre-WS13 we'd have reported 420 (VelocityWorldY × 60); post-WS13 we report 300 (last airborne VS).
+        tracker.Ingest(Frame(t0.AddMilliseconds(100), FlightPhase.Landing, onGround: true, vs: -180, velocityWorldY: -3.0, agl: 0));
+
+        // Sustained ground frame to satisfy debounce.
+        tracker.Ingest(Frame(t0.AddSeconds(0.7), FlightPhase.Landing, onGround: true, vs: -50, velocityWorldY: -1.0, agl: 0));
+
+        var input = tracker.BuildScoreInput();
+        Assert.Equal(300, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);
+        Assert.NotNull(input.TouchdownRateCandidates);
+        Assert.Equal("VerticalSpeed (last airborne)", input.TouchdownRateCandidates.SelectedSourceLabel);
+        Assert.Equal(300, input.TouchdownRateCandidates.FpmVerticalSpeedLastAirborne, precision: 1);
+        Assert.Equal(180, input.TouchdownRateCandidates.FpmVerticalSpeed, precision: 1);
+        Assert.Equal(180, input.TouchdownRateCandidates.FpmVelocityWorldY, precision: 1);
+        Assert.Equal(420, input.TouchdownRateCandidates.FpmVelocityWorldYLastAirborne, precision: 1);
     }
 
     private static TelemetryFrame Frame(
@@ -431,6 +459,7 @@ public sealed class FlightSessionScoringTrackerTests
         double altitude = 0,
         double agl = 0,
         double vs = 0,
+        double velocityWorldY = 0,
         double bank = 0,
         double pitch = 0,
         double heading = 0,
@@ -443,7 +472,6 @@ public sealed class FlightSessionScoringTrackerTests
         bool engine3 = false,
         bool engine4 = false,
         double? touchdownZoneExcess = null,
-        double velocityWorldY = 0,
         double touchdownNormal = 0)
     {
         return new TelemetryFrame

@@ -51,6 +51,33 @@ public sealed record SimSessionUploadRequest
 
     [JsonPropertyName("flightPath")]
     public FlightPathPointDto[] FlightPath { get; init; } = [];
+
+    [JsonPropertyName("touchdownRateCandidates")]
+    public SimSessionTouchdownRateCandidates? TouchdownRateCandidates { get; init; }
+}
+
+public sealed record SimSessionTouchdownRateCandidates
+{
+    [JsonPropertyName("fpmVelocityWorldY")]
+    public double FpmVelocityWorldY { get; init; }
+
+    [JsonPropertyName("fpmVerticalSpeed")]
+    public double FpmVerticalSpeed { get; init; }
+
+    [JsonPropertyName("fpmTouchdownNormal")]
+    public double FpmTouchdownNormal { get; init; }
+
+    [JsonPropertyName("fpmVelocityWorldYLastAirborne")]
+    public double FpmVelocityWorldYLastAirborne { get; init; }
+
+    [JsonPropertyName("fpmVerticalSpeedLastAirborne")]
+    public double FpmVerticalSpeedLastAirborne { get; init; }
+
+    [JsonPropertyName("finalSelected")]
+    public double FinalSelected { get; init; }
+
+    [JsonPropertyName("selectedSourceLabel")]
+    public string SelectedSourceLabel { get; init; } = string.Empty;
 }
 
 public sealed record LandingAnalysisDto
