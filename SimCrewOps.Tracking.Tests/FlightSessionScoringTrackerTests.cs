@@ -713,8 +713,10 @@ public sealed class FlightSessionScoringTrackerTests
 
         // Airborne approach frame to establish prior-airborne state.
         tracker.Ingest(Frame(t0, FlightPhase.Approach, onGround: false, agl: 300, vs: -700, heading: 161.5));
-        // Touchdown frame — heading (HeadingTrueDegrees) = 161.5, magnetic = 0 (default).
+        // First ground contact — heading (HeadingTrueDegrees) = 161.5. Starts the 500ms debounce.
         tracker.Ingest(Frame(t0.AddSeconds(1), FlightPhase.Landing, onGround: true, agl: 0, vs: -180, heading: 161.5, g: 1.2));
+        // Confirming frame ≥500ms later — triggers CommitFirstTouchdown() with the first-contact frame.
+        tracker.Ingest(Frame(t0.AddSeconds(1.6), FlightPhase.Landing, onGround: true, agl: 0, heading: 161.5));
 
         Assert.Equal(161.5, tracker.BuildScoreInput().LandingAnalysis.TouchdownHeadingTrueDeg);
     }
