@@ -330,8 +330,9 @@ public sealed class FlightSessionScoringTrackerTests
     public void TouchdownDebounce_FlickerIgnored_SustainedGroundIsCaptured()
     {
         // Simulates the observed bug: SIM_ON_GROUND flickers true ~5s before actual touchdown
-        // during the ground-effect/flare phase. The pre-flare flicker shows 450 fpm (7.5 fps);
-        // the real touchdown shows 240 fpm (4.0 fps). Without debounce SimCrewOps captured the flicker.
+        // during the ground-effect/flare phase. The pre-flare flicker would capture 480 fpm
+        // (last-airborne VS); the real touchdown captures 270 fpm. Without debounce SimCrewOps
+        // captured the flicker.
         var tracker = new FlightSessionScoringTracker();
         var t0 = new DateTimeOffset(2026, 4, 12, 22, 24, 45, TimeSpan.Zero);
 
@@ -349,7 +350,7 @@ public sealed class FlightSessionScoringTrackerTests
         tracker.Ingest(Frame(t0.AddMilliseconds(350), FlightPhase.Approach, onGround: false,
             velocityWorldY: -4.5, vs: -270, agl: 60));  // agl >50: FallbackB won't use this
 
-        // Real touchdown after flare (~2 ft AGL, reduced sink rate): 4.0 fps * 60 = 240 fpm
+        // Real touchdown after flare (~2 ft AGL); last-airborne frame had vs=-270 → 270 fpm
         tracker.Ingest(Frame(t0.AddSeconds(5), FlightPhase.Landing, onGround: true,
             velocityWorldY: -4.0, vs: -240, agl: 2));
 
@@ -361,8 +362,8 @@ public sealed class FlightSessionScoringTrackerTests
             vs: -30, agl: 0));
 
         var input = tracker.BuildScoreInput();
-        // Should capture real TD at 240 fpm (4.0 fps * 60), not flicker at 450 fpm (7.5 fps * 60)
-        Assert.Equal(240.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);
+        // Should capture real TD at 270 fpm (last-airborne VS), not flicker at 480 fpm
+        Assert.Equal(270.0, input.Landing.TouchdownVerticalSpeedFpm, precision: 1);
     }
 
     [Fact]
